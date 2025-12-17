@@ -249,7 +249,7 @@ export default function LearnPage() {
               <Card><CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-[var(--color-text-secondary)]">Задание {currentTaskIndex + 1} из {practiceTasks.length}</span>
-                  <span className="text-sm text-green-500">Правильно: {taskScore.correct}/{taskScore.total}</span>
+                  <span className="text-sm text-green-500">Правильно: {taskScore.correct}/{practiceTasks.length}</span>
                 </div>
                 <div className="progress-practicum"><div className="progress-practicum-fill" style={{ width: `${(currentTaskIndex / practiceTasks.length) * 100}%` }} /></div>
                 <div className="flex gap-1 mt-3">
@@ -331,17 +331,17 @@ export default function LearnPage() {
               <CheckCircle className="w-10 h-10 text-white" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Тема завершена!</h2>
-            {taskScore.total > 0 && (
+            {practiceTasks.length > 0 && (
               <div className="mb-6">
-                <p className="text-4xl font-bold text-[var(--color-primary)] mb-2">{Math.round((taskScore.correct / taskScore.total) * 100)}%</p>
-                <p className="text-[var(--color-text-secondary)]">{taskScore.correct} из {taskScore.total} правильно</p>
-                {taskScore.correct / taskScore.total < 0.4 && (
+                <p className="text-4xl font-bold text-[var(--color-primary)] mb-2">{Math.round((taskScore.correct / practiceTasks.length) * 100)}%</p>
+                <p className="text-[var(--color-text-secondary)]">{taskScore.correct} из {practiceTasks.length} правильно</p>
+                {taskScore.correct / practiceTasks.length < 0.4 && (
                   <p className="text-orange-400 text-sm mt-2">Рекомендуем повторить теорию и пройти тест ещё раз</p>
                 )}
               </div>
             )}
             <p className="text-[var(--color-text-secondary)] mb-6">
-              {taskScore.total > 0 && taskScore.correct / taskScore.total >= 0.7 
+              {practiceTasks.length > 0 && taskScore.correct / practiceTasks.length >= 0.7 
                 ? `Отлично! Ты освоил "${topic?.name}"` 
                 : `Тема "${topic?.name}" пройдена. Продолжай практиковаться!`}
             </p>
