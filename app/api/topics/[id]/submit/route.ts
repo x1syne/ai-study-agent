@@ -91,11 +91,12 @@ export async function POST(
     })
 
     if (progress) {
-      const newMastery = Math.min(
-        progress.masteryLevel + (review.isCorrect ? 40 : 10),
-        100
-      )
-      const newStatus = newMastery >= 70 ? 'COMPLETED' : progress.status
+      // Статус COMPLETED только если practiceScore >= 70%
+      const newStatus = review.score >= 70 ? 'COMPLETED' : 'IN_PROGRESS'
+      // masteryLevel = среднее между теорией (если пройдена = 50) и практикой
+      const theoryPart = progress.theoryCompleted ? 50 : 0
+      const practicePart = Math.round(review.score / 2) // 0-50 от практики
+      const newMastery = theoryPart + practicePart
 
       await prisma.topicProgress.update({
         where: { id: progress.id },
@@ -103,7 +104,7 @@ export async function POST(
           practiceScore: review.score,
           masteryLevel: newMastery,
           status: newStatus,
-          completedAt: newStatus === 'COMPLETED' ? new Date() : null,
+          completedAt: newStatus === 'COMPLETED' ? new Date() : progress.completedAt,
         },
       })
 
