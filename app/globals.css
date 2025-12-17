@@ -1,0 +1,478 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== YANDEX PRACTICUM STYLE ==================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --color-bg: #10101a;
+  --color-bg-secondary: #1a1a26;
+  --color-bg-card: #1f1f2c;
+  --color-primary: #06b6d4;
+  --color-primary-dark: #0891b2;
+  --color-text: #ffffff;
+  --color-text-secondary: #a3a3a3;
+  --color-border: #2d2d3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==================== PRACTICUM CARDS ==================== */
+
+.practicum-card {
+  background: var(--color-bg-card);
+  border-radius: 24px;
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+}
+
+.practicum-card:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  transform: translateY(-2px);
+}
+
+.practicum-card-primary {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  color: #ffffff;
+}
+
+/* ==================== PRACTICUM BUTTONS ==================== */
+
+.btn-practicum {
+  @apply px-6 py-3 rounded-xl font-semibold transition-all duration-200;
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.btn-practicum:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+}
+
+.btn-practicum-outline {
+  @apply px-6 py-3 rounded-xl font-semibold transition-all duration-200;
+  background: transparent;
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-practicum-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ==================== PRACTICUM PROGRESS ==================== */
+
+.progress-practicum {
+  @apply h-2 rounded-full overflow-hidden;
+  background: var(--color-border);
+}
+
+.progress-practicum-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, #06b6d4, #0891b2);
+}
+
+/* ==================== PRACTICUM SIDEBAR ==================== */
+
+.sidebar-practicum {
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+}
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200;
+  color: var(--color-text-secondary);
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
+}
+
+.sidebar-item.active {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--color-primary);
+}
+
+/* ==================== PRACTICUM BADGES ==================== */
+
+.badge-practicum {
+  @apply px-3 py-1 rounded-full text-sm font-medium;
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--color-primary);
+}
+
+.badge-practicum-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.badge-practicum-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+/* ==================== PRACTICUM COURSE CARD ==================== */
+
+.course-card {
+  @apply relative overflow-hidden rounded-3xl p-6;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  min-height: 200px;
+}
+
+.course-card-icon {
+  @apply w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4;
+  background: rgba(255, 230, 0, 0.1);
+}
+
+.course-card-progress {
+  @apply absolute bottom-0 left-0 right-0 h-1;
+  background: var(--color-border);
+}
+
+.course-card-progress-fill {
+  @apply h-full;
+  background: var(--color-primary);
+}
+
+/* ==================== PRACTICUM STATS ==================== */
+
+.stat-card {
+  @apply p-6 rounded-2xl;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+}
+
+.stat-value {
+  @apply text-4xl font-bold mb-1;
+  color: var(--color-primary);
+}
+
+.stat-label {
+  @apply text-sm;
+  color: var(--color-text-secondary);
+}
+
+/* ==================== PRACTICUM HEADER ==================== */
+
+.header-practicum {
+  background: rgba(16, 16, 26, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ==================== PRACTICUM INPUT ==================== */
+
+.input-practicum {
+  @apply w-full px-4 py-3 rounded-xl transition-all duration-200;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.input-practicum::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.input-practicum:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+/* ==================== PRACTICUM LESSON ==================== */
+
+.lesson-step {
+  @apply flex items-center gap-4 p-4 rounded-xl transition-all duration-200;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.lesson-step.completed {
+  border-color: #22c55e;
+}
+
+.lesson-step.active {
+  border-color: var(--color-primary);
+  background: rgba(6, 182, 212, 0.05);
+}
+
+.lesson-step-number {
+  @apply w-10 h-10 rounded-full flex items-center justify-center font-bold;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.lesson-step.completed .lesson-step-number {
+  background: #22c55e;
+  color: white;
+}
+
+.lesson-step.active .lesson-step-number {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+/* ==================== SCROLLBAR ==================== */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d3d4a;
+}
+
+/* ==================== ANIMATIONS ==================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-primary {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(6, 182, 212, 0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+.animate-pulse-primary {
+  animation: pulse-primary 2s infinite;
+}
+
+/* ==================== TYPOGRAPHY ==================== */
+
+.text-gradient-primary {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ==================== MOBILE RESPONSIVENESS ==================== */
+
+@media (max-width: 1023px) {
+  .sidebar-mobile-hidden {
+    transform: translateX(-100%);
+  }
+}
+
+@media (max-width: 640px) {
+  .course-card {
+    min-height: 160px;
+    padding: 1rem;
+  }
+  
+  .stat-value {
+    font-size: 2rem;
+  }
+}
+
+/* Safe area for notched devices */
+@supports (padding: max(0px)) {
+  .safe-area-inset {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Prevent horizontal overflow */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* ==================== LIGHT THEME ==================== */
+
+.light {
+  --color-bg: #f5f5f5;
+  --color-bg-secondary: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-surface: #f0f0f0;
+  --color-card: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #64748b;
+  --color-border: #e2e8f0;
+}
+
+.light body {
+  background: var(--color-bg) !important;
+  color: var(--color-text) !important;
+}
+
+.light .practicum-card,
+.light .course-card,
+.light .stat-card {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.light .sidebar-practicum {
+  background: var(--color-bg-secondary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.light .header-practicum {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: var(--color-border) !important;
+}
+
+.light .input-practicum {
+  background: var(--color-bg) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.light .sidebar-item {
+  color: var(--color-text-secondary) !important;
+}
+
+.light .sidebar-item:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: var(--color-text) !important;
+}
+
+.light .sidebar-item.active {
+  background: rgba(6, 182, 212, 0.1) !important;
+}
+
+/* Text colors */
+.light .text-white {
+  color: var(--color-text) !important;
+}
+
+.light .text-slate-200,
+.light .text-slate-300 {
+  color: var(--color-text) !important;
+}
+
+.light .text-slate-400,
+.light .text-slate-500 {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Background colors */
+.light .bg-slate-800,
+.light .bg-slate-800\/50,
+.light .bg-slate-900,
+.light .bg-slate-900\/50,
+.light .bg-\[var\(--color-card\)\],
+.light .bg-\[var\(--color-bg-secondary\)\] {
+  background: var(--color-bg-card) !important;
+}
+
+.light .bg-slate-700,
+.light .bg-slate-700\/50,
+.light .bg-\[var\(--color-surface\)\] {
+  background: var(--color-surface) !important;
+}
+
+/* Border colors */
+.light .border-slate-700,
+.light .border-slate-700\/50,
+.light .border-slate-600,
+.light .border-slate-600\/50,
+.light .border-\[var\(--color-border\)\] {
+  border-color: var(--color-border) !important;
+}
+
+/* Cards and dropdowns */
+.light [class*="practicum-card"],
+.light [class*="bg-slate-800"],
+.light [class*="bg-slate-900"] {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* Progress bars */
+.light .progress-practicum {
+  background: var(--color-border) !important;
+}
+
+/* Scrollbar */
+.light ::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* Hover states */
+.light .hover\:bg-white\/5:hover,
+.light .hover\:bg-white\/10:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Quiz and task cards */
+.light .bg-green-500\/10 {
+  background: rgba(34, 197, 94, 0.1) !important;
+}
+
+.light .bg-red-500\/10 {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+.light .bg-orange-500\/10 {
+  background: rgba(249, 115, 22, 0.1) !important;
+}
+
+/* Calendar specific */
+.light .bg-green-900 {
+  background: #bbf7d0 !important;
+}
+
+.light .bg-green-700 {
+  background: #86efac !important;
+}
+
+.light .bg-green-500 {
+  background: #4ade80 !important;
+}
+
+.light .bg-green-400 {
+  background: #22c55e !important;
+}
