@@ -97,20 +97,23 @@ export async function POST(
     })
 
     if (progress) {
-      // Статус COMPLETED только если practiceScore >= 70%
-      const newStatus = review.score >= 70 ? 'COMPLETED' : 'IN_PROGRESS'
+      // Сохраняем лучший результат (не перезаписываем если новый хуже)
+      const bestScore = Math.max(review.score, progress.practiceScore || 0)
+      
+      // Статус COMPLETED только если лучший practiceScore >= 70%
+      const newStatus = bestScore >= 70 ? 'COMPLETED' : 'IN_PROGRESS'
       // masteryLevel = среднее между теорией (если пройдена = 50) и практикой
       const theoryPart = progress.theoryCompleted ? 50 : 0
-      const practicePart = Math.round(review.score / 2) // 0-50 от практики
+      const practicePart = Math.round(bestScore / 2) // 0-50 от практики
       const newMastery = theoryPart + practicePart
 
       await prisma.topicProgress.update({
         where: { id: progress.id },
         data: {
-          practiceScore: review.score,
+          practiceScore: bestScore,
           masteryLevel: newMastery,
           status: newStatus,
-          completedAt: newStatus === 'COMPLETED' ? new Date() : progress.completedAt,
+          completedAt: newStatus === 'COMPLETED' && !progress.completedAt ? new Date() : progress.completedAt,
         },
       })
 
