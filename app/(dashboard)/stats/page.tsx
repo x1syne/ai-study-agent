@@ -26,7 +26,14 @@ export default function StatsPage() {
         const data = await res.json()
         setStats(data.stats)
         setAchievements(data.achievements || [])
-        setActivity(data.activity || [])
+        
+        // Convert activity data format
+        const activityData = Object.entries(data.activityByDate || {}).map(([date, count]) => ({
+          date,
+          count: count as number
+        }))
+        setActivity(activityData)
+        
         setProgress(data.progress || { completedTopics: 0, totalTopics: 0, averageMastery: 0 })
       }
     } catch (e) { console.error(e) }

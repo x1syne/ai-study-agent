@@ -41,17 +41,13 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Calculate total study time
-    const lessons = await prisma.lesson.findMany({
-      where: {
-        userId: user.id,
-        completedAt: { not: null },
-      },
-      include: { topic: true },
+    // Calculate total study time from actual time spent
+    const topicProgress = await prisma.topicProgress.findMany({
+      where: { userId: user.id },
     })
 
-    const totalMinutes = lessons.reduce((sum, lesson) => {
-      return sum + (lesson.topic?.estimatedMinutes || 0)
+    const totalMinutes = topicProgress.reduce((sum, progress) => {
+      return sum + progress.timeSpentMinutes
     }, 0)
 
     // Get achievements
@@ -82,6 +78,14 @@ export async function GET(request: NextRequest) {
         activityByDate[dateStr] = (activityByDate[dateStr] || 0) + 1
       }
     })
+
+    // Update UserStats totalMinutes if it's different
+    if (stats.totalMinutes !== totalMinutes) {
+      await prisma.userStats.update({
+        where: { userId: user.id },
+        data: { totalMinutes },
+      })
+    }
 
     return NextResponse.json({
       stats: {

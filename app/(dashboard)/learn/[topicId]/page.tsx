@@ -10,6 +10,7 @@ import { CodeEditor } from '@/components/learning/CodeEditor'
 import { QuizQuestion } from '@/components/learning/QuizQuestion'
 import { VisualTask } from '@/components/learning/VisualTask'
 import { StepikTask, TaskResult } from '@/components/learning/StepikTask'
+import { StudyTimer } from '@/components/learning/StudyTimer'
 
 type LessonStep = 'theory' | 'practice' | 'complete'
 
@@ -180,16 +181,27 @@ export default function LearnPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2 rounded-xl text-[var(--color-text-secondary)] hover:text-white hover:bg-white/5 transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">{topic?.icon || '📚'}</span>
-            <h1 className="text-xl sm:text-2xl font-bold text-white truncate">{topic?.name}</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <button onClick={() => router.back()} className="p-2 rounded-xl text-[var(--color-text-secondary)] hover:text-white hover:bg-white/5 transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{topic?.icon || '📚'}</span>
+              <h1 className="text-xl sm:text-2xl font-bold text-white truncate">{topic?.name}</h1>
+            </div>
+            <p className="text-sm text-[var(--color-text-secondary)] truncate">{topic?.description}</p>
           </div>
-          <p className="text-sm text-[var(--color-text-secondary)] truncate">{topic?.description}</p>
+        </div>
+        
+        {/* Study Timer */}
+        <div className="hidden sm:block">
+          <StudyTimer 
+            topicId={params.topicId as string}
+            autoStart={step !== 'complete'}
+            showControls={false}
+          />
         </div>
       </div>
 
@@ -204,6 +216,15 @@ export default function LearnPage() {
             <StepIndicator icon={<CheckCircle />} label="Готово" active={step === 'complete'} completed={false} />
           </div>
           <div className="progress-practicum"><div className="progress-practicum-fill" style={{ width: `${stepProgress}%` }} /></div>
+          
+          {/* Mobile Timer */}
+          <div className="sm:hidden mt-4 pt-4 border-t border-[var(--color-border)]">
+            <StudyTimer 
+              topicId={params.topicId as string}
+              autoStart={step !== 'complete'}
+              showControls={true}
+            />
+          </div>
         </CardContent>
       </Card>
 
