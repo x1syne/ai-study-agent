@@ -129,131 +129,132 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     return codeAnswer.trim().length > 20
   }
 
-  // AI-анализ текстового ответа
+  // Максимально лояльная проверка текстового ответа
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
-    console.log('[AI] Starting text analysis for:', userAnswer)
+    console.log('[TEXT CHECK] User answer:', userAnswer)
+    console.log('[TEXT CHECK] Correct answers:', correctAnswers)
     
-    // Сначала делаем быструю проверку - если ответ очень похож, сразу засчитываем
     const userNorm = userAnswer.toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
     
-    const quickCheck = correctAnswers.some(ans => {
+    // УРОВЕНЬ 1: Очень мягкая проверка ключевых слов
+    const keywordCheck = correctAnswers.some(ans => {
       if (!ans) return false
       const ansNorm = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
       
-      // Если ответы очень похожи - сразу засчитываем
+      console.log('[TEXT CHECK] Comparing:', userNorm, 'vs', ansNorm)
+      
+      // 1. Прямое включение
       if (userNorm.includes(ansNorm) || ansNorm.includes(userNorm)) {
-        console.log('[AI] Quick match found:', userNorm, 'vs', ansNorm)
+        console.log('[TEXT CHECK] ✅ Direct inclusion match')
         return true
       }
       
-      // Проверка ключевых слов
+      // 2. Проверка ключевых слов (очень мягкая - достаточно 30%)
       const userWords = userNorm.split(' ').filter(w => w.length > 2)
       const ansWords = ansNorm.split(' ').filter(w => w.length > 2)
       
       if (ansWords.length > 0) {
         const matchedWords = ansWords.filter(word => 
-          userWords.some(userWord => 
-            userWord.includes(word) || word.includes(userWord) || 
-            levenshteinDistance(userWord, word) <= 1
-          )
+          userWords.some(userWord => {
+            // Очень мягкое сравнение
+            const match = userWord.includes(word) || 
+                         word.includes(userWord) || 
+                         levenshteinDistance(userWord, word) <= Math.max(1, Math.floor(word.length * 0.3))
+            if (match) console.log('[TEXT CHECK] Word match:', userWord, '≈', word)
+            return match
+          })
         )
         
-        // Если совпадает больше 50% ключевых слов - засчитываем
-        if (matchedWords.length >= Math.ceil(ansWords.length * 0.5)) {
-          console.log('[AI] Keyword match:', matchedWords.length, 'of', ansWords.length)
+        const matchPercent = matchedWords.length / ansWords.length
+        console.log('[TEXT CHECK] Keyword match:', matchedWords.length, 'of', ansWords.length, `(${Math.round(matchPercent * 100)}%)`)
+        
+        // Засчитываем если совпадает хотя бы 30% ключевых слов
+        if (matchPercent >= 0.3) {
+          console.log('[TEXT CHECK] ✅ Keyword match (30%+ threshold)')
           return true
         }
       }
       
-      return false
-    })
-    
-    if (quickCheck) {
-      return {
-        correct: true,
-        feedback: "Правильно! Ответ засчитан по ключевым словам.",
-        suggestion: "Отличное понимание материала!"
-      }
-    }
-    
-    // Если быстрая проверка не прошла, используем AI
-    try {
-      console.log('[AI] Using AI analysis...')
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Сравни ответ студента с правильным ответом.
-
-Вопрос: ${task.question}
-
-Правильный ответ: ${correctAnswers[0]}
-
-Ответ студента: ${userAnswer}
-
-Правила оценки:
-1. Если ответ передает ту же суть - засчитывай как правильный
-2. Если использует синонимы - засчитывай как правильный  
-3. Если неполный но верный - засчитывай как правильный
-4. Игнорируй мелкие грамматические ошибки
-
-Ответь в формате JSON:
-{"correct": true/false, "feedback": "краткий комментарий", "suggestion": "рекомендация"}
-
-Пример правильного ответа:
-{"correct": true, "feedback": "Верно! Вы понимаете суть", "suggestion": "Можно добавить больше деталей"}`,
-          systemPrompt: 'Ты справедливый преподаватель. Засчитывай ответы если они правильные по смыслу, даже если формулировка отличается. Будь снисходительным.'
-        })
-      })
+      // 3. Очень мягкое расстояние Левенштейна
+      const maxDistance = Math.max(3, Math.floor(ansNorm.length * 0.5))
+      const distance = levenshteinDistance(userNorm, ansNorm)
+      console.log('[TEXT CHECK] Levenshtein distance:', distance, 'max allowed:', maxDistance)
       
-      if (res.ok) {
-        const data = await res.json()
-        const content = data.aiMessage?.content || ''
-        console.log('[AI] Full response:', content)
-        
-        try {
-          // Ищем JSON в ответе
-          const jsonMatch = content.match(/\{[^}]*"correct"[^}]*\}/i)
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0])
-            console.log('[AI] Parsed result:', result)
-            
-            // Принудительно засчитываем если AI сказал правильно
-            if (result.correct === true || result.correct === 'true') {
-              return {
-                correct: true,
-                feedback: result.feedback || "AI засчитал ответ как правильный",
-                suggestion: result.suggestion || "Продолжайте в том же духе!"
-              }
-            }
-          }
-        } catch (e) {
-          console.error('[AI] Parse error:', e)
-        }
-      }
-    } catch (e) {
-      console.error('[AI] Request failed:', e)
-    }
-    
-    // Финальная fallback проверка - более мягкая
-    console.log('[AI] Using fallback check...')
-    const finalCheck = correctAnswers.some(ans => {
-      if (!ans) return false
-      const ansNorm = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
-      
-      // Очень мягкая проверка по расстоянию Левенштейна
-      if (levenshteinDistance(userNorm, ansNorm) <= Math.max(2, Math.floor(ansNorm.length * 0.4))) {
-        console.log('[AI] Levenshtein match:', userNorm, 'vs', ansNorm)
+      if (distance <= maxDistance) {
+        console.log('[TEXT CHECK] ✅ Levenshtein match')
         return true
       }
       
       return false
     })
     
+    if (keywordCheck) {
+      return {
+        correct: true,
+        feedback: "Правильно! Ответ засчитан.",
+        suggestion: "Отличное понимание материала!"
+      }
+    }
+    
+    // УРОВЕНЬ 2: Если длина ответа больше 10 символов - засчитываем как попытку
+    if (userAnswer.trim().length >= 10) {
+      console.log('[TEXT CHECK] ✅ Long answer - giving benefit of doubt')
+      return {
+        correct: true,
+        feedback: "Засчитано! Вы показали понимание темы.",
+        suggestion: "Продолжайте изучать материал!"
+      }
+    }
+    
+    // УРОВЕНЬ 3: AI проверка (упрощенная)
+    try {
+      console.log('[TEXT CHECK] Trying AI analysis...')
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Ответ студента: "${userAnswer}"
+Правильный ответ: "${correctAnswers[0]}"
+
+Засчитай ответ студента как правильный если он хотя бы частично верный.
+Ответь только: ПРАВИЛЬНО или НЕПРАВИЛЬНО`,
+          systemPrompt: 'Ты очень добрый преподаватель. Засчитывай любые разумные попытки ответа.'
+        })
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const content = (data.aiMessage?.content || '').toLowerCase()
+        console.log('[TEXT CHECK] AI response:', content)
+        
+        if (content.includes('правильно') && !content.includes('неправильно')) {
+          console.log('[TEXT CHECK] ✅ AI says correct')
+          return {
+            correct: true,
+            feedback: "AI засчитал ваш ответ как правильный!",
+            suggestion: "Хорошая работа!"
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[TEXT CHECK] AI failed:', e)
+    }
+    
+    // УРОВЕНЬ 4: Если ничего не помогло, но есть хоть какой-то ответ
+    if (userAnswer.trim().length >= 5) {
+      console.log('[TEXT CHECK] ✅ Giving credit for attempt')
+      return {
+        correct: true,
+        feedback: "Засчитано за попытку! Изучите материал подробнее.",
+        suggestion: "Обратитесь к теории для более точного ответа."
+      }
+    }
+    
+    console.log('[TEXT CHECK] ❌ Answer too short or empty')
     return { 
-      correct: finalCheck,
-      feedback: finalCheck ? "Ответ засчитан как близкий к правильному" : undefined,
-      suggestion: finalCheck ? "Хорошая попытка!" : undefined
+      correct: false,
+      feedback: "Ответ слишком короткий",
+      suggestion: "Попробуйте дать более развернутый ответ"
     }
   }
 
