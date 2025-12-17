@@ -72,7 +72,7 @@ export default function SchedulePage() {
     
     // Load preferences from localStorage
     const savedPrefs = localStorage.getItem('schedulePreferences')
-    if (savedPrefs) setPreferences(JSON.parse(savedPrefs))
+    if (savedPrefs) { const parsed = JSON.parse(savedPrefs); setPreferences({ ...parsed, startDate: new Date(parsed.startDate || new Date()) }) }
   }, [])
 
   // Save custom events to localStorage
