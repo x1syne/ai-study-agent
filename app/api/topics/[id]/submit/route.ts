@@ -26,25 +26,31 @@ export async function POST(
       return NextResponse.json({ error: 'Code or score is required' }, { status: 400 })
     }
 
-    // Get lesson and topic
-    const lesson = await prisma.lesson.findFirst({
-      where: {
-        id: lessonId,
-        topicId: params.id,
-      },
-      include: {
-        topic: true,
-      },
-    })
+    // Get lesson and topic (не обязательно если передан directScore)
+    let lesson = null
+    let taskContent: any = {}
+    
+    if (lessonId) {
+      lesson = await prisma.lesson.findFirst({
+        where: {
+          id: lessonId,
+          topicId: params.id,
+        },
+        include: {
+          topic: true,
+        },
+      })
+      taskContent = lesson?.content as any || {}
+    }
 
-    if (!lesson) {
+    // Если нет directScore и нет урока - ошибка
+    if (directScore === undefined && !lesson) {
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 })
     }
 
     // Get task details from lesson content
-    const taskContent = lesson.content as any
-    const taskDescription = taskContent?.description || lesson.title || ''
-    const solution = lesson.solution || taskContent?.solution || ''
+    const taskDescription = taskContent?.description || lesson?.title || ''
+    const solution = lesson?.solution || taskContent?.solution || ''
 
     // Review code using AI or use direct score from practice tasks
     let review: any
