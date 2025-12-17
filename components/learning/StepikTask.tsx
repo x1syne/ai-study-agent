@@ -129,7 +129,7 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     return codeAnswer.trim().length > 20
   }
 
-  // Умная проверка текстового ответа с обратной связью
+  // AI-проверка текстового ответа - анализирует смысл, а не буквальное совпадение
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
     const trimmedAnswer = userAnswer.trim()
     const correctAnswer = correctAnswers[0] || ''
@@ -139,53 +139,77 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       return { correct: false, feedback: "Введите ответ", suggestion: "Напишите хотя бы несколько слов" }
     }
     
-    // Нормализуем для сравнения (убираем пунктуацию, лишние пробелы, приводим к нижнему регистру)
-    const normalize = (s: string) => s.toLowerCase()
-      .replace(/[.,!?;:'"()\-–—]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
+    // Если ответ слишком короткий (меньше 3 символов)
+    if (trimmedAnswer.length < 3) {
+      return { correct: false, feedback: "Ответ слишком короткий", suggestion: "Напишите более развёрнутый ответ" }
+    }
+
+    // Используем AI для смысловой проверки
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Ты — терпеливый репетитор. Проверь ответ студента на вопрос.
+
+ВОПРОС: ${task.question}
+
+ЭТАЛОННЫЙ ОТВЕТ: ${correctAnswer}
+
+ОТВЕТ СТУДЕНТА: ${trimmedAnswer}
+
+ПРАВИЛА ПРОВЕРКИ:
+1. Анализируй СМЫСЛ ответа, а не буквальное совпадение слов
+2. Ответ ПРАВИЛЬНЫЙ, если содержит ключевые идеи эталона, даже если:
+   - Сформулирован другими словами
+   - Более краткий, но по сути верный
+   - Есть незначительные стилистические отличия
+3. Если ответ верный по смыслу, но неполный — это всё равно "correct": true, но укажи что можно добавить
+4. Будь лоялен к студенту — если есть сомнения, засчитывай в пользу студента
+
+Ответь СТРОГО в формате JSON:
+{"correct": true/false, "feedback": "краткая оценка на русском", "suggestion": "что можно улучшить или добавить"}`,
+          systemPrompt: 'Ты добрый репетитор. Оценивай по смыслу, не по буквам. Отвечай ТОЛЬКО JSON без markdown.'
+        })
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const content = data.aiMessage?.content || ''
+        try {
+          const jsonMatch = content.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0])
+            return {
+              correct: result.correct === true,
+              feedback: result.feedback || (result.correct ? "Правильно!" : "Попробуйте ещё раз"),
+              suggestion: result.suggestion || ""
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse AI response:', e)
+        }
+      }
+    } catch (e) {
+      console.error('AI check failed:', e)
+    }
     
+    // Fallback: простая проверка если AI недоступен
+    const normalize = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-–—]/g, '').replace(/\s+/g, ' ').trim()
     const userNorm = normalize(trimmedAnswer)
     const ansNorm = normalize(correctAnswer)
     
-    // Проверяем все варианты правильных ответов
-    for (const ans of correctAnswers) {
-      const ansN = normalize(ans)
-      // Точное совпадение после нормализации
-      if (userNorm === ansN) {
-        return { 
-          correct: true, 
-          feedback: "Отлично! Абсолютно правильный ответ!", 
-          suggestion: "Вы отлично усвоили материал!" 
-        }
-      }
+    // Точное совпадение
+    if (userNorm === ansNorm) {
+      return { correct: true, feedback: "Правильно!", suggestion: "" }
     }
     
-    // Проверка 1: Один содержит другой
+    // Один содержит другой
     if (userNorm.includes(ansNorm) || ansNorm.includes(userNorm)) {
-      return { 
-        correct: true, 
-        feedback: "Правильно!", 
-        suggestion: "Отличный ответ!" 
-      }
+      return { correct: true, feedback: "Правильно!", suggestion: "" }
     }
     
-    // Проверка 2: Похожесть по Левенштейну для коротких ответов
-    if (ansNorm.length < 30 && userNorm.length < 30) {
-      const distance = levenshteinDistance(userNorm, ansNorm)
-      const maxLen = Math.max(userNorm.length, ansNorm.length)
-      const similarity = 1 - (distance / maxLen)
-      
-      if (similarity >= 0.7) {
-        return {
-          correct: true,
-          feedback: "Правильно! Небольшие отличия в написании.",
-          suggestion: `Эталонный ответ: ${correctAnswer}`
-        }
-      }
-    }
-    
-    // Проверка 3: Ключевые слова
+    // Ключевые слова (fallback)
     const userWords = userNorm.split(' ').filter(w => w.length > 2)
     const ansWords = ansNorm.split(' ').filter(w => w.length > 2)
     
@@ -207,34 +231,21 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       
       const matchPercent = matchCount / ansWords.length
       
-      // 15% совпадения ключевых слов - засчитываем
-      if (matchPercent >= 0.15) {
-        const isPartial = matchPercent < 0.7
+      // 20% совпадения ключевых слов - засчитываем
+      if (matchPercent >= 0.2) {
         return {
           correct: true,
-          feedback: isPartial 
-            ? "Верно! Ответ засчитан, но можно дополнить." 
-            : "Отлично! Правильный ответ!",
-          suggestion: isPartial && missingWords.length > 0
-            ? `Можно добавить: ${missingWords.slice(0, 4).join(', ')}`
-            : "Продолжайте в том же духе!"
+          feedback: matchPercent >= 0.7 ? "Правильно!" : "Верно! Ответ засчитан.",
+          suggestion: missingWords.length > 0 ? `Можно добавить: ${missingWords.slice(0, 3).join(', ')}` : ""
         }
       }
     }
     
-    // Проверка 4: Если написал хоть что-то осмысленное (5+ символов) - засчитываем с подсказкой
-    if (trimmedAnswer.length >= 5) {
-      return {
-        correct: true,
-        feedback: "Засчитано! Ваш ответ принят.",
-        suggestion: `Эталонный ответ: ${correctAnswer.slice(0, 150)}${correctAnswer.length > 150 ? '...' : ''}`
-      }
-    }
-    
+    // Если ничего не подошло - не засчитываем, показываем эталон
     return { 
       correct: false, 
-      feedback: "Ответ слишком короткий", 
-      suggestion: `Попробуйте написать подробнее. Подсказка: ${correctAnswer.slice(0, 50)}...` 
+      feedback: "Ответ не совсем точный", 
+      suggestion: `Эталонный ответ: ${correctAnswer.slice(0, 150)}${correctAnswer.length > 150 ? '...' : ''}` 
     }
   }
 
