@@ -42,11 +42,18 @@ type Task = SingleTask | MultipleTask | TextTask | NumberTask | MatchingTask | C
 
 export type TaskResult = 'pending' | 'correct' | 'wrong'
 
+interface SavedAnswer {
+  type: string
+  value: any
+  isCorrect: boolean
+  aiFeedback?: { feedback?: string; suggestion?: string } | null
+}
+
 interface StepikTaskProps {
   task: Task
   taskNumber: number
   totalTasks: number
-  onAnswer: (isCorrect: boolean) => void
+  onAnswer: (isCorrect: boolean, answer?: SavedAnswer) => void
   onNext: () => void
   onPrev?: () => void
   onGoToTheory?: () => void
@@ -54,26 +61,39 @@ interface StepikTaskProps {
   canGoPrev?: boolean
   taskResults?: TaskResult[]
   theoryContent?: string
+  savedAnswer?: SavedAnswer
 }
 
 
 export function StepikTask({ 
   task, taskNumber, totalTasks, onAnswer, onNext, onPrev, onGoToTheory, onGoToTask, 
-  canGoPrev = true, taskResults = [], theoryContent = ''
+  canGoPrev = true, taskResults = [], theoryContent = '', savedAnswer
 }: StepikTaskProps) {
-  // All state - initialized fresh on each mount (parent uses key prop)
-  const [selectedSingle, setSelectedSingle] = useState<number | null>(null)
-  const [selectedMultiple, setSelectedMultiple] = useState<number[]>([])
-  const [textAnswer, setTextAnswer] = useState('')
-  const [numberAnswer, setNumberAnswer] = useState('')
-  const [codeAnswer, setCodeAnswer] = useState((task as CodeTask).starterCode || '')
+  // Инициализируем состояние из сохранённого ответа если есть
+  const [selectedSingle, setSelectedSingle] = useState<number | null>(
+    savedAnswer?.type === 'single' ? savedAnswer.value : null
+  )
+  const [selectedMultiple, setSelectedMultiple] = useState<number[]>(
+    savedAnswer?.type === 'multiple' ? savedAnswer.value : []
+  )
+  const [textAnswer, setTextAnswer] = useState(
+    savedAnswer?.type === 'text' ? savedAnswer.value : ''
+  )
+  const [numberAnswer, setNumberAnswer] = useState(
+    savedAnswer?.type === 'number' ? savedAnswer.value : ''
+  )
+  const [codeAnswer, setCodeAnswer] = useState(
+    savedAnswer?.type === 'code' ? savedAnswer.value : ((task as CodeTask).starterCode || '')
+  )
   const [showSolution, setShowSolution] = useState(false)
-  const [matchingPairs, setMatchingPairs] = useState<Map<number, number>>(new Map())
+  const [matchingPairs, setMatchingPairs] = useState<Map<number, number>>(
+    savedAnswer?.type === 'matching' ? new Map(savedAnswer.value) : new Map()
+  )
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
   const [draggedItem, setDraggedItem] = useState<number | null>(null)
   
-  const [isSubmitted, setIsSubmitted] = useState(false)
-  const [isCorrect, setIsCorrect] = useState(false)
+  const [isSubmitted, setIsSubmitted] = useState(!!savedAnswer)
+  const [isCorrect, setIsCorrect] = useState(savedAnswer?.isCorrect ?? false)
   const [showHint, setShowHint] = useState(false)
   const [attempts, setAttempts] = useState(0)
   const [codeCheckLoading, setCodeCheckLoading] = useState(false)
@@ -84,7 +104,9 @@ export function StepikTask({
   const [aiResponse, setAiResponse] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [aiFeedback, setAiFeedback] = useState<{ feedback?: string; suggestion?: string } | null>(null)
+  const [aiFeedback, setAiFeedback] = useState<{ feedback?: string; suggestion?: string } | null>(
+    savedAnswer?.aiFeedback || null
+  )
 
   const difficultyColors = {
     easy: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -320,7 +342,20 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       setAiFeedback(aiResult)
     }
     
-    onAnswer(correct)
+    // Формируем объект сохранённого ответа
+    const answerToSave: SavedAnswer = {
+      type: task.type,
+      value: task.type === 'single' ? selectedSingle
+        : task.type === 'multiple' ? selectedMultiple
+        : task.type === 'text' ? textAnswer
+        : task.type === 'number' ? numberAnswer
+        : task.type === 'matching' ? Array.from(matchingPairs.entries())
+        : codeAnswer,
+      isCorrect: correct,
+      aiFeedback: aiResult
+    }
+    
+    onAnswer(correct, answerToSave)
   }, [task, selectedSingle, selectedMultiple, textAnswer, numberAnswer, matchingPairs, codeAnswer, isSubmitted, isProcessing, onAnswer])
 
   const handleRetry = () => {
