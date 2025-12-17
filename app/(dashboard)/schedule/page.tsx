@@ -18,10 +18,15 @@ interface CustomEvent {
   date: string
 }
 
+// Тип для хранения расписаний всех курсов
+interface AllSchedules {
+  [goalId: string]: StudyEvent[]
+}
+
 export default function SchedulePage() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [selectedGoal, setSelectedGoal] = useState<string>('')
-  const [schedule, setSchedule] = useState<StudyEvent[]>([])
+  const [allSchedules, setAllSchedules] = useState<AllSchedules>({})
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([])
@@ -34,6 +39,17 @@ export default function SchedulePage() {
     minutesPerDay: 45,
     preferredTime: 'evening' as 'morning' | 'afternoon' | 'evening',
   })
+
+  // Получаем расписание для текущего курса
+  const schedule = allSchedules[selectedGoal] || []
+  
+  // Устанавливаем расписание для текущего курса
+  const setSchedule = (events: StudyEvent[] | ((prev: StudyEvent[]) => StudyEvent[])) => {
+    setAllSchedules(prev => {
+      const newEvents = typeof events === 'function' ? events(prev[selectedGoal] || []) : events
+      return { ...prev, [selectedGoal]: newEvents }
+    })
+  }
 
   useEffect(() => {
     fetch('/api/goals')
@@ -48,9 +64,11 @@ export default function SchedulePage() {
     const savedCustom = localStorage.getItem('customEvents')
     if (savedCustom) setCustomEvents(JSON.parse(savedCustom))
     
-    // Load generated schedule from localStorage
-    const savedSchedule = localStorage.getItem('studySchedule')
-    if (savedSchedule) setSchedule(JSON.parse(savedSchedule))
+    // Load ALL schedules from localStorage
+    const savedSchedules = localStorage.getItem('allStudySchedules')
+    if (savedSchedules) {
+      setAllSchedules(JSON.parse(savedSchedules))
+    }
     
     // Load preferences from localStorage
     const savedPrefs = localStorage.getItem('schedulePreferences')
@@ -62,12 +80,10 @@ export default function SchedulePage() {
     localStorage.setItem('customEvents', JSON.stringify(customEvents))
   }, [customEvents])
   
-  // Save schedule to localStorage
+  // Save ALL schedules to localStorage
   useEffect(() => {
-    if (schedule.length > 0) {
-      localStorage.setItem('studySchedule', JSON.stringify(schedule))
-    }
-  }, [schedule])
+    localStorage.setItem('allStudySchedules', JSON.stringify(allSchedules))
+  }, [allSchedules])
   
   // Save preferences to localStorage
   useEffect(() => {
@@ -79,24 +95,26 @@ export default function SchedulePage() {
     if (!goal) return
     const events = generateStudySchedule(goal.topics, { startDate: new Date(), ...preferences })
     setSchedule(events)
-    // Сохраняем сразу после генерации
-    localStorage.setItem('studySchedule', JSON.stringify(events))
   }
   
   // Удалить событие из расписания
   const deleteScheduleEvent = (eventId: string) => {
+    console.log('Deleting event:', eventId)
     setSchedule(prev => prev.filter(e => e.id !== eventId))
   }
   
   // Начать редактирование времени события
   const startEditingEvent = (event: StudyEvent) => {
+    console.log('Start editing event:', event.id)
     setEditingEventId(event.id)
-    const time = new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    const date = new Date(event.startTime)
+    const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
     setEditingTime(time)
   }
   
   // Сохранить новое время события
   const saveEventTime = (eventId: string) => {
+    console.log('Saving event time:', eventId, editingTime)
     setSchedule(prev => prev.map(event => {
       if (event.id !== eventId) return event
       
@@ -118,10 +136,28 @@ export default function SchedulePage() {
     setEditingTime('')
   }
   
-  // Очистить всё расписание
+  // Очистить расписание текущего курса
   const clearSchedule = () => {
     setSchedule([])
-    localStorage.removeItem('studySchedule')
+  }
+  
+  // Получить все события для дня (из всех курсов)
+  const getAllEventsForDay = (date: Date) => {
+    const dateStr = date.toDateString()
+    const allStudyEvents: (StudyEvent & { goalTitle?: string })[] = []
+    
+    // Собираем события из всех курсов
+    Object.entries(allSchedules).forEach(([goalId, events]) => {
+      const goal = goals.find(g => g.id === goalId)
+      events.forEach(event => {
+        if (new Date(event.startTime).toDateString() === dateStr) {
+          allStudyEvents.push({ ...event, goalTitle: goal?.title })
+        }
+      })
+    })
+    
+    const custom = customEvents.filter(e => e.date === dateStr)
+    return { studyEvents: allStudyEvents, custom }
   }
 
   // Get month days in 4-column layout
@@ -145,10 +181,7 @@ export default function SchedulePage() {
   }
 
   const getEventsForDay = (date: Date) => {
-    const dateStr = date.toDateString()
-    const studyEvents = schedule.filter(e => new Date(e.startTime).toDateString() === dateStr)
-    const custom = customEvents.filter(e => e.date === dateStr)
-    return { studyEvents, custom }
+    return getAllEventsForDay(date)
   }
 
   const addCustomEvent = () => {
@@ -447,30 +480,35 @@ export default function SchedulePage() {
               <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
                 {getEventsForDay(selectedDate).studyEvents.map(event => (
                   <div key={event.id} className="p-3 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
-                          <span className="text-sm text-white font-medium">{event.title}</span>
+                          <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] flex-shrink-0" />
+                          <span className="text-sm text-white font-medium truncate">{event.title}</span>
                         </div>
+                        {'goalTitle' in event && event.goalTitle && (
+                          <span className="text-xs text-[var(--color-text-secondary)] ml-4 block truncate">
+                            {event.goalTitle}
+                          </span>
+                        )}
                         {editingEventId === event.id ? (
-                          <div className="flex items-center gap-2 ml-4 mt-1">
+                          <div className="flex items-center gap-2 ml-4 mt-2">
                             <input
                               type="time"
                               value={editingTime}
                               onChange={e => setEditingTime(e.target.value)}
-                              className="w-24 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-white text-sm"
+                              className="w-28 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1.5 text-white text-sm"
                               style={{ colorScheme: 'dark' }}
                             />
                             <button 
                               onClick={() => saveEventTime(event.id)} 
-                              className="p-1 bg-green-500/20 hover:bg-green-500/30 rounded-lg"
+                              className="p-1.5 bg-green-500/20 hover:bg-green-500/30 rounded-lg"
                             >
                               <Check className="w-4 h-4 text-green-400" />
                             </button>
                             <button 
                               onClick={() => setEditingEventId(null)} 
-                              className="p-1 hover:bg-white/10 rounded-lg"
+                              className="p-1.5 hover:bg-white/10 rounded-lg"
                             >
                               <X className="w-4 h-4 text-[var(--color-text-secondary)]" />
                             </button>
@@ -481,22 +519,24 @@ export default function SchedulePage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={() => startEditingEvent(event)} 
-                          className="p-1.5 hover:bg-[var(--color-primary)]/20 rounded-lg"
-                          title="Изменить время"
-                        >
-                          <Edit2 className="w-4 h-4 text-[var(--color-primary)]" />
-                        </button>
-                        <button 
-                          onClick={() => deleteScheduleEvent(event.id)} 
-                          className="p-1.5 hover:bg-red-500/20 rounded-lg"
-                          title="Удалить"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </button>
-                      </div>
+                      {editingEventId !== event.id && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); startEditingEvent(event) }} 
+                            className="p-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 rounded-lg transition-colors"
+                            title="Изменить время"
+                          >
+                            <Edit2 className="w-4 h-4 text-[var(--color-primary)]" />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); deleteScheduleEvent(event.id) }} 
+                            className="p-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors"
+                            title="Удалить"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-400" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
