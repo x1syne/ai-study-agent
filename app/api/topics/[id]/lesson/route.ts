@@ -446,11 +446,11 @@ Hard:
 - type: "single" - выбрать правильный перевод
 - type: "multiple" - выбрать все правильные варианты
 
-Формат:
+Формат для text:
 {
   "type": "text",
   "question": "Переведите: 'Я изучаю программирование'",
-  "correctAnswer": "I am studying programming",
+  "correctAnswers": ["I am studying programming", "I'm studying programming"],
   "hint": "Present Continuous",
   "explanation": "Используем Present Continuous для действия в процессе"
 }`
@@ -537,15 +537,26 @@ async function generatePracticeTasks(topicName: string, courseTitle: string) {
 - 5 типа "single" (один правильный)
 - 2 типа "multiple" (несколько правильных)
 - 2 типа "number" (числовой ответ, tolerance: 0.01)
-- 1 типа "text" (короткий ответ)
+- 1 типа "text" (короткий текстовый ответ)
 
-ФОРМАТ:
+ФОРМАТЫ:
+Для single:
 {
   "type": "single",
   "difficulty": "easy",
   "question": "Вопрос по теме ${topicName}",
   "options": ["A", "B", "C", "D"],
   "correctAnswer": 0,
+  "hint": "Подсказка",
+  "explanation": "Объяснение"
+}
+
+Для text (ВАЖНО - correctAnswers это МАССИВ строк!):
+{
+  "type": "text",
+  "difficulty": "medium",
+  "question": "Вопрос требующий текстового ответа",
+  "correctAnswers": ["правильный ответ", "альтернативный вариант"],
   "hint": "Подсказка",
   "explanation": "Объяснение"
 }

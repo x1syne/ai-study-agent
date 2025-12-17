@@ -268,7 +268,14 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
         break
       }
       case 'text': {
-        const answers = task.correctAnswers || []
+        // Поддержка обоих форматов: correctAnswers (массив) и correctAnswer (строка)
+        let answers: string[] = []
+        if (task.correctAnswers && Array.isArray(task.correctAnswers)) {
+          answers = task.correctAnswers.map(a => String(a))
+        } else if ((task as any).correctAnswer) {
+          answers = [String((task as any).correctAnswer)]
+        }
+        
         console.log('[DEBUG] Text check - User answer:', textAnswer)
         console.log('[DEBUG] Text check - Correct answers:', answers)
         
@@ -278,7 +285,10 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
           console.log('[DEBUG] AI result:', aiResult)
           correct = aiResult.correct
         } else {
-          console.log('[DEBUG] No correct answers or empty user answer')
+          // Если нет правильного ответа - используем AI для оценки
+          console.log('[DEBUG] No correct answers, using AI evaluation')
+          aiResult = await checkTextWithAI(textAnswer, [task.question])
+          correct = aiResult.correct
         }
         break
       }
@@ -556,7 +566,7 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
             )}
             
             {isSubmitted && !isCorrect && !aiFeedback && (
-              <p className="mt-2 text-sm text-slate-400">Правильный ответ: <span className="text-green-400">{(task as TextTask).correctAnswers?.[0]}</span></p>
+              <p className="mt-2 text-sm text-slate-400">Правильный ответ: <span className="text-green-400">{(task as TextTask).correctAnswers?.[0] || (task as any).correctAnswer || 'Нет эталонного ответа'}</span></p>
             )}
           </div>
         )}
