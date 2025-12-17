@@ -104,7 +104,7 @@ export default function SchedulePage() {
   }
   
   // Начать редактирование времени события
-  const startEditingEvent = (event: StudyEvent) => {
+  const startEditingEvent = (event: StudyEvent & { goalTitle?: string }) => {
     console.log('Start editing event:', event.id)
     setEditingEventId(event.id)
     const date = new Date(event.startTime)
