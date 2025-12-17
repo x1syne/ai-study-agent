@@ -45,10 +45,10 @@ export default function LearnPage() {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0)
   const [taskScore, setTaskScore] = useState({ correct: 0, total: 0 })
   const [taskResults, setTaskResults] = useState<TaskResult[]>([])
+  const [savedAnswers, setSavedAnswers] = useState<Map<number, any>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [theoryContent, setTheoryContent] = useState('')
-  const [taskKey, setTaskKey] = useState(0) // Для перемонтирования при переходе
 
   useEffect(() => { fetchLesson('theory') }, [params.topicId])
 
@@ -82,8 +82,15 @@ export default function LearnPage() {
           setPracticeLesson(data.lesson)
           const tasks = data.lesson?.content?.tasks
           if (tasks && Array.isArray(tasks) && tasks.length > 0) {
-            // Сортируем от простого к сложному
-            const sortedTasks = sortTasksByDifficulty(tasks)
+            // Фильтруем невалидные задания и сортируем от простого к сложному
+            const validTasks = tasks.filter((t: any) => {
+              if (!t.question || t.question.length < 10) return false
+              if (t.type === 'single' && (!t.options || t.options.length < 2)) return false
+              if (t.type === 'multiple' && (!t.options || t.options.length < 2)) return false
+              if (t.type === 'matching' && (!t.leftItems || !t.rightItems || t.leftItems.length < 2)) return false
+              return true
+            })
+            const sortedTasks = sortTasksByDifficulty(validTasks)
             setPracticeTasks(sortedTasks)
             setCurrentTaskIndex(0)
             setTaskScore({ correct: 0, total: 0 })
@@ -243,22 +250,26 @@ export default function LearnPage() {
               </CardContent></Card>
               {currentTaskIndex < practiceTasks.length && (
                 <StepikTask
-                  key={`task-${currentTaskIndex}-${taskKey}`}
+                  key={`task-${currentTaskIndex}`}
                   task={practiceTasks[currentTaskIndex] as any}
                   taskNumber={currentTaskIndex + 1}
                   totalTasks={practiceTasks.length}
                   taskResults={taskResults}
                   theoryContent={theoryContent}
-                  onAnswer={(isCorrect) => {
-                    setTaskScore(prev => ({ correct: prev.correct + (isCorrect ? 1 : 0), total: prev.total + 1 }))
+                  savedAnswer={savedAnswers.get(currentTaskIndex)}
+                  onAnswer={(isCorrect, answer) => {
+                    // Обновляем score только если это первый ответ на задание
+                    if (taskResults[currentTaskIndex] === 'pending') {
+                      setTaskScore(prev => ({ correct: prev.correct + (isCorrect ? 1 : 0), total: prev.total + 1 }))
+                    }
                     setTaskResults(prev => {
                       const newResults = [...prev]
                       newResults[currentTaskIndex] = isCorrect ? 'correct' : 'wrong'
                       return newResults
                     })
+                    setSavedAnswers(prev => new Map(prev).set(currentTaskIndex, answer))
                   }}
                   onNext={() => {
-                    setTaskKey(k => k + 1)
                     if (currentTaskIndex < practiceTasks.length - 1) setCurrentTaskIndex(prev => prev + 1)
                     else { 
                       const finalScore = taskScore.total > 0 ? Math.round((taskScore.correct / taskScore.total) * 100) : 0
@@ -267,11 +278,9 @@ export default function LearnPage() {
                     }
                   }}
                   onPrev={() => { 
-                    setTaskKey(k => k + 1)
                     if (currentTaskIndex > 0) setCurrentTaskIndex(prev => prev - 1) 
                   }}
                   onGoToTask={(idx) => {
-                    setTaskKey(k => k + 1)
                     setCurrentTaskIndex(idx)
                   }}
                   onGoToTheory={() => setStep('theory')}

@@ -42,11 +42,17 @@ type Task = SingleTask | MultipleTask | TextTask | NumberTask | MatchingTask | C
 
 export type TaskResult = 'pending' | 'correct' | 'wrong'
 
+interface SavedAnswer {
+  type: string
+  value: any
+  isCorrect: boolean
+}
+
 interface StepikTaskProps {
   task: Task
   taskNumber: number
   totalTasks: number
-  onAnswer: (isCorrect: boolean) => void
+  onAnswer: (isCorrect: boolean, answer: SavedAnswer) => void
   onNext: () => void
   onPrev?: () => void
   onGoToTheory?: () => void
@@ -54,28 +60,44 @@ interface StepikTaskProps {
   canGoPrev?: boolean
   taskResults?: TaskResult[]
   theoryContent?: string
+  savedAnswer?: SavedAnswer // Сохранённый ответ для отображения результата
 }
 
 
 export function StepikTask({ 
   task, taskNumber, totalTasks, onAnswer, onNext, onPrev, onGoToTheory, onGoToTask, 
-  canGoPrev = true, taskResults = [], theoryContent = ''
+  canGoPrev = true, taskResults = [], theoryContent = '', savedAnswer
 }: StepikTaskProps) {
-  // Состояние сбрасывается при каждом монтировании (можно перепройти)
-  const [selectedSingle, setSelectedSingle] = useState<number | null>(null)
-  const [selectedMultiple, setSelectedMultiple] = useState<number[]>([])
-  const [textAnswer, setTextAnswer] = useState('')
-  const [numberAnswer, setNumberAnswer] = useState('')
-  const [codeAnswer, setCodeAnswer] = useState((task as CodeTask).starterCode || '')
+  // Инициализируем из сохранённого ответа если есть
+  const [selectedSingle, setSelectedSingle] = useState<number | null>(
+    savedAnswer?.type === 'single' ? savedAnswer.value : null
+  )
+  const [selectedMultiple, setSelectedMultiple] = useState<number[]>(
+    savedAnswer?.type === 'multiple' ? savedAnswer.value : []
+  )
+  const [textAnswer, setTextAnswer] = useState(
+    savedAnswer?.type === 'text' ? String(savedAnswer.value) : ''
+  )
+  const [numberAnswer, setNumberAnswer] = useState(
+    savedAnswer?.type === 'number' ? String(savedAnswer.value) : ''
+  )
+  const [codeAnswer, setCodeAnswer] = useState(
+    savedAnswer?.type === 'code' ? savedAnswer.value : ((task as CodeTask).starterCode || '')
+  )
   const [showSolution, setShowSolution] = useState(false)
-  const [matchingPairs, setMatchingPairs] = useState<Map<number, number>>(new Map())
+  const [matchingPairs, setMatchingPairs] = useState<Map<number, number>>(
+    savedAnswer?.type === 'matching' && Array.isArray(savedAnswer.value) 
+      ? new Map(savedAnswer.value) 
+      : new Map()
+  )
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
   const [draggedItem, setDraggedItem] = useState<number | null>(null)
   
-  const [isSubmitted, setIsSubmitted] = useState(false)
-  const [isCorrect, setIsCorrect] = useState(false)
+  // Если есть сохранённый ответ - показываем результат
+  const [isSubmitted, setIsSubmitted] = useState(!!savedAnswer)
+  const [isCorrect, setIsCorrect] = useState(savedAnswer?.isCorrect ?? false)
   const [showHint, setShowHint] = useState(false)
-  const [attempts, setAttempts] = useState(0)
+  const [attempts, setAttempts] = useState(savedAnswer ? 1 : 0)
   const [codeCheckLoading, setCodeCheckLoading] = useState(false)
   const [codeCheckResult, setCodeCheckResult] = useState<{ correct: boolean; feedback: string } | null>(null)
   
@@ -320,7 +342,18 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       setAiFeedback(aiResult)
     }
     
-    onAnswer(correct)
+    // Сохраняем ответ для отображения при возврате
+    const answerToSave: SavedAnswer = {
+      type: task.type,
+      value: task.type === 'single' ? selectedSingle
+        : task.type === 'multiple' ? selectedMultiple
+        : task.type === 'text' ? textAnswer
+        : task.type === 'number' ? numberAnswer
+        : task.type === 'matching' ? Array.from(matchingPairs.entries())
+        : codeAnswer,
+      isCorrect: correct
+    }
+    onAnswer(correct, answerToSave)
   }, [task, selectedSingle, selectedMultiple, textAnswer, numberAnswer, matchingPairs, codeAnswer, isSubmitted, isProcessing, onAnswer])
 
   const handleRetry = () => {
