@@ -84,6 +84,7 @@ export function StepikTask({
   const [aiResponse, setAiResponse] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [aiFeedback, setAiFeedback] = useState<{ feedback?: string; suggestion?: string } | null>(null)
 
   const difficultyColors = {
     easy: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -128,11 +129,120 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     return codeAnswer.trim().length > 20
   }
 
+  // AI-анализ текстового ответа
+  const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Проверь ответ студента на задание по медицине/биологии.
+
+ЗАДАНИЕ: ${task.question}
+
+ЭТАЛОННЫЕ ОТВЕТЫ: ${correctAnswers.join(' | ')}
+
+ОТВЕТ СТУДЕНТА: "${userAnswer}"
+
+ИНСТРУКЦИИ ДЛЯ ОЦЕНКИ:
+
+1. ЗАСЧИТЫВАЙ КАК ПРАВИЛЬНЫЙ если ответ:
+   - Содержит основную суть правильного ответа
+   - Использует синонимы или другие формулировки того же смысла
+   - Неполный, но правильный по сути
+   - Содержит дополнительные детали к правильному ответу
+   - Написан своими словами, но передает верную информацию
+
+2. ПРИМЕРЫ ПРАВИЛЬНЫХ ВАРИАЦИЙ:
+   - "повреждение кожи" = "поражение кожи" = "травма кожи"
+   - "подкожная ткань" = "подкожные ткани" = "подкожная клетчатка"
+   - "внутренние органы" = "внутренних органов" = "органы внутри"
+
+3. ФОРМАТ ОТВЕТА:
+   - Если ПРАВИЛЬНЫЙ: {"correct": true, "feedback": "Верно! [похвала]", "suggestion": "[как можно дополнить ответ]"}
+   - Если ЧАСТИЧНО ПРАВИЛЬНЫЙ: {"correct": true, "feedback": "В целом правильно!", "suggestion": "[что добавить для полноты]"}
+   - Если НЕПРАВИЛЬНЫЙ: {"correct": false}
+
+4. БУДЬ СНИСХОДИТЕЛЬНЫМ:
+   - Не требуй точного совпадения слов
+   - Оценивай по смыслу и пониманию
+   - Засчитывай даже упрощенные формулировки
+   - Игнорируй грамматические ошибки
+
+Отвечай ТОЛЬКО JSON.`,
+          systemPrompt: 'Ты добрый преподаватель медицины. Твоя задача - поощрять студентов и засчитывать правильные ответы, даже если они сформулированы не идеально. Главное - понимание сути. Будь максимально лояльным к разным формулировкам одного и того же.'
+        })
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const content = data.aiMessage?.content || ''
+        console.log('[AI Text Check] Response:', content)
+        try {
+          const jsonMatch = content.match(/\{[\s\S]*?\}/)
+          if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0])
+            console.log('[AI Text Check] Parsed result:', result)
+            return result
+          }
+        } catch (e) {
+          console.error('Failed to parse AI response:', e, 'Content:', content)
+        }
+      }
+    } catch (e) {
+      console.error('AI text check failed:', e)
+    }
+    
+    // Fallback: более мягкая проверка
+    const userNorm = userAnswer.toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
+    
+    const isCorrect = correctAnswers.some(ans => {
+      if (!ans) return false
+      const ansNorm = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
+      
+      // Точное совпадение
+      if (userNorm === ansNorm) return true
+      
+      // Проверка включения ключевых слов
+      const userWords = userNorm.split(' ').filter(w => w.length > 2)
+      const ansWords = ansNorm.split(' ').filter(w => w.length > 2)
+      
+      if (ansWords.length > 0) {
+        const matchedWords = ansWords.filter(word => 
+          userWords.some(userWord => 
+            userWord.includes(word) || word.includes(userWord) || 
+            levenshteinDistance(userWord, word) <= 1
+          )
+        )
+        
+        // Если совпадает больше половины ключевых слов
+        if (matchedWords.length >= Math.ceil(ansWords.length * 0.6)) {
+          return true
+        }
+      }
+      
+      // Расстояние Левенштейна для коротких ответов
+      if (ansNorm.length > 5 && levenshteinDistance(userNorm, ansNorm) <= Math.min(3, Math.floor(ansNorm.length * 0.3))) {
+        return true
+      }
+      
+      return false
+    })
+    
+    return { 
+      correct: isCorrect,
+      feedback: isCorrect ? "Правильно! Ответ засчитан." : undefined,
+      suggestion: isCorrect ? "Хорошо понимаешь материал!" : undefined
+    }
+  }
+
   const checkAnswer = useCallback(async () => {
     if (isSubmitted || isProcessing) return
     setIsProcessing(true)
     
     let correct = false
+    let aiResult: { correct: boolean; feedback?: string; suggestion?: string } | null = null
+    
     switch (task.type) {
       case 'single': {
         const correctIdx = typeof task.correctAnswer === 'string' ? parseInt(task.correctAnswer, 10) : task.correctAnswer
@@ -145,13 +255,11 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
         break
       }
       case 'text': {
-        const norm = textAnswer.toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
         const answers = task.correctAnswers || []
-        correct = answers.some(ans => {
-          if (!ans) return false
-          const n = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
-          return norm === n || (n.length > 5 && levenshteinDistance(norm, n) <= Math.min(2, Math.floor(n.length * 0.2)))
-        })
+        if (answers.length > 0 && textAnswer.trim()) {
+          aiResult = await checkTextWithAI(textAnswer, answers)
+          correct = aiResult.correct
+        }
         break
       }
       case 'number': {
@@ -176,6 +284,12 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     setIsSubmitted(true)
     setIsProcessing(false)
     setAttempts(prev => prev + 1)
+    
+    // Сохраняем результат AI анализа для отображения
+    if (aiResult && (aiResult.feedback || aiResult.suggestion)) {
+      setAiFeedback(aiResult)
+    }
+    
     onAnswer(correct)
   }, [task, selectedSingle, selectedMultiple, textAnswer, numberAnswer, matchingPairs, codeAnswer, isSubmitted, isProcessing, onAnswer])
 
@@ -191,6 +305,7 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     setMatchingPairs(new Map())
     setSelectedLeft(null)
     setCodeCheckResult(null)
+    setAiFeedback(null)
   }
 
   const askAI = async () => {
@@ -400,7 +515,27 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
               className={`w-full p-4 rounded-xl border-2 bg-slate-900/50 text-white placeholder:text-slate-500 focus:outline-none ${
                 isSubmitted ? isCorrect ? 'border-green-500' : 'border-red-500' : 'border-slate-700 focus:border-primary-500'
               }`} />
-            {isSubmitted && !isCorrect && (
+            
+            {/* AI Feedback для текстовых ответов */}
+            {isSubmitted && aiFeedback && (
+              <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <MessageCircle className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    {aiFeedback.feedback && (
+                      <p className="text-blue-200 text-sm mb-2">{aiFeedback.feedback}</p>
+                    )}
+                    {aiFeedback.suggestion && (
+                      <p className="text-blue-300 text-sm">
+                        <span className="font-medium">💡 Рекомендация:</span> {aiFeedback.suggestion}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {isSubmitted && !isCorrect && !aiFeedback && (
               <p className="mt-2 text-sm text-slate-400">Правильный ответ: <span className="text-green-400">{(task as TextTask).correctAnswers?.[0]}</span></p>
             )}
           </div>
