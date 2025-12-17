@@ -20,10 +20,10 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { code, lessonId } = body
+    const { code, lessonId, score: directScore } = body
 
-    if (!code) {
-      return NextResponse.json({ error: 'Code is required' }, { status: 400 })
+    if (!code && directScore === undefined) {
+      return NextResponse.json({ error: 'Code or score is required' }, { status: 400 })
     }
 
     // Get lesson and topic
@@ -46,24 +46,39 @@ export async function POST(
     const taskDescription = taskContent?.description || lesson.title || ''
     const solution = lesson.solution || taskContent?.solution || ''
 
-    // Review code using AI
+    // Review code using AI or use direct score from practice tasks
     let review: any
-    try {
-      const prompt = getCodeReviewPrompt(taskDescription, code, solution)
-      const response = await generateCompletion(
-        SYSTEM_PROMPTS.codeReview,
-        prompt,
-        { json: true, temperature: 0.5 }
-      )
-      review = JSON.parse(response)
-    } catch {
+    
+    // Если передан score напрямую (из практики с заданиями) - используем его
+    if (directScore !== undefined) {
+      const isCorrect = directScore >= 70 // 70% для прохождения
       review = {
-        isCorrect: false,
-        score: 50,
-        feedback: 'Не удалось проанализировать код. Попробуйте ещё раз.',
+        isCorrect,
+        score: directScore,
+        feedback: isCorrect ? 'Практика успешно пройдена!' : 'Попробуйте ещё раз для лучшего результата.',
         issues: [],
         suggestions: [],
-        encouragement: 'Продолжайте практиковаться!',
+        encouragement: isCorrect ? 'Отличная работа!' : 'Продолжайте практиковаться!',
+      }
+    } else {
+      // Иначе проверяем код через AI
+      try {
+        const prompt = getCodeReviewPrompt(taskDescription, code, solution)
+        const response = await generateCompletion(
+          SYSTEM_PROMPTS.codeReview,
+          prompt,
+          { json: true, temperature: 0.5 }
+        )
+        review = JSON.parse(response)
+      } catch {
+        review = {
+          isCorrect: false,
+          score: 50,
+          feedback: 'Не удалось проанализировать код. Попробуйте ещё раз.',
+          issues: [],
+          suggestions: [],
+          encouragement: 'Продолжайте практиковаться!',
+        }
       }
     }
 

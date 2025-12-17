@@ -118,10 +118,17 @@ export default function LearnPage() {
     fetchLesson('practice')
   }
 
-  const handleSubmitCode = async (code: string) => {
+  const handleSubmitCode = async (code: string, score?: number) => {
     setIsSubmitting(true)
     try {
-      const res = await fetch(`/api/topics/${params.topicId}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, lessonId: practiceLesson?.id }) })
+      // Если передан score (из практики с заданиями) - используем его
+      // Иначе отправляем код на проверку AI
+      const practiceScore = score ?? (taskScore.total > 0 ? Math.round((taskScore.correct / taskScore.total) * 100) : undefined)
+      const res = await fetch(`/api/topics/${params.topicId}/submit`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ code, lessonId: practiceLesson?.id, score: practiceScore }) 
+      })
       if (res.ok) { const result = await res.json(); if (result.isCorrect) setStep('complete') }
     } catch (e) { console.error(e) }
     finally { setIsSubmitting(false) }
@@ -253,7 +260,11 @@ export default function LearnPage() {
                   onNext={() => {
                     setTaskKey(k => k + 1) // Force remount on next
                     if (currentTaskIndex < practiceTasks.length - 1) setCurrentTaskIndex(prev => prev + 1)
-                    else { handleSubmitCode('practice_completed'); setStep('complete') }
+                    else { 
+                      const finalScore = taskScore.total > 0 ? Math.round((taskScore.correct / taskScore.total) * 100) : 0
+                      handleSubmitCode('practice_completed', finalScore)
+                      setStep('complete') 
+                    }
                   }}
                   onPrev={() => { 
                     setTaskKey(k => k + 1) // Force remount on prev
