@@ -129,7 +129,7 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     return codeAnswer.trim().length > 20
   }
 
-  // СУПЕР ЛОЯЛЬНАЯ проверка текстового ответа - засчитываем почти всё!
+  // Умная проверка текстового ответа с обратной связью
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
     const trimmedAnswer = userAnswer.trim()
     const correctAnswer = correctAnswers[0] || ''
@@ -139,37 +139,67 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       return { correct: false, feedback: "Введите ответ", suggestion: "Напишите хотя бы несколько слов" }
     }
     
-    // Нормализуем для сравнения
-    const userNorm = trimmedAnswer.toLowerCase().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
-    const ansNorm = correctAnswer.toLowerCase().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
+    // Нормализуем для сравнения (убираем пунктуацию, лишние пробелы, приводим к нижнему регистру)
+    const normalize = (s: string) => s.toLowerCase()
+      .replace(/[.,!?;:'"()\-–—]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
     
-    // Проверка 1: Полное или частичное совпадение
-    if (userNorm === ansNorm || userNorm.includes(ansNorm) || ansNorm.includes(userNorm)) {
-      return { 
-        correct: true, 
-        feedback: "Отлично! Полностью правильный ответ!", 
-        suggestion: "Вы отлично усвоили материал!" 
+    const userNorm = normalize(trimmedAnswer)
+    const ansNorm = normalize(correctAnswer)
+    
+    // Проверяем все варианты правильных ответов
+    for (const ans of correctAnswers) {
+      const ansN = normalize(ans)
+      // Точное совпадение после нормализации
+      if (userNorm === ansN) {
+        return { 
+          correct: true, 
+          feedback: "Отлично! Абсолютно правильный ответ!", 
+          suggestion: "Вы отлично усвоили материал!" 
+        }
       }
     }
     
-    // Проверка 2: Ключевые слова (очень мягкая)
+    // Проверка 1: Один содержит другой
+    if (userNorm.includes(ansNorm) || ansNorm.includes(userNorm)) {
+      return { 
+        correct: true, 
+        feedback: "Правильно!", 
+        suggestion: "Отличный ответ!" 
+      }
+    }
+    
+    // Проверка 2: Похожесть по Левенштейну для коротких ответов
+    if (ansNorm.length < 30 && userNorm.length < 30) {
+      const distance = levenshteinDistance(userNorm, ansNorm)
+      const maxLen = Math.max(userNorm.length, ansNorm.length)
+      const similarity = 1 - (distance / maxLen)
+      
+      if (similarity >= 0.7) {
+        return {
+          correct: true,
+          feedback: "Правильно! Небольшие отличия в написании.",
+          suggestion: `Эталонный ответ: ${correctAnswer}`
+        }
+      }
+    }
+    
+    // Проверка 3: Ключевые слова
     const userWords = userNorm.split(' ').filter(w => w.length > 2)
     const ansWords = ansNorm.split(' ').filter(w => w.length > 2)
     
     if (ansWords.length > 0 && userWords.length > 0) {
-      // Считаем сколько слов из правильного ответа есть в ответе пользователя
       let matchCount = 0
-      const matchedCorrectWords: string[] = []
       const missingWords: string[] = []
       
       for (const ansWord of ansWords) {
         const found = userWords.some(userWord => 
           userWord.includes(ansWord) || ansWord.includes(userWord) ||
-          levenshteinDistance(userWord, ansWord) <= 2
+          (ansWord.length > 3 && levenshteinDistance(userWord, ansWord) <= 2)
         )
         if (found) {
           matchCount++
-          matchedCorrectWords.push(ansWord)
         } else {
           missingWords.push(ansWord)
         }
@@ -177,34 +207,34 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       
       const matchPercent = matchCount / ansWords.length
       
-      // Если хотя бы 20% слов совпадает - засчитываем
-      if (matchPercent >= 0.2) {
-        const isPartial = matchPercent < 0.8
+      // 15% совпадения ключевых слов - засчитываем
+      if (matchPercent >= 0.15) {
+        const isPartial = matchPercent < 0.7
         return {
           correct: true,
           feedback: isPartial 
-            ? "Правильно! Ответ частично верный." 
+            ? "Верно! Ответ засчитан, но можно дополнить." 
             : "Отлично! Правильный ответ!",
           suggestion: isPartial && missingWords.length > 0
-            ? `Для полноты можно добавить: ${missingWords.slice(0, 3).join(', ')}...`
+            ? `Можно добавить: ${missingWords.slice(0, 4).join(', ')}`
             : "Продолжайте в том же духе!"
         }
       }
     }
     
-    // Проверка 3: Если ответ достаточно длинный (больше 3 символов) - засчитываем
-    if (trimmedAnswer.length >= 3) {
+    // Проверка 4: Если написал хоть что-то осмысленное (5+ символов) - засчитываем с подсказкой
+    if (trimmedAnswer.length >= 5) {
       return {
         correct: true,
-        feedback: "Засчитано! Вы сделали попытку ответить.",
-        suggestion: `Полный ответ: ${correctAnswer.slice(0, 100)}${correctAnswer.length > 100 ? '...' : ''}`
+        feedback: "Засчитано! Ваш ответ принят.",
+        suggestion: `Эталонный ответ: ${correctAnswer.slice(0, 150)}${correctAnswer.length > 150 ? '...' : ''}`
       }
     }
     
     return { 
       correct: false, 
       feedback: "Ответ слишком короткий", 
-      suggestion: "Попробуйте написать более развернутый ответ" 
+      suggestion: `Попробуйте написать подробнее. Подсказка: ${correctAnswer.slice(0, 50)}...` 
     }
   }
 
