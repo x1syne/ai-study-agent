@@ -67,6 +67,7 @@ export default function LearnPage() {
       const tone = getContentTone()
       const toneParam = tone ? `&tone=${tone}` : ''
       const res = await fetch(`/api/topics/${params.topicId}/lesson?type=${type}${toneParam}`)
+      
       if (res.ok) {
         const data = await res.json()
         setTopic(data.topic)
@@ -92,9 +93,23 @@ export default function LearnPage() {
             setTaskResults([])
           }
         }
-      } else if (res.status === 403) router.push('/goals')
-    } catch (e) { console.error(e) }
-    finally { setIsLoading(false) }
+      } else if (res.status === 403) {
+        console.error('Access denied to topic')
+        router.push('/goals')
+      } else if (res.status === 404) {
+        console.error('Topic not found')
+        router.push('/goals')
+      } else {
+        console.error('Failed to fetch lesson:', res.status, res.statusText)
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Error details:', errorData)
+      }
+    } catch (e) { 
+      console.error('Network error:', e)
+    }
+    finally { 
+      setIsLoading(false) 
+    }
   }
 
   const handleCompleteTheory = async () => {
@@ -113,6 +128,28 @@ export default function LearnPage() {
   }
 
   if (isLoading && !topic) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>
+
+  // Если тема не загрузилась после окончания загрузки
+  if (!isLoading && !topic) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <Card>
+          <CardContent className="py-16 text-center">
+            <div className="w-24 h-24 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <ArrowLeft className="w-12 h-12 text-red-500" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Тема недоступна</h3>
+            <p className="text-[var(--color-text-secondary)] mb-6">
+              Возможно, тема заблокирована или вы не имеете к ней доступа
+            </p>
+            <button onClick={() => router.push('/goals')} className="btn-practicum">
+              Вернуться к курсам
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const stepProgress = step === 'theory' ? 33 : step === 'practice' ? 66 : 100
 

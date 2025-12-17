@@ -17,13 +17,19 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    console.log('[API] Fetching lesson for topic:', params.id)
+    
     const user = await getCurrentUser()
     if (!user) {
+      console.log('[API] User not authenticated')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    console.log('[API] User authenticated:', user.id)
+
     const { searchParams } = new URL(_request.url)
     const lessonType = searchParams.get('type') || 'theory'
+    console.log('[API] Lesson type:', lessonType)
 
     const topic = await prisma.topic.findUnique({
       where: { id: params.id },
@@ -34,8 +40,20 @@ export async function GET(
       },
     })
 
+    console.log('[API] Topic found:', !!topic)
+    if (topic) {
+      console.log('[API] Topic belongs to goal:', topic.goal.id, 'owned by:', topic.goal.userId)
+      console.log('[API] Current user:', user.id)
+      console.log('[API] Progress records:', topic.progress.length)
+    }
+
     if (!topic) {
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 })
+    }
+
+    // Проверяем доступ к цели
+    if (topic.goal.userId !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     let progress = topic.progress[0]
@@ -43,6 +61,31 @@ export async function GET(
       progress = await prisma.topicProgress.create({
         data: { userId: user.id, topicId: topic.id, status: 'AVAILABLE' },
       })
+    }
+
+    // Если тема заблокирована, проверяем пререквизиты
+    if (progress.status === 'LOCKED') {
+      // Получаем все темы цели с прогрессом
+      const allTopics = await prisma.topic.findMany({
+        where: { goalId: topic.goalId },
+        include: { progress: { where: { userId: user.id } } }
+      })
+
+      // Проверяем, выполнены ли все пререквизиты
+      const prerequisitesMet = topic.prerequisiteIds.every(prereqId => {
+        const prereqTopic = allTopics.find(t => t.id === prereqId)
+        if (!prereqTopic) return true // Если пререквизит не найден, считаем выполненным
+        const prereqProgress = prereqTopic.progress[0]
+        return prereqProgress && (prereqProgress.status === 'COMPLETED' || prereqProgress.status === 'MASTERED')
+      })
+
+      // Если пререквизиты выполнены, разблокируем тему
+      if (prerequisitesMet) {
+        progress = await prisma.topicProgress.update({
+          where: { id: progress.id },
+          data: { status: 'AVAILABLE' }
+        })
+      }
     }
 
     if (topic.lessons.length > 0) {

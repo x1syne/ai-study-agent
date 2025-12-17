@@ -32,7 +32,19 @@ export default function GraphPage() {
   const handleTopicClick = (topicId: string) => {
     if (!selectedGoal) return
     const topic = selectedGoal.topics.find(t => t.id === topicId)
-    if (topic) setSelectedTopic(topic)
+    if (topic) {
+      setSelectedTopic(topic)
+      // Проверяем статус темы
+      const progress = Array.isArray(topic.progress) ? topic.progress[0] : topic.progress
+      const status = progress?.status || 'AVAILABLE'
+      
+      // Если тема доступна, можно сразу перейти к изучению
+      if (status === 'AVAILABLE' || status === 'IN_PROGRESS') {
+        console.log('Topic is available for learning:', topic.name)
+      } else if (status === 'LOCKED') {
+        console.log('Topic is locked:', topic.name)
+      }
+    }
   }
 
   const getGoalStats = (goal: Goal) => {
