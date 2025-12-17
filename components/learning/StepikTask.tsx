@@ -131,79 +131,22 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
 
   // AI-анализ текстового ответа
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Проверь ответ студента на задание по медицине/биологии.
-
-ЗАДАНИЕ: ${task.question}
-
-ЭТАЛОННЫЕ ОТВЕТЫ: ${correctAnswers.join(' | ')}
-
-ОТВЕТ СТУДЕНТА: "${userAnswer}"
-
-ИНСТРУКЦИИ ДЛЯ ОЦЕНКИ:
-
-1. ЗАСЧИТЫВАЙ КАК ПРАВИЛЬНЫЙ если ответ:
-   - Содержит основную суть правильного ответа
-   - Использует синонимы или другие формулировки того же смысла
-   - Неполный, но правильный по сути
-   - Содержит дополнительные детали к правильному ответу
-   - Написан своими словами, но передает верную информацию
-
-2. ПРИМЕРЫ ПРАВИЛЬНЫХ ВАРИАЦИЙ:
-   - "повреждение кожи" = "поражение кожи" = "травма кожи"
-   - "подкожная ткань" = "подкожные ткани" = "подкожная клетчатка"
-   - "внутренние органы" = "внутренних органов" = "органы внутри"
-
-3. ФОРМАТ ОТВЕТА:
-   - Если ПРАВИЛЬНЫЙ: {"correct": true, "feedback": "Верно! [похвала]", "suggestion": "[как можно дополнить ответ]"}
-   - Если ЧАСТИЧНО ПРАВИЛЬНЫЙ: {"correct": true, "feedback": "В целом правильно!", "suggestion": "[что добавить для полноты]"}
-   - Если НЕПРАВИЛЬНЫЙ: {"correct": false}
-
-4. БУДЬ СНИСХОДИТЕЛЬНЫМ:
-   - Не требуй точного совпадения слов
-   - Оценивай по смыслу и пониманию
-   - Засчитывай даже упрощенные формулировки
-   - Игнорируй грамматические ошибки
-
-Отвечай ТОЛЬКО JSON.`,
-          systemPrompt: 'Ты добрый преподаватель медицины. Твоя задача - поощрять студентов и засчитывать правильные ответы, даже если они сформулированы не идеально. Главное - понимание сути. Будь максимально лояльным к разным формулировкам одного и того же.'
-        })
-      })
-      
-      if (res.ok) {
-        const data = await res.json()
-        const content = data.aiMessage?.content || ''
-        console.log('[AI Text Check] Response:', content)
-        try {
-          const jsonMatch = content.match(/\{[\s\S]*?\}/)
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0])
-            console.log('[AI Text Check] Parsed result:', result)
-            return result
-          }
-        } catch (e) {
-          console.error('Failed to parse AI response:', e, 'Content:', content)
-        }
-      }
-    } catch (e) {
-      console.error('AI text check failed:', e)
-    }
+    console.log('[AI] Starting text analysis for:', userAnswer)
     
-    // Fallback: более мягкая проверка
+    // Сначала делаем быструю проверку - если ответ очень похож, сразу засчитываем
     const userNorm = userAnswer.toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
     
-    const isCorrect = correctAnswers.some(ans => {
+    const quickCheck = correctAnswers.some(ans => {
       if (!ans) return false
       const ansNorm = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
       
-      // Точное совпадение
-      if (userNorm === ansNorm) return true
+      // Если ответы очень похожи - сразу засчитываем
+      if (userNorm.includes(ansNorm) || ansNorm.includes(userNorm)) {
+        console.log('[AI] Quick match found:', userNorm, 'vs', ansNorm)
+        return true
+      }
       
-      // Проверка включения ключевых слов
+      // Проверка ключевых слов
       const userWords = userNorm.split(' ').filter(w => w.length > 2)
       const ansWords = ansNorm.split(' ').filter(w => w.length > 2)
       
@@ -215,14 +158,92 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
           )
         )
         
-        // Если совпадает больше половины ключевых слов
-        if (matchedWords.length >= Math.ceil(ansWords.length * 0.6)) {
+        // Если совпадает больше 50% ключевых слов - засчитываем
+        if (matchedWords.length >= Math.ceil(ansWords.length * 0.5)) {
+          console.log('[AI] Keyword match:', matchedWords.length, 'of', ansWords.length)
           return true
         }
       }
       
-      // Расстояние Левенштейна для коротких ответов
-      if (ansNorm.length > 5 && levenshteinDistance(userNorm, ansNorm) <= Math.min(3, Math.floor(ansNorm.length * 0.3))) {
+      return false
+    })
+    
+    if (quickCheck) {
+      return {
+        correct: true,
+        feedback: "Правильно! Ответ засчитан по ключевым словам.",
+        suggestion: "Отличное понимание материала!"
+      }
+    }
+    
+    // Если быстрая проверка не прошла, используем AI
+    try {
+      console.log('[AI] Using AI analysis...')
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Сравни ответ студента с правильным ответом.
+
+Вопрос: ${task.question}
+
+Правильный ответ: ${correctAnswers[0]}
+
+Ответ студента: ${userAnswer}
+
+Правила оценки:
+1. Если ответ передает ту же суть - засчитывай как правильный
+2. Если использует синонимы - засчитывай как правильный  
+3. Если неполный но верный - засчитывай как правильный
+4. Игнорируй мелкие грамматические ошибки
+
+Ответь в формате JSON:
+{"correct": true/false, "feedback": "краткий комментарий", "suggestion": "рекомендация"}
+
+Пример правильного ответа:
+{"correct": true, "feedback": "Верно! Вы понимаете суть", "suggestion": "Можно добавить больше деталей"}`,
+          systemPrompt: 'Ты справедливый преподаватель. Засчитывай ответы если они правильные по смыслу, даже если формулировка отличается. Будь снисходительным.'
+        })
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const content = data.aiMessage?.content || ''
+        console.log('[AI] Full response:', content)
+        
+        try {
+          // Ищем JSON в ответе
+          const jsonMatch = content.match(/\{[^}]*"correct"[^}]*\}/i)
+          if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0])
+            console.log('[AI] Parsed result:', result)
+            
+            // Принудительно засчитываем если AI сказал правильно
+            if (result.correct === true || result.correct === 'true') {
+              return {
+                correct: true,
+                feedback: result.feedback || "AI засчитал ответ как правильный",
+                suggestion: result.suggestion || "Продолжайте в том же духе!"
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[AI] Parse error:', e)
+        }
+      }
+    } catch (e) {
+      console.error('[AI] Request failed:', e)
+    }
+    
+    // Финальная fallback проверка - более мягкая
+    console.log('[AI] Using fallback check...')
+    const finalCheck = correctAnswers.some(ans => {
+      if (!ans) return false
+      const ansNorm = String(ans).toLowerCase().trim().replace(/[.,!?;:'"()-]/g, '').replace(/\s+/g, ' ')
+      
+      // Очень мягкая проверка по расстоянию Левенштейна
+      if (levenshteinDistance(userNorm, ansNorm) <= Math.max(2, Math.floor(ansNorm.length * 0.4))) {
+        console.log('[AI] Levenshtein match:', userNorm, 'vs', ansNorm)
         return true
       }
       
@@ -230,9 +251,9 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
     })
     
     return { 
-      correct: isCorrect,
-      feedback: isCorrect ? "Правильно! Ответ засчитан." : undefined,
-      suggestion: isCorrect ? "Хорошо понимаешь материал!" : undefined
+      correct: finalCheck,
+      feedback: finalCheck ? "Ответ засчитан как близкий к правильному" : undefined,
+      suggestion: finalCheck ? "Хорошая попытка!" : undefined
     }
   }
 
@@ -256,9 +277,16 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
       }
       case 'text': {
         const answers = task.correctAnswers || []
+        console.log('[DEBUG] Text check - User answer:', textAnswer)
+        console.log('[DEBUG] Text check - Correct answers:', answers)
+        
         if (answers.length > 0 && textAnswer.trim()) {
+          console.log('[DEBUG] Starting AI text check...')
           aiResult = await checkTextWithAI(textAnswer, answers)
+          console.log('[DEBUG] AI result:', aiResult)
           correct = aiResult.correct
+        } else {
+          console.log('[DEBUG] No correct answers or empty user answer')
         }
         break
       }
