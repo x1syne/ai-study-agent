@@ -82,7 +82,7 @@ export default function LearnPage() {
           setPracticeLesson(data.lesson)
           const tasks = data.lesson?.content?.tasks
           if (tasks && Array.isArray(tasks) && tasks.length > 0) {
-            // Фильтруем невалидные задания и сортируем от простого к сложному
+            // Фильтруем невалидные задания
             const validTasks = tasks.filter((t: any) => {
               if (!t.question || t.question.length < 10) return false
               if (t.type === 'single' && (!t.options || t.options.length < 2)) return false
@@ -90,7 +90,17 @@ export default function LearnPage() {
               if (t.type === 'matching' && (!t.leftItems || !t.rightItems || t.leftItems.length < 2)) return false
               return true
             })
-            const sortedTasks = sortTasksByDifficulty(validTasks)
+            
+            // Убираем дубликаты по тексту вопроса
+            const seenQuestions = new Set<string>()
+            const uniqueTasks = validTasks.filter((t: any) => {
+              const normalized = t.question.toLowerCase().trim().slice(0, 50)
+              if (seenQuestions.has(normalized)) return false
+              seenQuestions.add(normalized)
+              return true
+            })
+            
+            const sortedTasks = sortTasksByDifficulty(uniqueTasks)
             setPracticeTasks(sortedTasks)
             setCurrentTaskIndex(0)
             setTaskScore({ correct: 0, total: 0 })
@@ -272,7 +282,10 @@ export default function LearnPage() {
                   onNext={() => {
                     if (currentTaskIndex < practiceTasks.length - 1) setCurrentTaskIndex(prev => prev + 1)
                     else { 
-                      const finalScore = taskScore.total > 0 ? Math.round((taskScore.correct / taskScore.total) * 100) : 0
+                      // Score считается от ОБЩЕГО числа заданий, не только отвеченных
+                      const finalScore = practiceTasks.length > 0 
+                        ? Math.round((taskScore.correct / practiceTasks.length) * 100) 
+                        : 0
                       handleSubmitCode('practice_completed', finalScore)
                       setStep('complete') 
                     }

@@ -506,12 +506,26 @@ ${practiceInstructions}
 Верни JSON: { "tasks": [...] }`
     
     console.log('[Practice] Generating tasks for topic type:', isProgramming ? 'PROGRAMMING' : isMath ? 'MATH' : isLanguage ? 'LANGUAGE' : 'GENERAL')
-    const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.6, maxTokens: 12000 })
+    const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.7, maxTokens: 12000 })
     const content = JSON.parse(response)
     
     if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
-    console.log('[Practice] Generated ' + content.tasks.length + ' tasks')
-    return content
+    
+    // Дедупликация: убираем задания с похожими вопросами
+    const seenQuestions = new Set<string>()
+    const uniqueTasks = content.tasks.filter((task: any) => {
+      if (!task.question) return false
+      const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, 40)
+      if (seenQuestions.has(normalized)) {
+        console.log('[Practice] Removed duplicate:', task.question.slice(0, 50))
+        return false
+      }
+      seenQuestions.add(normalized)
+      return true
+    })
+    
+    console.log('[Practice] Generated ' + content.tasks.length + ' tasks, unique: ' + uniqueTasks.length)
+    return { tasks: uniqueTasks }
   } catch (e) {
     console.error('Practice from theory failed:', e)
     return generatePracticeTasks(topicName, courseTitle)
