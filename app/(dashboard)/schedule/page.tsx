@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui'
-import { Calendar, Clock, Download, ExternalLink, Plus, X, Trash2 } from 'lucide-react'
+import { Calendar, Clock, Download, ExternalLink, Plus, X, Trash2, Edit2, Check } from 'lucide-react'
 import { generateStudySchedule, downloadICS, generateGoogleCalendarUrl, StudyEvent } from '@/lib/calendar'
 
 interface Goal {
@@ -27,6 +27,8 @@ export default function SchedulePage() {
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([])
   const [newEventTitle, setNewEventTitle] = useState('')
   const [newEventTime, setNewEventTime] = useState('09:00')
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [editingTime, setEditingTime] = useState('')
   const [preferences, setPreferences] = useState({
     daysPerWeek: 5,
     minutesPerDay: 45,
@@ -43,19 +45,83 @@ export default function SchedulePage() {
       .catch(console.error)
     
     // Load custom events from localStorage
-    const saved = localStorage.getItem('customEvents')
-    if (saved) setCustomEvents(JSON.parse(saved))
+    const savedCustom = localStorage.getItem('customEvents')
+    if (savedCustom) setCustomEvents(JSON.parse(savedCustom))
+    
+    // Load generated schedule from localStorage
+    const savedSchedule = localStorage.getItem('studySchedule')
+    if (savedSchedule) setSchedule(JSON.parse(savedSchedule))
+    
+    // Load preferences from localStorage
+    const savedPrefs = localStorage.getItem('schedulePreferences')
+    if (savedPrefs) setPreferences(JSON.parse(savedPrefs))
   }, [])
 
+  // Save custom events to localStorage
   useEffect(() => {
     localStorage.setItem('customEvents', JSON.stringify(customEvents))
   }, [customEvents])
+  
+  // Save schedule to localStorage
+  useEffect(() => {
+    if (schedule.length > 0) {
+      localStorage.setItem('studySchedule', JSON.stringify(schedule))
+    }
+  }, [schedule])
+  
+  // Save preferences to localStorage
+  useEffect(() => {
+    localStorage.setItem('schedulePreferences', JSON.stringify(preferences))
+  }, [preferences])
 
   const generateSchedule = () => {
     const goal = goals.find(g => g.id === selectedGoal)
     if (!goal) return
     const events = generateStudySchedule(goal.topics, { startDate: new Date(), ...preferences })
     setSchedule(events)
+    // Сохраняем сразу после генерации
+    localStorage.setItem('studySchedule', JSON.stringify(events))
+  }
+  
+  // Удалить событие из расписания
+  const deleteScheduleEvent = (eventId: string) => {
+    setSchedule(prev => prev.filter(e => e.id !== eventId))
+  }
+  
+  // Начать редактирование времени события
+  const startEditingEvent = (event: StudyEvent) => {
+    setEditingEventId(event.id)
+    const time = new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    setEditingTime(time)
+  }
+  
+  // Сохранить новое время события
+  const saveEventTime = (eventId: string) => {
+    setSchedule(prev => prev.map(event => {
+      if (event.id !== eventId) return event
+      
+      const [hours, minutes] = editingTime.split(':').map(Number)
+      const oldDate = new Date(event.startTime)
+      const newStartTime = new Date(oldDate)
+      newStartTime.setHours(hours, minutes, 0, 0)
+      
+      const duration = new Date(event.endTime).getTime() - new Date(event.startTime).getTime()
+      const newEndTime = new Date(newStartTime.getTime() + duration)
+      
+      return {
+        ...event,
+        startTime: newStartTime.toISOString(),
+        endTime: newEndTime.toISOString()
+      }
+    }))
+    setEditingEventId(null)
+    setEditingTime('')
+  }
+  
+  // Очистить всё расписание
+  const clearSchedule = () => {
+    setSchedule([])
+    localStorage.removeItem('studySchedule')
   }
 
   // Get month days in 4-column layout
@@ -256,6 +322,9 @@ export default function SchedulePage() {
 
             {schedule.length > 0 && (
               <div className="space-y-2 pt-3 border-t border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-text-secondary)] text-center">
+                  {schedule.length} занятий запланировано
+                </p>
                 <button
                   onClick={() => downloadICS(schedule)}
                   className="btn-practicum-outline w-full flex items-center justify-center gap-2 text-sm py-2"
@@ -272,6 +341,13 @@ export default function SchedulePage() {
                   <ExternalLink className="w-4 h-4" />
                   Google
                 </a>
+                <button
+                  onClick={clearSchedule}
+                  className="w-full flex items-center justify-center gap-2 text-sm py-2 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Очистить расписание
+                </button>
               </div>
             )}
           </CardContent>
@@ -371,13 +447,57 @@ export default function SchedulePage() {
               <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
                 {getEventsForDay(selectedDate).studyEvents.map(event => (
                   <div key={event.id} className="p-3 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
-                      <span className="text-sm text-white font-medium">{event.title}</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
+                          <span className="text-sm text-white font-medium">{event.title}</span>
+                        </div>
+                        {editingEventId === event.id ? (
+                          <div className="flex items-center gap-2 ml-4 mt-1">
+                            <input
+                              type="time"
+                              value={editingTime}
+                              onChange={e => setEditingTime(e.target.value)}
+                              className="w-24 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-white text-sm"
+                              style={{ colorScheme: 'dark' }}
+                            />
+                            <button 
+                              onClick={() => saveEventTime(event.id)} 
+                              className="p-1 bg-green-500/20 hover:bg-green-500/30 rounded-lg"
+                            >
+                              <Check className="w-4 h-4 text-green-400" />
+                            </button>
+                            <button 
+                              onClick={() => setEditingEventId(null)} 
+                              className="p-1 hover:bg-white/10 rounded-lg"
+                            >
+                              <X className="w-4 h-4 text-[var(--color-text-secondary)]" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-secondary)] ml-4">
+                            {new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => startEditingEvent(event)} 
+                          className="p-1.5 hover:bg-[var(--color-primary)]/20 rounded-lg"
+                          title="Изменить время"
+                        >
+                          <Edit2 className="w-4 h-4 text-[var(--color-primary)]" />
+                        </button>
+                        <button 
+                          onClick={() => deleteScheduleEvent(event.id)} 
+                          className="p-1.5 hover:bg-red-500/20 rounded-lg"
+                          title="Удалить"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-xs text-[var(--color-text-secondary)] ml-4">
-                      {new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
                   </div>
                 ))}
                 {getEventsForDay(selectedDate).custom.map(event => (
