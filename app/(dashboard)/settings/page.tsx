@@ -97,7 +97,7 @@ export default function SettingsPage() {
         <CardContent>
           <ThemeToggle showLabel className="w-full justify-center" />
           <p className="text-sm text-[var(--color-text-secondary)] text-center mt-3">
-            {theme === 'system' ? 'Автоматически по системе' : theme === 'dark' ? 'Тёмная тема' : 'Светлая тема'}
+            {theme === 'auto' ? 'Авто: светлая днём, тёмная ночью' : theme === 'system' ? 'Автоматически по системе' : theme === 'dark' ? 'Тёмная тема' : 'Светлая тема'}
           </p>
         </CardContent>
       </Card>

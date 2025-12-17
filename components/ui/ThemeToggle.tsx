@@ -1,6 +1,6 @@
 'use client'
 
-import { Sun, Moon, Monitor } from 'lucide-react'
+import { Sun, Moon, Monitor, Clock } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ export function ThemeToggle({ className, showLabel = false }: ThemeToggleProps) 
   const { theme, setTheme } = useTheme()
 
   const themes = [
+    { value: 'auto' as const, icon: Clock, label: 'Авто (по времени)' },
     { value: 'light' as const, icon: Sun, label: 'Светлая' },
     { value: 'dark' as const, icon: Moon, label: 'Тёмная' },
     { value: 'system' as const, icon: Monitor, label: 'Системная' },
@@ -45,12 +46,19 @@ export function ThemeToggleButton({ className }: { className?: string }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
 
   const cycleTheme = () => {
-    if (theme === 'light') setTheme('dark')
+    if (theme === 'auto') setTheme('light')
+    else if (theme === 'light') setTheme('dark')
     else if (theme === 'dark') setTheme('system')
-    else setTheme('light')
+    else setTheme('auto')
   }
 
-  const Icon = resolvedTheme === 'dark' ? Moon : Sun
+  const Icon = theme === 'auto' ? Clock : resolvedTheme === 'dark' ? Moon : Sun
+
+  const getTitle = () => {
+    if (theme === 'auto') return 'Авто (по времени суток)'
+    if (theme === 'system') return 'Системная тема'
+    return theme === 'dark' ? 'Тёмная тема' : 'Светлая тема'
+  }
 
   return (
     <button
@@ -60,10 +68,9 @@ export function ThemeToggleButton({ className }: { className?: string }) {
         'bg-slate-800/50 hover:bg-slate-700/50 text-slate-400 hover:text-white',
         className
       )}
-      title={`Тема: ${theme === 'system' ? 'системная' : theme === 'dark' ? 'тёмная' : 'светлая'}`}
+      title={getTitle()}
     >
       <Icon className="w-5 h-5" />
     </button>
   )
 }
-
