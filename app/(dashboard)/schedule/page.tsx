@@ -128,8 +128,8 @@ export default function SchedulePage() {
       
       return {
         ...event,
-        startTime: newStartTime.toISOString(),
-        endTime: newEndTime.toISOString()
+        startTime: newStartTime,
+        endTime: newEndTime
       }
     }))
     setEditingEventId(null)
