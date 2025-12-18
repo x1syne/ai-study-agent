@@ -9,6 +9,7 @@ import {
 import { Card, CardContent } from '@/components/ui'
 import { formatMinutes, calculateProgress } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
+import { SessionTimer } from '@/components/common/SessionTimer'
 
 interface Goal {
   id: string
@@ -126,7 +127,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StatMini icon={<Flame />} value={stats?.currentStreak || 0} label="Дней подряд" color="orange" />
             <StatMini icon={<Zap />} value={stats?.totalXP || 0} label="Опыта" color="yellow" />
-            <StatMini icon={<Clock />} value={formatMinutes(stats?.totalMinutes || 0)} label="Времени" color="blue" />
+            <StatMini icon={<Clock />} value={<SessionTimer />} label="Времени" color="blue" />
             <StatMini icon={<Target />} value={stats?.totalTasks || 0} label="Задач" color="green" />
           </div>
         </div>
@@ -285,7 +286,7 @@ export default function DashboardPage() {
   )
 }
 
-function StatMini({ icon, value, label, color }: { icon: React.ReactNode; value: string | number; label: string; color: string }) {
+function StatMini({ icon, value, label, color }: { icon: React.ReactNode; value: string | number | React.ReactNode; label: string; color: string }) {
   const colors: Record<string, string> = {
     orange: 'text-orange-500 bg-orange-500/10',
     yellow: 'text-[var(--color-yellow)] bg-[var(--color-yellow)]/10',

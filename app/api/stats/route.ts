@@ -41,14 +41,18 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Calculate total study time from actual time spent
+    // Calculate total study time from actual time spent in topics
     const topicProgress = await prisma.topicProgress.findMany({
       where: { userId: user.id },
     })
 
-    const totalMinutes = topicProgress.reduce((sum, progress) => {
+    const topicMinutes = topicProgress.reduce((sum, progress) => {
       return sum + progress.timeSpentMinutes
     }, 0)
+
+    // Use the maximum between stored totalMinutes and calculated topicMinutes
+    // This ensures we don't lose session time that was tracked
+    const totalMinutes = Math.max(stats.totalMinutes, topicMinutes)
 
     // Get achievements
     const achievements = await prisma.achievement.findMany({
