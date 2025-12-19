@@ -1,12 +1,22 @@
 'use client'
 
+import { useState, useEffect, useRef } from 'react'
+
+interface StudyTimerProps {
+  topicId: string
+  className?: string
+  showControls?: boolean
+  autoStart?: boolean
+  onTimeUpdate?: (minutes: number) => void
+}
+
 export function StudyTimer({ 
   topicId, 
   className = '', 
   showControls = true,
   autoStart = false,
   onTimeUpdate 
-}) {
+}: StudyTimerProps) {
   const [isActive, setIsActive] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const intervalRef = useRef(null)
