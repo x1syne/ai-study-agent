@@ -663,27 +663,58 @@ export function StepikTask({
             <p className="text-sm text-slate-400 mb-2">Выберите все правильные варианты</p>
             {(task as MultipleTask).options.map((option, idx) => {
               const correctArr = ((task as MultipleTask).correctAnswers || []).map(v => typeof v === 'string' ? parseInt(v as any, 10) : v)
-              const isCorrectOpt = correctArr.includes(idx)
+              const isCorrectByKey = correctArr.includes(idx)
               const isSel = selectedMultiple.includes(idx)
+              // Если AI засчитал ответ как правильный - все выбранные варианты показываем зелёными
+              const showAsCorrect = isSubmitted && isCorrect && isSel
+              const showAsWrong = isSubmitted && !isCorrect && isSel && !isCorrectByKey
+              const showAsCorrectByKey = isSubmitted && !isCorrect && isCorrectByKey
               return (
                 <button key={idx} onClick={() => !isSubmitted && toggleMultiple(idx)} disabled={isSubmitted}
                   className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    isSubmitted ? isCorrectOpt ? 'border-green-500 bg-green-500/10' 
-                      : isSel ? 'border-red-500 bg-red-500/10' : 'border-slate-700 bg-slate-800/30'
+                    isSubmitted 
+                      ? showAsCorrect ? 'border-green-500 bg-green-500/10'
+                      : showAsCorrectByKey ? 'border-green-500 bg-green-500/10'
+                      : showAsWrong ? 'border-red-500 bg-red-500/10' 
+                      : isSel ? 'border-yellow-500 bg-yellow-500/10'
+                      : 'border-slate-700 bg-slate-800/30'
                       : isSel ? 'border-primary-500 bg-primary-500/10' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'
                   }`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                      isSubmitted ? isCorrectOpt ? 'border-green-500 bg-green-500' : isSel ? 'border-red-500 bg-red-500' : 'border-slate-600'
+                      isSubmitted 
+                        ? showAsCorrect ? 'border-green-500 bg-green-500'
+                        : showAsCorrectByKey ? 'border-green-500 bg-green-500'
+                        : showAsWrong ? 'border-red-500 bg-red-500' 
+                        : isSel ? 'border-yellow-500 bg-yellow-500'
+                        : 'border-slate-600'
                         : isSel ? 'border-primary-500 bg-primary-500' : 'border-slate-600'
                     }`}>
-                      {(isSubmitted ? isCorrectOpt : isSel) && <Check className="w-4 h-4 text-white" />}
+                      {(isSubmitted ? (showAsCorrect || showAsCorrectByKey || isSel) : isSel) && <Check className="w-4 h-4 text-white" />}
                     </div>
                     <span className="text-slate-200">{option}</span>
                   </div>
                 </button>
               )
             })}
+            {/* AI Feedback для множественного выбора */}
+            {isSubmitted && aiFeedback && (
+              <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <MessageCircle className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    {aiFeedback.feedback && (
+                      <p className="text-blue-200 text-sm mb-2">{aiFeedback.feedback}</p>
+                    )}
+                    {aiFeedback.suggestion && (
+                      <p className="text-blue-300 text-sm">
+                        <span className="font-medium">💡</span> {aiFeedback.suggestion}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
