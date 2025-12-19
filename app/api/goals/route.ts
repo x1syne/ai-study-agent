@@ -191,7 +191,9 @@ export async function POST(request: NextRequest) {
           })
           console.log(`[Goals] Generated ${cardsData.cards.length} cards via ${cardsResult.value.provider}`)
         }
-      } catch { /* ignore card errors */ }
+      } catch (cardError) {
+        console.warn('[Goals] Card generation failed (non-critical):', cardError)
+      }
     }
 
     return NextResponse.json(goal, { status: 201 })

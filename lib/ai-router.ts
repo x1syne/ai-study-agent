@@ -59,6 +59,9 @@ async function generateGroq(
   // Прокси для России
   if (USE_PROXY) {
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+      
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-proxy`, {
         method: 'POST',
         headers: {
@@ -71,30 +74,49 @@ async function generateGroq(
           max_tokens: options.maxTokens ?? 4096,
           json_mode: options.json ?? false,
         }),
+        signal: controller.signal,
       })
+      
+      clearTimeout(timeoutId)
+      
       if (res.ok) {
         const data = await res.json()
         if (data.content) return data.content
       }
-    } catch { /* fallthrough to direct */ }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        console.warn('[AI Router] Groq proxy timeout, trying direct...')
+      }
+      // fallthrough to direct
+    }
   }
 
-  // Прямой запрос
+  // Прямой запрос с таймаутом через Promise.race
   const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
   
   for (const model of models) {
     try {
-      const res = await groq.chat.completions.create({
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Groq timeout')), 45000)
+      )
+      
+      const requestPromise = groq.chat.completions.create({
         model,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
         response_format: options.json ? { type: 'json_object' } : undefined,
       })
+      
+      const res = await Promise.race([requestPromise, timeoutPromise])
       const content = res.choices[0]?.message?.content
       if (content) return content
     } catch (e: any) {
-      if (e?.message?.includes('rate') || e?.message?.includes('429')) continue
+      const msg = e?.message || ''
+      if (msg.includes('rate') || msg.includes('429') || msg.includes('timeout')) {
+        console.warn(`[AI Router] Groq ${model}: ${msg}, trying next...`)
+        continue
+      }
       throw e
     }
   }
