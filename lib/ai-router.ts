@@ -366,7 +366,7 @@ export async function generateWithVision(
         }],
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
-      })
+      }) as Promise<{ choices: Array<{ message?: { content?: string } }> }>
 
       const res = await Promise.race([requestPromise, timeoutPromise])
       const content = res.choices[0]?.message?.content
