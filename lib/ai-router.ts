@@ -442,3 +442,4 @@ export async function generateWithVision(
   }
 
   throw new Error(`All vision providers failed: ${errors.join('; ')}`)
+}
