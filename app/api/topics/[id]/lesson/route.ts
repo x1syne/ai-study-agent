@@ -6,9 +6,11 @@ import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
 import { getScientificContext } from '@/lib/arxiv'
 import { getBookContext } from '@/lib/openlibrary'
 import { getRAGContext } from '@/lib/search'
-import { runLessonAgent } from '@/lib/ai/agent'
+// Используем оптимизированный агент с параллельной генерацией
+import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
 
-const USE_AGENT = process.env.USE_AI_AGENT === 'true'
+// Всегда используем оптимизированный агент
+const USE_AGENT = true
 
 export const dynamic = 'force-dynamic'
 
@@ -72,8 +74,8 @@ export async function GET(
       })
 
       // Проверяем, выполнены ли все пререквизиты
-      const prerequisitesMet = topic.prerequisiteIds.every(prereqId => {
-        const prereqTopic = allTopics.find(t => t.id === prereqId)
+      const prerequisitesMet = topic.prerequisiteIds.every((prereqId: string) => {
+        const prereqTopic = allTopics.find((t: { id: string }) => t.id === prereqId)
         if (!prereqTopic) return true // Если пререквизит не найден, считаем выполненным
         const prereqProgress = prereqTopic.progress[0]
         return prereqProgress && (prereqProgress.status === 'COMPLETED' || prereqProgress.status === 'MASTERED')
@@ -115,8 +117,8 @@ export async function GET(
     if (lessonType === 'theory') {
       try {
         if (USE_AGENT) {
-          const userTone = searchParams.get('tone') as 'academic' | 'conversational' | 'motivational' | null
-          const agentResult = await runLessonAgent(topic.name, topic.goal.title, userTone || undefined)
+          // Оптимизированный агент с параллельной генерацией
+          const agentResult = await runLessonAgent(topic.name, topic.goal.title)
           content = { 
             markdown: agentResult.content,
             analysis: agentResult.analysis,
