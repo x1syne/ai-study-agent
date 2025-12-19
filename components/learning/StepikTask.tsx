@@ -316,7 +316,49 @@ export function StepikTask({
       }
       case 'multiple': {
         const correctArr = (task.correctAnswers || []).map(v => typeof v === 'string' ? parseInt(v, 10) : v)
-        correct = selectedMultiple.length === correctArr.length && selectedMultiple.every(i => correctArr.includes(i))
+        const options = (task as MultipleTask).options || []
+        
+        // Сначала проверяем по индексам
+        const basicMatch = selectedMultiple.length === correctArr.length && 
+          selectedMultiple.every(i => correctArr.includes(i))
+        
+        if (basicMatch) {
+          correct = true
+        } else {
+          // Если не совпало - проверяем через AI по смыслу
+          const selectedOptions = selectedMultiple.map(i => options[i]).filter(Boolean)
+          const correctOptions = correctArr.map(i => options[i]).filter(Boolean)
+          
+          console.log('[DEBUG] Multiple check - Selected:', selectedOptions)
+          console.log('[DEBUG] Multiple check - Correct by index:', correctOptions)
+          
+          try {
+            const res = await fetch('/api/check-answer', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'multiple',
+                question: task.question,
+                userAnswer: selectedOptions,
+                correctAnswer: correctOptions,
+                allOptions: options
+              })
+            })
+            
+            if (res.ok) {
+              const result = await res.json()
+              correct = result.correct === true
+              if (result.feedback) {
+                aiResult = { correct, feedback: result.feedback, suggestion: result.suggestion }
+              }
+            }
+          } catch (e) {
+            console.error('AI multiple check failed:', e)
+            // Fallback: если AI недоступен, проверяем есть ли хотя бы частичное совпадение
+            const matchCount = selectedMultiple.filter(i => correctArr.includes(i)).length
+            correct = matchCount >= Math.ceil(correctArr.length * 0.7) // 70% правильных
+          }
+        }
         break
       }
       case 'text': {

@@ -146,6 +146,66 @@ ${solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${solution}\n\`\`\`` :
         feedback: 'Ответ не совсем точный', 
         suggestion: correctAnswer ? `Эталонный ответ: ${correctAnswer.slice(0, 150)}` : '' 
       })
+
+    } else if (type === 'multiple') {
+      // Проверка множественного выбора через AI
+      const { userAnswer, correctAnswer, allOptions } = body
+      
+      if (!Array.isArray(userAnswer) || userAnswer.length === 0) {
+        return NextResponse.json({ correct: false, feedback: 'Выберите хотя бы один вариант' })
+      }
+
+      const prompt = `Проверь ответ студента на вопрос с множественным выбором.
+
+ВОПРОС: ${question}
+
+ВСЕ ВАРИАНТЫ: ${allOptions?.join(', ') || 'не указаны'}
+
+ВЫБРАНО СТУДЕНТОМ: ${userAnswer.join(', ')}
+
+ПРАВИЛЬНЫЕ ОТВЕТЫ (по ключу): ${Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer}
+
+ПРАВИЛА:
+1. Если студент выбрал ВСЕ правильные варианты и НЕ выбрал неправильные - это correct: true
+2. Если студент выбрал правильные варианты, но также выбрал лишние неправильные - это correct: false
+3. Если студент выбрал не все правильные варианты - это correct: false
+4. Анализируй по СМЫСЛУ - если ключ ответа неверный, но студент выбрал реально правильные варианты - засчитай!
+
+Ответь СТРОГО в формате JSON:
+{"correct": true/false, "feedback": "краткое объяснение на русском", "suggestion": "какие варианты были правильными"}`
+
+      try {
+        const result = await generateWithRouter(
+          'fast',
+          'Ты эксперт по проверке тестов. Анализируй по смыслу, а не только по ключу. Отвечай ТОЛЬКО JSON.',
+          prompt,
+          { json: true, temperature: 0.2 }
+        )
+
+        const parsed = safeParseAIJson<TextCheckResult>(result.content, isTextCheckResult)
+        if (parsed) {
+          return NextResponse.json(parsed)
+        }
+      } catch (e) {
+        console.error('Multiple check AI error:', e)
+      }
+
+      // Fallback: простая проверка по массивам
+      const userArr = userAnswer.map((s: string) => s.toLowerCase().trim())
+      const correctArr = (Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer]).map((s: string) => s.toLowerCase().trim())
+      
+      const allCorrectSelected = correctArr.every((c: string) => userArr.includes(c))
+      const noExtraSelected = userArr.every((u: string) => correctArr.includes(u))
+      
+      if (allCorrectSelected && noExtraSelected) {
+        return NextResponse.json({ correct: true, feedback: 'Правильно!', suggestion: '' })
+      }
+      
+      return NextResponse.json({ 
+        correct: false, 
+        feedback: 'Не все правильные варианты выбраны или выбраны лишние',
+        suggestion: `Правильные ответы: ${Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer}`
+      })
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
