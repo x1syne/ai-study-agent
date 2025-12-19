@@ -109,24 +109,36 @@ async function generateDeepSeek(
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API key not configured')
 
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      response_format: options.json ? { type: 'json_object' } : undefined,
-    }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000) // 60s timeout для тяжёлых задач
 
-  if (!res.ok) throw new Error(`DeepSeek: ${await res.text()}`)
-  const data = await res.json()
-  return data.choices?.[0]?.message?.content || ''
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        response_format: options.json ? { type: 'json_object' } : undefined,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!res.ok) throw new Error(`DeepSeek: ${await res.text()}`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content || ''
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('DeepSeek: timeout')
+    throw e
+  }
 }
 
 async function generateGemini(
@@ -137,24 +149,48 @@ async function generateGemini(
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('Gemini API key not configured')
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${system}\n\n${user}` }] }],
-        generationConfig: {
-          temperature: options.temperature ?? 0.7,
-          maxOutputTokens: options.maxTokens ?? 4096,
-        },
-      }),
-    }
-  )
+  // Gemini не поддерживает response_format, поэтому добавляем инструкцию в промпт
+  const jsonInstruction = options.json 
+    ? '\n\nВАЖНО: Ответь ТОЛЬКО валидным JSON без markdown блоков.' 
+    : ''
 
-  if (!res.ok) throw new Error(`Gemini: ${await res.text()}`)
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${system}${jsonInstruction}\n\n${user}` }] }],
+          generationConfig: {
+            temperature: options.temperature ?? 0.7,
+            maxOutputTokens: options.maxTokens ?? 4096,
+          },
+        }),
+        signal: controller.signal,
+      }
+    )
+
+    clearTimeout(timeoutId)
+
+    if (!res.ok) throw new Error(`Gemini: ${await res.text()}`)
+    const data = await res.json()
+    let content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    
+    // Очищаем markdown блоки если ожидаем JSON
+    if (options.json && content) {
+      content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    }
+    
+    return content
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('Gemini: timeout')
+    throw e
+  }
 }
 
 // === ГЛАВНЫЙ РОУТЕР ===

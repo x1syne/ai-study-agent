@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
-import { generateCompletion } from '@/lib/groq'
+import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
 import { getScientificContext } from '@/lib/arxiv'
 import { getBookContext } from '@/lib/openlibrary'
 import { getRAGContext } from '@/lib/search'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
+
+// Обёртка для совместимости со старым API
+async function generateCompletion(
+  systemPrompt: string,
+  userPrompt: string,
+  options?: { temperature?: number; maxTokens?: number; json?: boolean }
+): Promise<string> {
+  const result = await generateWithRouter(
+    'heavy', // Используем heavy для генерации контента
+    systemPrompt,
+    userPrompt,
+    options
+  )
+  return result.content
+}
 
 // Всегда используем оптимизированный агент
 const USE_AGENT = true
