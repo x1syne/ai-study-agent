@@ -8,7 +8,7 @@
  * 4. Уменьшенные задержки
  */
 
-import { generateCompletion } from '@/lib/groq'
+import { generateWithRouter } from '@/lib/ai-router'
 import { 
   getCachedLesson, setCachedLesson,
   getCachedTasks, setCachedTasks,
@@ -64,13 +64,14 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
 ТОЛЬКО валидный JSON.`
 
   try {
-    const response = await generateCompletion(
+    const result = await generateWithRouter(
+      'fast',
       'Ты аналитик. Отвечай ТОЛЬКО JSON.',
       prompt,
       { json: true, temperature: 0.3, maxTokens: 1000 }
     )
     
-    const data = JSON.parse(response)
+    const data = JSON.parse(result.content)
     const analysis: TopicAnalysis = {
       topic,
       courseName,
@@ -129,11 +130,11 @@ async function generateSection(
   systemPrompt: string
 ): Promise<string> {
   try {
-    const content = await generateCompletion(systemPrompt, prompt, {
+    const result = await generateWithRouter('heavy', systemPrompt, prompt, {
       temperature: 0.7,
       maxTokens: 2000
     })
-    return content && content.length > 50 ? content : ''
+    return result.content && result.content.length > 50 ? result.content : ''
   } catch (e) {
     console.error(`[Fast Agent] Section "${title}" failed:`, e)
     return ''
@@ -246,13 +247,14 @@ JSON формат:
 ТОЛЬКО валидный JSON.`
 
   try {
-    const response = await generateCompletion(
+    const result = await generateWithRouter(
+      'heavy',
       'Создатель заданий. Отвечай ТОЛЬКО JSON.',
       prompt,
       { json: true, temperature: 0.6, maxTokens: 3000 }
     )
     
-    const data = JSON.parse(response)
+    const data = JSON.parse(result.content)
     const tasks = (data.tasks || []).map((t: any, i: number) => ({
       id: t.id || i + 1,
       type: t.type || 'single',
