@@ -19,7 +19,7 @@ export function StudyTimer({
 }: StudyTimerProps) {
   const [isActive, setIsActive] = useState(false)
   const [seconds, setSeconds] = useState(0)
-  const intervalRef = useRef(null)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastSaveRef = useRef(0)
 
   // Auto-start if requested
@@ -60,7 +60,7 @@ export function StudyTimer({
   }, [isActive, topicId])
 
   // Save time to server
-  const saveTime = async (minutes) => {
+  const saveTime = async (minutes: number) => {
     if (!topicId || minutes <= 0) return
 
     try {
