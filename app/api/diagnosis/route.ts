@@ -3,13 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS, getDiagnosisPrompt } from '@/lib/ai/prompts'
+import { enrichContextWithArxiv } from '@/lib/arxiv'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
   const result = await generateWithRouter('fast', system, user, opts)
   return result.content
 }
-import { enrichContextWithArxiv } from '@/lib/arxiv'
 
 export const dynamic = 'force-dynamic'
 

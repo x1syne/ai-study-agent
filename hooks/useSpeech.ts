@@ -188,7 +188,11 @@ export function useSpeechToText(options: { lang?: string; continuous?: boolean; 
   const startListening = useCallback(() => {
     if (recognitionRef.current && !isListening) {
       setTranscript(''); setInterimTranscript(''); setError(null)
-      try { recognitionRef.current.start() } catch { /* */ }
+      try { 
+        recognitionRef.current.start() 
+      } catch (e) { 
+        console.warn('[Speech] Failed to start recognition:', e)
+      }
     }
   }, [isListening])
 

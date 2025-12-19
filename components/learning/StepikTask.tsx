@@ -115,7 +115,25 @@ export function StepikTask({
   }
   const difficultyLabels = { easy: 'Лёгкое', medium: 'Среднее', hard: 'Сложное' }
 
-  const checkCodeWithAI = async (): Promise<boolean> => {
+  // Функция для безопасного парсинга JSON с валидацией
+  const safeParseJSON = <T,>(content: string, validator: (obj: any) => obj is T): T | null => {
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) return null
+      const parsed = JSON.parse(jsonMatch[0])
+      return validator(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  // Валидатор для результата проверки кода
+  const isCodeCheckResult = (obj: any): obj is { correct: boolean; feedback: string } => {
+    return typeof obj === 'object' && typeof obj.correct === 'boolean' && typeof obj.feedback === 'string'
+  }
+
+  const checkCodeWithAI = async (retryCount = 0): Promise<boolean> => {
+    const MAX_RETRIES = 2
     const codeTask = task as CodeTask
     const starterCode = codeTask.starterCode || ''
     const trimmedCode = codeAnswer.trim()
@@ -134,6 +152,9 @@ export function StepikTask({
     
     setCodeCheckLoading(true)
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+      
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,24 +169,39 @@ ${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.so
 Оцени код: правильно ли он решает задачу? Ответь в формате JSON:
 {"correct": true/false, "feedback": "краткий отзыв на русском"}`,
           systemPrompt: 'Ты строгий эксперт по программированию. Код должен РЕАЛЬНО решать задачу. Пустой код или комментарии = неправильно. Отвечай ТОЛЬКО JSON.'
-        })
+        }),
+        signal: controller.signal,
       })
+      
+      clearTimeout(timeoutId)
+      
       if (res.ok) {
         const data = await res.json()
         const content = data.aiMessage?.content || ''
-        try {
-          const jsonMatch = content.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0])
-            setCodeCheckResult(result)
-            return result.correct === true
-          }
-        } catch { }
+        const result = safeParseJSON(content, isCodeCheckResult)
+        
+        if (result) {
+          setCodeCheckResult(result)
+          return result.correct === true
+        }
       }
-      // AI не ответил - не засчитываем без проверки
+      
+      // Retry если не удалось получить валидный ответ
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[StepikTask] Code check retry ${retryCount + 1}/${MAX_RETRIES}`)
+        return checkCodeWithAI(retryCount + 1)
+      }
+      
+      // AI не ответил после всех попыток
       setCodeCheckResult({ correct: false, feedback: 'Не удалось проверить код. Попробуйте ещё раз.' })
       return false
-    } catch (e) { 
+    } catch (e: any) { 
+      if (e.name === 'AbortError') {
+        console.error('Code check timeout')
+        if (retryCount < MAX_RETRIES) {
+          return checkCodeWithAI(retryCount + 1)
+        }
+      }
       console.error('Code check failed:', e)
       setCodeCheckResult({ correct: false, feedback: 'Ошибка проверки. Попробуйте ещё раз.' })
       return false

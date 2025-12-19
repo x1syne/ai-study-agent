@@ -9,13 +9,13 @@ import {
   updateStateAfterMessage,
   getOrCreateState 
 } from '@/lib/ai/characters'
+import { searchArxiv, formatArxivForContext, shouldSearchArxiv, extractSearchQuery } from '@/lib/arxiv'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
   const result = await generateWithRouter('chat', system, user, opts)
   return result.content
 }
-import { searchArxiv, formatArxivForContext, shouldSearchArxiv, extractSearchQuery } from '@/lib/arxiv'
 
 export const dynamic = 'force-dynamic'
 

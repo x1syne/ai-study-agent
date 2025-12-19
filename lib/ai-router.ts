@@ -12,6 +12,34 @@ import Groq from 'groq-sdk'
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
 
+/**
+ * Безопасный парсинг JSON из AI ответа
+ * Извлекает JSON из текста и валидирует структуру
+ */
+export function safeParseAIJson<T>(
+  content: string, 
+  validator?: (obj: unknown) => obj is T
+): T | null {
+  try {
+    // Очищаем markdown блоки
+    let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    // Ищем JSON объект или массив
+    const jsonMatch = cleaned.match(/[\[{][\s\S]*[\]}]/)
+    if (!jsonMatch) return null
+    
+    const parsed = JSON.parse(jsonMatch[0])
+    
+    // Если есть валидатор — проверяем
+    if (validator && !validator(parsed)) return null
+    
+    return parsed as T
+  } catch (e) {
+    console.warn('[AI Router] JSON parse failed:', e)
+    return null
+  }
+}
+
 export interface GenerateOptions {
   temperature?: number
   maxTokens?: number

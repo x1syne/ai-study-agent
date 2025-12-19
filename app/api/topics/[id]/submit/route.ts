@@ -3,13 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS, getCodeReviewPrompt } from '@/lib/ai/prompts'
+import { addXP, updateStreak, checkAchievement, checkTaskAchievements, XP_REWARDS } from '@/lib/gamification'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
   const result = await generateWithRouter('fast', system, user, opts)
   return result.content
 }
-import { addXP, updateStreak, checkAchievement, checkTaskAchievements, XP_REWARDS } from '@/lib/gamification'
 
 export const dynamic = 'force-dynamic'
 
