@@ -147,6 +147,3 @@ export function StudyTimer({
     </div>
   )
 }
-
-import { useState, useEffect, useRef } from 'react'
-
