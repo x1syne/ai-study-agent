@@ -155,20 +155,17 @@ export function StepikTask({
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
       
-      const res = await fetch('/api/chat', {
+      // Используем специализированный endpoint вместо chat
+      const res = await fetch('/api/check-answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Проверь код студента на задание.
-ЗАДАНИЕ: ${task.question}
-${codeTask.testCases ? `ТЕСТ-КЕЙСЫ:\n${codeTask.testCases.map(tc => `Вход: ${tc.input} → Ожидается: ${tc.expected}`).join('\n')}` : ''}
-КОД СТУДЕНТА:\n\`\`\`${codeTask.language || 'code'}\n${codeAnswer}\n\`\`\`
-${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.solution}\n\`\`\`` : ''}
-
-ВАЖНО: Если код пустой, содержит только комментарии, или не решает задачу - ответь correct: false.
-Оцени код: правильно ли он решает задачу? Ответь в формате JSON:
-{"correct": true/false, "feedback": "краткий отзыв на русском"}`,
-          systemPrompt: 'Ты строгий эксперт по программированию. Код должен РЕАЛЬНО решать задачу. Пустой код или комментарии = неправильно. Отвечай ТОЛЬКО JSON.'
+          type: 'code',
+          question: task.question,
+          userAnswer: codeAnswer,
+          testCases: codeTask.testCases,
+          solution: codeTask.solution,
+          language: codeTask.language
         }),
         signal: controller.signal,
       })
@@ -176,12 +173,9 @@ ${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.so
       clearTimeout(timeoutId)
       
       if (res.ok) {
-        const data = await res.json()
-        const content = data.aiMessage?.content || ''
-        const result = safeParseJSON(content, isCodeCheckResult)
-        
-        if (result) {
-          setCodeCheckResult(result)
+        const result = await res.json()
+        if (typeof result.correct === 'boolean') {
+          setCodeCheckResult({ correct: result.correct, feedback: result.feedback || '' })
           return result.correct === true
         }
       }
@@ -224,50 +218,25 @@ ${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.so
       return { correct: false, feedback: "Ответ слишком короткий", suggestion: "Напишите более развёрнутый ответ" }
     }
 
-    // Используем AI для смысловой проверки
+    // Используем специализированный endpoint вместо chat
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/check-answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Ты — терпеливый репетитор. Проверь ответ студента на вопрос.
-
-ВОПРОС: ${task.question}
-
-ЭТАЛОННЫЙ ОТВЕТ: ${correctAnswer}
-
-ОТВЕТ СТУДЕНТА: ${trimmedAnswer}
-
-ПРАВИЛА ПРОВЕРКИ:
-1. Анализируй СМЫСЛ ответа, а не буквальное совпадение слов
-2. Ответ ПРАВИЛЬНЫЙ, если содержит ключевые идеи эталона, даже если:
-   - Сформулирован другими словами
-   - Более краткий, но по сути верный
-   - Есть незначительные стилистические отличия
-3. Если ответ верный по смыслу, но неполный — это всё равно "correct": true, но укажи что можно добавить
-4. Будь лоялен к студенту — если есть сомнения, засчитывай в пользу студента
-
-Ответь СТРОГО в формате JSON:
-{"correct": true/false, "feedback": "краткая оценка на русском", "suggestion": "что можно улучшить или добавить"}`,
-          systemPrompt: 'Ты добрый репетитор. Оценивай по смыслу, не по буквам. Отвечай ТОЛЬКО JSON без markdown.'
+          type: 'text',
+          question: task.question,
+          userAnswer: trimmedAnswer,
+          correctAnswer: correctAnswer
         })
       })
       
       if (res.ok) {
-        const data = await res.json()
-        const content = data.aiMessage?.content || ''
-        try {
-          const jsonMatch = content.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0])
-            return {
-              correct: result.correct === true,
-              feedback: result.feedback || (result.correct ? "Правильно!" : "Попробуйте ещё раз"),
-              suggestion: result.suggestion || ""
-            }
-          }
-        } catch (e) {
-          console.error('Failed to parse AI response:', e)
+        const result = await res.json()
+        return {
+          correct: result.correct === true,
+          feedback: result.feedback || (result.correct ? "Правильно!" : "Попробуйте ещё раз"),
+          suggestion: result.suggestion || ""
         }
       }
     } catch (e) {
@@ -432,22 +401,39 @@ ${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.so
   const askAI = async () => {
     if (!aiQuestion.trim() && !isSubmitted) return
     setAiLoading(true)
+    setAiResponse('') // Очищаем предыдущий ответ
     try {
       const prompt = aiQuestion.trim() || 'Объясни почему мой ответ неправильный и как решить это задание'
       const contextInfo = theoryContent ? `\n\nТеория по теме:\n${theoryContent.slice(0, 2000)}` : ''
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
+      
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: `Задание: ${task.question}${contextInfo}\n\nМой вопрос: ${prompt}`,
           systemPrompt: 'Ты AI-репетитор. Помогай студенту понять материал, объясняй простым языком, давай подсказки но не решай за него.'
-        })
+        }),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
+      
       if (res.ok) {
         const data = await res.json()
         setAiResponse(data.aiMessage?.content || 'Не удалось получить ответ')
+      } else {
+        setAiResponse('Ошибка сервера. Попробуйте ещё раз.')
       }
-    } catch { setAiResponse('Ошибка соединения') }
+    } catch (e: any) { 
+      if (e.name === 'AbortError') {
+        setAiResponse('Превышено время ожидания. Попробуйте ещё раз.')
+      } else {
+        setAiResponse('Ошибка соединения. Проверьте интернет и попробуйте ещё раз.')
+      }
+    }
     finally { setAiLoading(false); setAiQuestion('') }
   }
 

@@ -42,10 +42,10 @@ export async function POST(request: NextRequest) {
     // Получаем научный контекст для более точных вопросов
     const { arxivContext } = await enrichContextWithArxiv(goal.skill, { maxPapers: 1 })
     
-    // Generate questions for each topic
-    const questions = []
-
-    for (const topic of goal.topics.slice(0, 5)) { // Limit to 5 topics
+    // Generate questions for each topic - ПАРАЛЛЕЛЬНО для ускорения
+    const topicsToProcess = goal.topics.slice(0, 5) // Limit to 5 topics
+    
+    const questionPromises = topicsToProcess.map(async (topic) => {
       const basePrompt = getDiagnosisPrompt(goal.skill, topic.name, topic.difficulty)
       const prompt = arxivContext 
         ? `${basePrompt}\n\n[Научный контекст для создания актуальных вопросов]:\n${arxivContext}`
@@ -59,15 +59,15 @@ export async function POST(request: NextRequest) {
         )
 
         const question = JSON.parse(response)
-        questions.push({
+        return {
           id: `${topic.id}-${Date.now()}`,
           ...question,
           topicSlug: topic.slug,
           difficulty: topic.difficulty,
-        })
+        }
       } catch (e) {
         // Fallback question
-        questions.push({
+        return {
           id: `${topic.id}-${Date.now()}`,
           question: `Что вы знаете о теме "${topic.name}"?`,
           type: 'multiple_choice',
@@ -76,9 +76,12 @@ export async function POST(request: NextRequest) {
           explanation: 'Это вопрос для самооценки.',
           topicSlug: topic.slug,
           difficulty: topic.difficulty,
-        })
+        }
       }
-    }
+    })
+
+    // Выполняем все запросы параллельно
+    const questions = await Promise.all(questionPromises)
 
     return NextResponse.json({ questions })
   } catch (error) {

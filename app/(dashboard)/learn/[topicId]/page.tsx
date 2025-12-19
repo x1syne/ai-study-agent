@@ -49,6 +49,7 @@ export default function LearnPage() {
   const [savedAnswers, setSavedAnswers] = useState<Map<number, any>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isChangingTask, setIsChangingTask] = useState(false)
   const [theoryContent, setTheoryContent] = useState('')
 
   useEffect(() => { fetchLesson('theory') }, [params.topicId])
@@ -136,7 +137,8 @@ export default function LearnPage() {
     fetchLesson('practice')
   }
 
-  const handleSubmitCode = async (code: string, score?: number) => {
+  const handleSubmitCode = async (code: string, score?: number, retryCount = 0) => {
+    const MAX_RETRIES = 3
     setIsSubmitting(true)
     try {
       // Если передан score (из практики с заданиями) - используем его
@@ -148,7 +150,21 @@ export default function LearnPage() {
         body: JSON.stringify({ code, lessonId: practiceLesson?.id, score: practiceScore }) 
       })
       if (res.ok) { const result = await res.json(); if (result.isCorrect) setStep('complete') }
-    } catch (e) { console.error(e) }
+      else if (retryCount < MAX_RETRIES) {
+        // Retry при ошибке сервера
+        console.log(`[Learn] Submit retry ${retryCount + 1}/${MAX_RETRIES}`)
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)))
+        return handleSubmitCode(code, score, retryCount + 1)
+      }
+    } catch (e) { 
+      console.error('Submit error:', e)
+      // Retry при сетевой ошибке
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[Learn] Submit retry ${retryCount + 1}/${MAX_RETRIES}`)
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)))
+        return handleSubmitCode(code, score, retryCount + 1)
+      }
+    }
     finally { setIsSubmitting(false) }
   }
 
@@ -280,46 +296,64 @@ export default function LearnPage() {
                 </div>
               </CardContent></Card>
               {currentTaskIndex < practiceTasks.length && (
-                <StepikTask
-                  key={`task-${currentTaskIndex}`}
-                  task={practiceTasks[currentTaskIndex] as any}
-                  taskNumber={currentTaskIndex + 1}
-                  totalTasks={practiceTasks.length}
-                  taskResults={taskResults}
-                  theoryContent={theoryContent}
-                  savedAnswer={savedAnswers.get(currentTaskIndex)}
-                  onAnswer={(isCorrect, answer) => {
-                    // Обновляем score только если это первый ответ на задание
-                    if (taskResults[currentTaskIndex] === 'pending') {
-                      setTaskScore(prev => ({ correct: prev.correct + (isCorrect ? 1 : 0), total: prev.total + 1 }))
-                    }
-                    setTaskResults(prev => {
-                      const newResults = [...prev]
-                      newResults[currentTaskIndex] = isCorrect ? 'correct' : 'wrong'
-                      return newResults
-                    })
-                    setSavedAnswers(prev => new Map(prev).set(currentTaskIndex, answer))
-                  }}
-                  onNext={() => {
-                    if (currentTaskIndex < practiceTasks.length - 1) setCurrentTaskIndex(prev => prev + 1)
-                    else { 
-                      // Score считается от ОБЩЕГО числа заданий, не только отвеченных
-                      const finalScore = practiceTasks.length > 0 
-                        ? Math.round((taskScore.correct / practiceTasks.length) * 100) 
-                        : 0
-                      handleSubmitCode('practice_completed', finalScore)
-                      setStep('complete') 
-                    }
-                  }}
-                  onPrev={() => { 
-                    if (currentTaskIndex > 0) setCurrentTaskIndex(prev => prev - 1) 
-                  }}
-                  onGoToTask={(idx) => {
-                    setCurrentTaskIndex(idx)
-                  }}
-                  onGoToTheory={() => setStep('theory')}
-                  canGoPrev={currentTaskIndex > 0}
-                />
+                <div className={`transition-opacity duration-200 ${isChangingTask ? 'opacity-50' : 'opacity-100'}`}>
+                  <StepikTask
+                    key={`task-${currentTaskIndex}`}
+                    task={practiceTasks[currentTaskIndex] as any}
+                    taskNumber={currentTaskIndex + 1}
+                    totalTasks={practiceTasks.length}
+                    taskResults={taskResults}
+                    theoryContent={theoryContent}
+                    savedAnswer={savedAnswers.get(currentTaskIndex)}
+                    onAnswer={(isCorrect, answer) => {
+                      // Обновляем score только если это первый ответ на задание
+                      if (taskResults[currentTaskIndex] === 'pending') {
+                        setTaskScore(prev => ({ correct: prev.correct + (isCorrect ? 1 : 0), total: prev.total + 1 }))
+                      }
+                      setTaskResults(prev => {
+                        const newResults = [...prev]
+                        newResults[currentTaskIndex] = isCorrect ? 'correct' : 'wrong'
+                        return newResults
+                      })
+                      setSavedAnswers(prev => new Map(prev).set(currentTaskIndex, answer))
+                    }}
+                    onNext={() => {
+                      if (currentTaskIndex < practiceTasks.length - 1) {
+                        setIsChangingTask(true)
+                        setTimeout(() => {
+                          setCurrentTaskIndex(prev => prev + 1)
+                          setIsChangingTask(false)
+                        }, 100)
+                      }
+                      else { 
+                        // Score считается от ОБЩЕГО числа заданий, не только отвеченных
+                        const finalScore = practiceTasks.length > 0 
+                          ? Math.round((taskScore.correct / practiceTasks.length) * 100) 
+                          : 0
+                        handleSubmitCode('practice_completed', finalScore)
+                        setStep('complete') 
+                      }
+                    }}
+                    onPrev={() => { 
+                      if (currentTaskIndex > 0) {
+                        setIsChangingTask(true)
+                        setTimeout(() => {
+                          setCurrentTaskIndex(prev => prev - 1)
+                          setIsChangingTask(false)
+                        }, 100)
+                      }
+                    }}
+                    onGoToTask={(idx) => {
+                      setIsChangingTask(true)
+                      setTimeout(() => {
+                        setCurrentTaskIndex(idx)
+                        setIsChangingTask(false)
+                      }, 100)
+                    }}
+                    onGoToTheory={() => setStep('theory')}
+                    canGoPrev={currentTaskIndex > 0}
+                  />
+                </div>
               )}
             </>
           ) : practiceLesson?.content ? (

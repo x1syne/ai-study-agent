@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
-import { generateWithRouter } from '@/lib/ai-router'
+import { generateWithRouter, generateWithVision } from '@/lib/ai-router'
 import { 
   getCharacterById, 
   getCharacterPrompt, 
@@ -204,31 +204,21 @@ export async function POST(request: NextRequest) {
       const messageWithFiles = fileContext ? `${message}\n${fileContext}` : message
       const prompt = getCharacterPrompt(characterId, fullContext, historyText, characterState) + `\n\nСообщение студента: ${messageWithFiles}`
       
-      // If there are images, use vision model
+      // If there are images, use vision model with fallback
       if (imageContents.length > 0) {
-        const { groq } = await import('@/lib/groq')
-        // Build content array for vision
-        const contentParts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-          { type: 'text', text: prompt }
-        ]
-        for (const img of imageContents) {
-          contentParts.push(img)
+        try {
+          const imageUrls = imageContents.map(img => img.image_url.url)
+          const visionResult = await generateWithVision(
+            character.systemPrompt,
+            prompt,
+            imageUrls,
+            { temperature: dynamicTemperature, maxTokens: 4096 }
+          )
+          response = visionResult.content || 'Не удалось проанализировать изображение'
+        } catch (visionError) {
+          console.error('Vision generation failed:', visionError)
+          response = 'Не удалось проанализировать изображение. Попробуйте ещё раз или опишите содержимое текстом.'
         }
-        
-        const visionResponse = await groq.chat.completions.create({
-          model: 'llama-3.2-90b-vision-preview',
-          messages: [
-            { role: 'system', content: character.systemPrompt },
-            { 
-              role: 'user', 
-              // @ts-expect-error - Groq SDK types don't fully support vision yet
-              content: contentParts
-            }
-          ],
-          temperature: dynamicTemperature,
-          max_tokens: 4096,
-        })
-        response = visionResponse.choices[0]?.message?.content || 'Не удалось проанализировать изображение'
       } else {
         response = await generateCompletion(
           character.systemPrompt,

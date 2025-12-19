@@ -324,3 +324,121 @@ export async function generateParallel(
 
 // Экспорт для обратной совместимости с groq.ts
 export { generateGroq as generateCompletion }
+
+// === VISION SUPPORT ===
+
+/**
+ * Генерация с поддержкой изображений (Vision)
+ * Использует Groq с fallback на Gemini
+ */
+export async function generateWithVision(
+  systemPrompt: string,
+  textContent: string,
+  imageUrls: string[],
+  options: GenerateOptions = {}
+): Promise<GenerateResult> {
+  const startTime = Date.now()
+  const errors: string[] = []
+
+  // 1. Пробуем Groq Vision
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log('[AI Router] Trying Groq Vision...')
+      
+      const contentParts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
+        { type: 'text', text: `${systemPrompt}\n\n${textContent}` }
+      ]
+      
+      for (const url of imageUrls) {
+        contentParts.push({ type: 'image_url', image_url: { url } })
+      }
+
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Groq Vision timeout')), 45000)
+      )
+
+      const requestPromise = groq.chat.completions.create({
+        model: 'llama-3.2-90b-vision-preview',
+        messages: [{ 
+          role: 'user', 
+          // @ts-expect-error - Groq SDK types don't fully support vision yet
+          content: contentParts 
+        }],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+      })
+
+      const res = await Promise.race([requestPromise, timeoutPromise])
+      const content = res.choices[0]?.message?.content
+      
+      if (content) {
+        console.log(`[AI Router] Groq Vision success in ${Date.now() - startTime}ms`)
+        return { content, provider: 'groq-vision', latencyMs: Date.now() - startTime }
+      }
+    } catch (e: any) {
+      errors.push(`groq-vision: ${e.message}`)
+      console.warn('[AI Router] Groq Vision failed:', e.message)
+    }
+  }
+
+  // 2. Fallback на Gemini Vision
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      console.log('[AI Router] Trying Gemini Vision...')
+      
+      const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
+        { text: `${systemPrompt}\n\n${textContent}` }
+      ]
+      
+      // Конвертируем base64 изображения для Gemini
+      for (const url of imageUrls) {
+        if (url.startsWith('data:')) {
+          const match = url.match(/^data:([^;]+);base64,(.+)$/)
+          if (match) {
+            parts.push({
+              inline_data: {
+                mime_type: match[1],
+                data: match[2]
+              }
+            })
+          }
+        }
+      }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: options.temperature ?? 0.7,
+              maxOutputTokens: options.maxTokens ?? 4096,
+            },
+          }),
+          signal: controller.signal,
+        }
+      )
+
+      clearTimeout(timeoutId)
+
+      if (res.ok) {
+        const data = await res.json()
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        
+        if (content) {
+          console.log(`[AI Router] Gemini Vision success in ${Date.now() - startTime}ms`)
+          return { content, provider: 'gemini-vision', latencyMs: Date.now() - startTime }
+        }
+      }
+    } catch (e: any) {
+      errors.push(`gemini-vision: ${e.message}`)
+      console.warn('[AI Router] Gemini Vision failed:', e.message)
+    }
+  }
+
+  throw new Error(`All vision providers failed: ${errors.join('; ')}`)
