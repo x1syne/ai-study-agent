@@ -31,56 +31,26 @@ function isTextCheckResult(obj: unknown): obj is TextCheckResult {
 // Список бессмысленных ответов которые ВСЕГДА неправильные
 const INVALID_ANSWERS = [
   'не знаю', 'незнаю', 'нз', 'хз', 'не помню', 'непомню', 'не понимаю',
-  'не могу', 'затрудняюсь', 'пропустить', 'skip', 'pass', 'idk', 
-  "don't know", 'dont know', 'no idea', 'не в курсе', '?', '???',
-  'ааа', 'эээ', 'ммм', 'ну', 'да', 'нет', 'может', 'наверное',
-  'фиг знает', 'без понятия', 'понятия не имею', 'не уверен'
+  'затрудняюсь', 'пропустить', 'skip', 'pass', 'idk', "don't know", 
+  'no idea', 'без понятия', 'понятия не имею', 'фиг знает'
 ]
-
-// Расчёт схожести текстов (коэффициент Жаккара по словам)
-function calculateSimilarity(text1: string, text2: string): number {
-  const normalize = (s: string) => s.toLowerCase()
-    .replace(/[.,!?;:'"()\-–—\[\]{}]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  
-  const words1 = normalize(text1).split(' ').filter(w => w.length > 2)
-  const words2 = normalize(text2).split(' ').filter(w => w.length > 2)
-  
-  if (words1.length === 0 || words2.length === 0) return 0
-  
-  // Считаем пересечение (с учётом частичного совпадения слов)
-  let matchCount = 0
-  for (const w1 of words1) {
-    for (const w2 of words2) {
-      if (w1 === w2 || w1.includes(w2) || w2.includes(w1)) {
-        matchCount++
-        break
-      }
-    }
-  }
-  
-  // Коэффициент = пересечение / объединение
-  const union = words1.length + words2.length - matchCount
-  return union > 0 ? matchCount / union : 0
-}
 
 // Проверка на бессмысленный ответ
 function isInvalidAnswer(answer: string): boolean {
   const normalized = answer.toLowerCase().trim()
   
-  // Проверяем точное совпадение с бессмысленными ответами
-  if (INVALID_ANSWERS.some(inv => normalized === inv || normalized.includes(inv))) {
+  // Точное совпадение с бессмысленными ответами
+  if (INVALID_ANSWERS.some(inv => normalized === inv)) {
     return true
   }
   
-  // Слишком короткий ответ (меньше 5 символов) для развёрнутых вопросов
-  if (normalized.length < 5) {
+  // Рандомные буквы: только согласные или повторяющиеся символы (ааааа, asdfgh)
+  if (/^[бвгджзклмнпрстфхцчшщ\s]+$/i.test(normalized) || /^(.)\1{3,}$/.test(normalized)) {
     return true
   }
   
-  // Только цифры или спецсимволы
-  if (/^[\d\s\W]+$/.test(normalized)) {
+  // Только спецсимволы или цифры
+  if (/^[\d\s\W]+$/.test(normalized) && normalized.length < 10) {
     return true
   }
   
@@ -142,47 +112,26 @@ ${solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${solution}\n\`\`\`` :
       return NextResponse.json({ correct: false, feedback: 'Не удалось проверить код. Попробуйте ещё раз.' })
 
     } else if (type === 'text') {
-      // Проверка текстового ответа - СТРОГАЯ ВЕРСИЯ
+      // Проверка текстового ответа
       const trimmedAnswer = userAnswer.trim()
       
-      // 1. Проверка на пустой ответ
+      // 1. Пустой ответ
       if (trimmedAnswer.length === 0) {
-        return NextResponse.json({ correct: false, feedback: 'Введите ответ', suggestion: 'Напишите развёрнутый ответ на вопрос' })
+        return NextResponse.json({ correct: false, feedback: 'Введите ответ', suggestion: '' })
       }
       
-      // 2. Проверка на бессмысленный ответ ("не знаю", "хз" и т.д.)
+      // 2. Бессмысленный ответ ("не знаю", рандомные буквы)
       if (isInvalidAnswer(trimmedAnswer)) {
-        return NextResponse.json({ 
-          correct: false, 
-          feedback: 'Это не ответ на вопрос', 
-          suggestion: 'Попробуйте ответить своими словами, используя знания из теории' 
-        })
+        return NextResponse.json({ correct: false, feedback: 'Неправильно', suggestion: 'Попробуйте ответить на вопрос' })
       }
       
-      // 3. Проверка минимальной длины (минимум 10 символов для развёрнутых ответов)
-      if (trimmedAnswer.length < 10) {
-        return NextResponse.json({ 
-          correct: false, 
-          feedback: 'Ответ слишком короткий', 
-          suggestion: 'Напишите более развёрнутый ответ (минимум 2-3 слова)' 
-        })
-      }
-      
-      // 4. Расчёт схожести с эталоном (минимум 40%)
-      const similarity = correctAnswer ? calculateSimilarity(trimmedAnswer, correctAnswer) : 0
-      console.log(`[TextCheck] Similarity: ${(similarity * 100).toFixed(1)}% | User: "${trimmedAnswer.slice(0, 50)}..." | Correct: "${(correctAnswer || '').slice(0, 50)}..."`)
-      
-      // 5. Если схожесть меньше 20% - сразу отклоняем без AI
-      if (correctAnswer && similarity < 0.2) {
-        return NextResponse.json({ 
-          correct: false, 
-          feedback: 'Ответ не соответствует теме вопроса', 
-          suggestion: `Эталонный ответ: ${correctAnswer.slice(0, 200)}${correctAnswer.length > 200 ? '...' : ''}` 
-        })
+      // 3. Слишком короткий (меньше 3 символов)
+      if (trimmedAnswer.length < 3) {
+        return NextResponse.json({ correct: false, feedback: 'Ответ слишком короткий', suggestion: '' })
       }
 
-      // 6. AI проверка с СТРОГИМИ правилами
-      const prompt = `Ты СТРОГИЙ преподаватель. Проверь ответ студента.
+      // 4. AI проверка по СМЫСЛУ (не по длине!)
+      const prompt = `Проверь ответ студента на вопрос.
 
 ВОПРОС: ${question}
 
@@ -190,66 +139,60 @@ ${solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${solution}\n\`\`\`` :
 
 ОТВЕТ СТУДЕНТА: ${trimmedAnswer}
 
-СХОЖЕСТЬ ТЕКСТОВ: ${(similarity * 100).toFixed(0)}%
+ПРАВИЛА:
+1. Проверяй по СМЫСЛУ, а не по длине или точному совпадению слов
+2. Краткий ответ с ключевыми понятиями = ПРАВИЛЬНО (мы не эссе пишем)
+3. Ответ своими словами, но верный по сути = ПРАВИЛЬНО
+4. "Не знаю", рандомные буквы, ответ не по теме = НЕПРАВИЛЬНО
+5. Фактические ошибки = НЕПРАВИЛЬНО
 
-════════════════════════════════════════
-СТРОГИЕ ПРАВИЛА ПРОВЕРКИ:
-════════════════════════════════════════
+ПРИМЕРЫ:
+- Эталон: "Переменная - это именованная область памяти для хранения данных"
+- "область памяти для данных" → ПРАВИЛЬНО (ключевые слова есть)
+- "место где хранятся значения" → ПРАВИЛЬНО (верно по смыслу)
+- "не знаю" → НЕПРАВИЛЬНО
+- "asdfgh" → НЕПРАВИЛЬНО
 
-ОТВЕТ НЕПРАВИЛЬНЫЙ (correct: false), если:
-- Студент написал "не знаю", "не помню", "затрудняюсь" и подобное
-- Ответ не по теме вопроса
-- Ответ слишком общий и не содержит конкретики
-- Схожесть с эталоном меньше 40%
-- Ответ содержит грубые фактические ошибки
-
-ОТВЕТ ПРАВИЛЬНЫЙ (correct: true), ТОЛЬКО если:
-- Содержит минимум 40% ключевых идей из эталона
-- По смыслу отвечает на поставленный вопрос
-- Нет грубых фактических ошибок
-
-НЕ ЗАСЧИТЫВАЙ ответы типа:
-- "это важно для понимания" (слишком общо)
-- "помогает в работе" (не конкретно)
-- Любые отговорки и уклонения от ответа
-
-Ответь СТРОГО в формате JSON:
-{"correct": true/false, "feedback": "краткая оценка", "suggestion": "что нужно исправить или добавить"}`
+Ответь JSON: {"correct": true/false, "feedback": "краткий комментарий"}`
 
       try {
         const result = await generateWithRouter(
           'fast',
-          'Ты СТРОГИЙ преподаватель. НЕ засчитывай бессмысленные ответы. Требуй конкретики. Отвечай ТОЛЬКО JSON.',
+          'Ты репетитор. Проверяй по смыслу. Краткие правильные ответы засчитывай. Бессмыслицу отклоняй. Отвечай ТОЛЬКО JSON.',
           prompt,
-          { json: true, temperature: 0.1 } // Низкая температура для строгости
+          { json: true, temperature: 0.3 }
         )
 
         const parsed = safeParseAIJson<TextCheckResult>(result.content, isTextCheckResult)
         if (parsed) {
-          // Дополнительная проверка: если AI засчитал, но схожесть < 40% - не засчитываем
-          if (parsed.correct && correctAnswer && similarity < 0.4) {
-            console.log(`[TextCheck] AI approved but similarity too low (${(similarity * 100).toFixed(0)}%), rejecting`)
-            return NextResponse.json({ 
-              correct: false, 
-              feedback: 'Ответ недостаточно полный', 
-              suggestion: `Добавьте больше деталей. Эталон: ${correctAnswer.slice(0, 150)}...` 
-            })
-          }
           return NextResponse.json(parsed)
         }
       } catch (e) {
         console.error('Text check AI error:', e)
       }
 
-      // Fallback: проверка по схожести (минимум 40%)
-      if (correctAnswer && similarity >= 0.4) {
-        return NextResponse.json({ correct: true, feedback: 'Правильно!', suggestion: '' })
+      // Fallback: простая проверка ключевых слов
+      if (correctAnswer) {
+        const normalize = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-–—]/g, '').trim()
+        const userWords = normalize(trimmedAnswer).split(/\s+/).filter(w => w.length > 3)
+        const ansWords = normalize(correctAnswer).split(/\s+/).filter(w => w.length > 3)
+        
+        // Считаем сколько ключевых слов из ответа есть у студента
+        let matches = 0
+        for (const aw of ansWords) {
+          if (userWords.some(uw => uw.includes(aw) || aw.includes(uw))) matches++
+        }
+        
+        // Если есть хотя бы 2 ключевых слова или 30% совпадение - засчитываем
+        if (matches >= 2 || (ansWords.length > 0 && matches / ansWords.length >= 0.3)) {
+          return NextResponse.json({ correct: true, feedback: 'Правильно!', suggestion: '' })
+        }
       }
 
       return NextResponse.json({ 
         correct: false, 
-        feedback: 'Ответ не соответствует эталону', 
-        suggestion: correctAnswer ? `Эталонный ответ: ${correctAnswer.slice(0, 200)}` : 'Изучите теорию и попробуйте снова' 
+        feedback: 'Неправильно', 
+        suggestion: correctAnswer ? `Правильный ответ: ${correctAnswer.slice(0, 150)}` : '' 
       })
 
     } else if (type === 'multiple') {

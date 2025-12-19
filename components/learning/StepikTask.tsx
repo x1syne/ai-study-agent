@@ -207,55 +207,35 @@ export function StepikTask({
   }
 
   // Список бессмысленных ответов
-  const INVALID_ANSWERS = ['не знаю', 'незнаю', 'нз', 'хз', 'не помню', 'не понимаю', 'затрудняюсь', 'пропустить', 'skip', 'idk', '?', 'ааа', 'эээ', 'да', 'нет', 'может', 'наверное', 'фиг знает', 'без понятия']
-  
-  // Расчёт схожести текстов
-  const calcSimilarity = (t1: string, t2: string): number => {
-    const norm = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-–—\[\]{}]/g, '').replace(/\s+/g, ' ').trim()
-    const w1 = norm(t1).split(' ').filter(w => w.length > 2)
-    const w2 = norm(t2).split(' ').filter(w => w.length > 2)
-    if (w1.length === 0 || w2.length === 0) return 0
-    let match = 0
-    for (const a of w1) {
-      for (const b of w2) {
-        if (a === b || a.includes(b) || b.includes(a)) { match++; break }
-      }
-    }
-    const union = w1.length + w2.length - match
-    return union > 0 ? match / union : 0
-  }
+  const INVALID_ANSWERS = ['не знаю', 'незнаю', 'нз', 'хз', 'не помню', 'затрудняюсь', 'пропустить', 'skip', 'idk', 'без понятия', 'фиг знает']
 
-  // AI-проверка текстового ответа - СТРОГАЯ ВЕРСИЯ
+  // AI-проверка текстового ответа
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
     const trimmedAnswer = userAnswer.trim()
     const correctAnswer = correctAnswers[0] || ''
     
     // 1. Пустой ответ
     if (trimmedAnswer.length === 0) {
-      return { correct: false, feedback: "Введите ответ", suggestion: "Напишите развёрнутый ответ" }
+      return { correct: false, feedback: "Введите ответ", suggestion: "" }
     }
     
-    // 2. Бессмысленный ответ ("не знаю", "хз" и т.д.)
+    // 2. Бессмысленный ответ ("не знаю" и т.д.)
     const normalized = trimmedAnswer.toLowerCase()
-    if (INVALID_ANSWERS.some(inv => normalized === inv || normalized.includes(inv))) {
-      return { correct: false, feedback: "Это не ответ на вопрос", suggestion: "Попробуйте ответить своими словами" }
+    if (INVALID_ANSWERS.some(inv => normalized === inv)) {
+      return { correct: false, feedback: "Неправильно", suggestion: "Попробуйте ответить на вопрос" }
     }
     
-    // 3. Слишком короткий (меньше 10 символов)
-    if (trimmedAnswer.length < 10) {
-      return { correct: false, feedback: "Ответ слишком короткий", suggestion: "Напишите минимум 2-3 слова" }
+    // 3. Рандомные буквы
+    if (/^[бвгджзклмнпрстфхцчшщ\s]+$/i.test(normalized) || /^(.)\1{3,}$/.test(normalized)) {
+      return { correct: false, feedback: "Неправильно", suggestion: "" }
     }
     
-    // 4. Проверка схожести (минимум 40%)
-    const similarity = calcSimilarity(trimmedAnswer, correctAnswer)
-    console.log(`[Client] Similarity: ${(similarity * 100).toFixed(0)}%`)
-    
-    // Если схожесть < 20% - сразу отклоняем
-    if (correctAnswer && similarity < 0.2) {
-      return { correct: false, feedback: "Ответ не по теме", suggestion: `Эталон: ${correctAnswer.slice(0, 150)}...` }
+    // 4. Слишком короткий (меньше 3 символов)
+    if (trimmedAnswer.length < 3) {
+      return { correct: false, feedback: "Ответ слишком короткий", suggestion: "" }
     }
 
-    // 5. Отправляем на сервер для AI проверки
+    // 5. Отправляем на сервер для AI проверки по смыслу
     try {
       const res = await fetch('/api/check-answer', {
         method: 'POST',
@@ -280,16 +260,26 @@ export function StepikTask({
       console.error('AI check failed:', e)
     }
     
-    // Fallback: проверка по схожести (минимум 40%)
-    if (correctAnswer && similarity >= 0.4) {
-      return { correct: true, feedback: "Правильно!", suggestion: "" }
+    // Fallback: проверка ключевых слов
+    if (correctAnswer) {
+      const norm = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-–—]/g, '').trim()
+      const userWords = norm(trimmedAnswer).split(/\s+/).filter(w => w.length > 3)
+      const ansWords = norm(correctAnswer).split(/\s+/).filter(w => w.length > 3)
+      
+      let matches = 0
+      for (const aw of ansWords) {
+        if (userWords.some(uw => uw.includes(aw) || aw.includes(uw))) matches++
+      }
+      
+      if (matches >= 2 || (ansWords.length > 0 && matches / ansWords.length >= 0.3)) {
+        return { correct: true, feedback: "Правильно!", suggestion: "" }
+      }
     }
     
-    // Не засчитываем
     return { 
       correct: false, 
-      feedback: "Ответ не соответствует эталону", 
-      suggestion: `Эталонный ответ: ${correctAnswer.slice(0, 150)}${correctAnswer.length > 150 ? '...' : ''}` 
+      feedback: "Неправильно", 
+      suggestion: correctAnswer ? `Правильный ответ: ${correctAnswer.slice(0, 150)}` : '' 
     }
   }
 
