@@ -116,6 +116,22 @@ export function StepikTask({
   const difficultyLabels = { easy: 'Лёгкое', medium: 'Среднее', hard: 'Сложное' }
 
   const checkCodeWithAI = async (): Promise<boolean> => {
+    const codeTask = task as CodeTask
+    const starterCode = codeTask.starterCode || ''
+    const trimmedCode = codeAnswer.trim()
+    
+    // Проверка: код не пустой и отличается от стартового
+    if (!trimmedCode || trimmedCode.length < 10) {
+      setCodeCheckResult({ correct: false, feedback: 'Напишите код для решения задачи' })
+      return false
+    }
+    
+    // Если код совпадает со стартовым - не засчитываем
+    if (trimmedCode === starterCode.trim() || trimmedCode === '// Начните писать код здесь') {
+      setCodeCheckResult({ correct: false, feedback: 'Вы не написали решение. Напишите код.' })
+      return false
+    }
+    
     setCodeCheckLoading(true)
     try {
       const res = await fetch('/api/chat', {
@@ -124,12 +140,14 @@ export function StepikTask({
         body: JSON.stringify({
           message: `Проверь код студента на задание.
 ЗАДАНИЕ: ${task.question}
-${(task as CodeTask).testCases ? `ТЕСТ-КЕЙСЫ:\n${(task as CodeTask).testCases!.map(tc => `Вход: ${tc.input} → Ожидается: ${tc.expected}`).join('\n')}` : ''}
-КОД СТУДЕНТА:\n\`\`\`${(task as CodeTask).language || 'code'}\n${codeAnswer}\n\`\`\`
-${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(task as CodeTask).solution}\n\`\`\`` : ''}
+${codeTask.testCases ? `ТЕСТ-КЕЙСЫ:\n${codeTask.testCases.map(tc => `Вход: ${tc.input} → Ожидается: ${tc.expected}`).join('\n')}` : ''}
+КОД СТУДЕНТА:\n\`\`\`${codeTask.language || 'code'}\n${codeAnswer}\n\`\`\`
+${codeTask.solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${codeTask.solution}\n\`\`\`` : ''}
+
+ВАЖНО: Если код пустой, содержит только комментарии, или не решает задачу - ответь correct: false.
 Оцени код: правильно ли он решает задачу? Ответь в формате JSON:
 {"correct": true/false, "feedback": "краткий отзыв на русском"}`,
-          systemPrompt: 'Ты эксперт по программированию. Проверяй код строго по логике, не по синтаксису. Отвечай ТОЛЬКО JSON.'
+          systemPrompt: 'Ты строгий эксперт по программированию. Код должен РЕАЛЬНО решать задачу. Пустой код или комментарии = неправильно. Отвечай ТОЛЬКО JSON.'
         })
       })
       if (res.ok) {
@@ -143,12 +161,16 @@ ${(task as CodeTask).solution ? `ЭТАЛОННОЕ РЕШЕНИЕ:\n\`\`\`\n${(
             return result.correct === true
           }
         } catch { }
-        setCodeCheckResult({ correct: codeAnswer.length > 50, feedback: 'Код принят на проверку' })
-        return codeAnswer.length > 50
       }
-    } catch (e) { console.error('Code check failed:', e) }
+      // AI не ответил - не засчитываем без проверки
+      setCodeCheckResult({ correct: false, feedback: 'Не удалось проверить код. Попробуйте ещё раз.' })
+      return false
+    } catch (e) { 
+      console.error('Code check failed:', e)
+      setCodeCheckResult({ correct: false, feedback: 'Ошибка проверки. Попробуйте ещё раз.' })
+      return false
+    }
     finally { setCodeCheckLoading(false) }
-    return codeAnswer.trim().length > 20
   }
 
   // AI-проверка текстового ответа - анализирует смысл, а не буквальное совпадение
