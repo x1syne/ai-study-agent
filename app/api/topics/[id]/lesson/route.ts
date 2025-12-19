@@ -9,6 +9,93 @@ import { getRAGContext } from '@/lib/search'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
 
+// Валидация числовых ответов через AI - пересчитывает ответ и исправляет если неверный
+async function validateNumberAnswers(tasks: any[]): Promise<any[]> {
+  const numberTasks = tasks.filter(t => t.type === 'number' && t.needsValidation)
+  
+  if (numberTasks.length === 0) return tasks
+  
+  console.log('[Validation] Validating ' + numberTasks.length + ' number tasks...')
+  
+  // Валидируем по 3 задания за раз чтобы не превысить лимиты
+  const batchSize = 3
+  const validatedTasks = [...tasks]
+  
+  for (let i = 0; i < numberTasks.length; i += batchSize) {
+    const batch = numberTasks.slice(i, i + batchSize)
+    
+    try {
+      const prompt = `Проверь правильность ответов в этих задачах. Для КАЖДОЙ задачи:
+1. Реши задачу самостоятельно
+2. Сравни с указанным ответом
+3. Если ответ неверный - укажи правильный
+
+ЗАДАЧИ:
+${batch.map((t, idx) => `
+ЗАДАЧА ${idx + 1}:
+Вопрос: ${t.question}
+Указанный ответ: ${t.correctAnswer}
+`).join('\n')}
+
+Верни JSON массив с исправленными ответами:
+[
+  {"taskIndex": 0, "calculatedAnswer": число, "isCorrect": true/false, "explanation": "как решал"},
+  ...
+]
+
+ВАЖНО: Реши каждую задачу ЗАНОВО и укажи правильный ответ!`
+
+      const result = await generateWithRouter(
+        'fast',
+        'Ты математик-эксперт. Решай задачи точно и проверяй ответы. Отвечай ТОЛЬКО JSON.',
+        prompt,
+        { json: true, temperature: 0.1, maxTokens: 2000 }
+      )
+      
+      const validations = JSON.parse(result.content)
+      
+      if (Array.isArray(validations)) {
+        for (const v of validations) {
+          if (typeof v.taskIndex === 'number' && typeof v.calculatedAnswer === 'number') {
+            const originalTask = batch[v.taskIndex]
+            if (originalTask) {
+              const taskIdx = tasks.findIndex(t => t.question === originalTask.question)
+              if (taskIdx !== -1) {
+                const oldAnswer = validatedTasks[taskIdx].correctAnswer
+                const newAnswer = v.calculatedAnswer
+                
+                // Если ответы сильно отличаются - исправляем
+                if (Math.abs(oldAnswer - newAnswer) > 0.5) {
+                  console.log('[Validation] Fixed answer for task: ' + originalTask.question.slice(0, 50))
+                  console.log('[Validation] Old: ' + oldAnswer + ' -> New: ' + newAnswer)
+                  validatedTasks[taskIdx].correctAnswer = newAnswer
+                  validatedTasks[taskIdx].explanation = (validatedTasks[taskIdx].explanation || '') + 
+                    '\n\nРешение: ' + (v.explanation || '')
+                }
+                
+                delete validatedTasks[taskIdx].needsValidation
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Validation] Batch validation failed:', e)
+    }
+    
+    // Небольшая пауза между батчами
+    if (i + batchSize < numberTasks.length) {
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
+  
+  // Убираем флаг needsValidation у оставшихся
+  return validatedTasks.map(t => {
+    const { needsValidation, ...rest } = t
+    return rest
+  })
+}
+
 // Обёртка для совместимости со старым API
 async function generateCompletion(
   systemPrompt: string,
@@ -582,7 +669,7 @@ ${practiceInstructions}
         }
       }
       
-      // Для number - проверяем correctAnswer
+      // Для number - проверяем correctAnswer и ВАЛИДИРУЕМ через пересчёт
       if (task.type === 'number') {
         if (typeof task.correctAnswer !== 'number' && typeof task.correctAnswer !== 'string') {
           console.log('[Practice] Task ' + idx + ' number has invalid correctAnswer, skipping')
@@ -590,7 +677,8 @@ ${practiceInstructions}
         }
         task.correctAnswer = parseFloat(task.correctAnswer)
         if (isNaN(task.correctAnswer)) return null
-        task.tolerance = task.tolerance || 0.01
+        task.tolerance = task.tolerance || 0.1 // Увеличиваем tolerance для погрешности
+        task.needsValidation = true // Помечаем для валидации
       }
       
       // Для text - проверяем correctAnswers
@@ -645,7 +733,10 @@ ${practiceInstructions}
       throw new Error('Not enough valid tasks after validation')
     }
     
-    return { tasks: uniqueTasks }
+    // Валидация числовых ответов через AI
+    const tasksWithValidation = await validateNumberAnswers(uniqueTasks)
+    
+    return { tasks: tasksWithValidation }
   } catch (e) {
     console.error('Practice from theory failed:', e)
     return generatePracticeTasks(topicName, courseTitle)
@@ -700,7 +791,19 @@ async function generatePracticeTasks(topicName: string, courseTitle: string) {
     const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.6, maxTokens: 8000 })
     const content = JSON.parse(response)
     if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
-    return content
+    
+    // Помечаем числовые задания для валидации
+    const tasksWithFlags = content.tasks.map((task: any) => {
+      if (task.type === 'number') {
+        task.needsValidation = true
+      }
+      return task
+    })
+    
+    // Валидация числовых ответов через AI
+    const validatedTasks = await validateNumberAnswers(tasksWithFlags)
+    
+    return { tasks: validatedTasks }
   } catch (e) {
     console.error('Practice generation failed:', e)
     return {
