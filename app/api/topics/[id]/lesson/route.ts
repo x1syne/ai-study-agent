@@ -266,8 +266,24 @@ async function generatePracticeFromTheory(topicName: string, courseTitle: string
 ЭТО ТЕМА ПО ПРОГРАММИРОВАНИЮ! Создай МИНИМУМ 18 заданий:
 
 БЛОК 1 - ТЕОРИЯ (3 задания, type: "single"):
-- Вопросы "что делает этот код", "какой результат выведет"
-- Проверка понимания синтаксиса
+КРИТИЧЕСКИ ВАЖНО для вопросов про код:
+- Если спрашиваешь "что выведет код" - КОД ДОЛЖЕН БЫТЬ В ВОПРОСЕ!
+- Используй markdown блоки для кода в вопросе
+
+ПРИМЕР ПРАВИЛЬНОГО ВОПРОСА:
+{
+  "type": "single",
+  "question": "Что выведет следующий код?\\n\\n\`\`\`${progLang}\\nint x = 5;\\nint y = x * 2;\\ncout << y;\\n\`\`\`",
+  "options": ["5", "10", "15", "Ошибка компиляции"],
+  "correctAnswer": 1,
+  "explanation": "Переменная y = 5 * 2 = 10"
+}
+
+ПРИМЕР НЕПРАВИЛЬНОГО ВОПРОСА (НЕ ДЕЛАЙ ТАК!):
+{
+  "question": "Какой результат выведет этот код?",  // ГДЕ КОД???
+  "options": ["0", "5", "10", "Hello"]
+}
 
 БЛОК 2 - ПРАКТИКА КОДА (15 заданий, type: "code"):
 Задания где пользователь САМ ПИШЕТ КОД!
@@ -528,9 +544,91 @@ ${practiceInstructions}
     
     if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
     
+    // Валидация и исправление заданий
+    const validatedTasks = content.tasks.map((task: any, idx: number) => {
+      // Проверяем что вопрос не пустой и достаточно длинный
+      if (!task.question || task.question.length < 15) {
+        console.log('[Practice] Task ' + idx + ' has invalid question, skipping')
+        return null
+      }
+      
+      // Для вопросов про код - проверяем что код есть в вопросе
+      const codeQuestionPatterns = /что выведет|какой результат|что вернёт|что напечатает|что будет выведено|результат выполнения/i
+      if (codeQuestionPatterns.test(task.question) && !task.question.includes('```') && task.type === 'single') {
+        console.log('[Practice] Task ' + idx + ' asks about code but has no code block, skipping')
+        return null
+      }
+      
+      // Для single - проверяем options
+      if (task.type === 'single') {
+        if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
+          console.log('[Practice] Task ' + idx + ' single has invalid options, skipping')
+          return null
+        }
+        // Проверяем correctAnswer
+        if (typeof task.correctAnswer !== 'number' || task.correctAnswer < 0 || task.correctAnswer >= task.options.length) {
+          task.correctAnswer = 0 // Исправляем на первый вариант
+        }
+      }
+      
+      // Для multiple - проверяем correctAnswers
+      if (task.type === 'multiple') {
+        if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
+          console.log('[Practice] Task ' + idx + ' multiple has invalid options, skipping')
+          return null
+        }
+        if (!task.correctAnswers || !Array.isArray(task.correctAnswers) || task.correctAnswers.length === 0) {
+          task.correctAnswers = [0] // Исправляем
+        }
+      }
+      
+      // Для number - проверяем correctAnswer
+      if (task.type === 'number') {
+        if (typeof task.correctAnswer !== 'number' && typeof task.correctAnswer !== 'string') {
+          console.log('[Practice] Task ' + idx + ' number has invalid correctAnswer, skipping')
+          return null
+        }
+        task.correctAnswer = parseFloat(task.correctAnswer)
+        if (isNaN(task.correctAnswer)) return null
+        task.tolerance = task.tolerance || 0.01
+      }
+      
+      // Для text - проверяем correctAnswers
+      if (task.type === 'text') {
+        if (!task.correctAnswers) {
+          if (task.correctAnswer) {
+            task.correctAnswers = [String(task.correctAnswer)]
+          } else {
+            console.log('[Practice] Task ' + idx + ' text has no correctAnswers, skipping')
+            return null
+          }
+        }
+        if (!Array.isArray(task.correctAnswers)) {
+          task.correctAnswers = [String(task.correctAnswers)]
+        }
+      }
+      
+      // Для code - проверяем обязательные поля
+      if (task.type === 'code') {
+        if (!task.language) task.language = 'python'
+        if (!task.starterCode) task.starterCode = '// Напишите код здесь\n'
+        if (!task.solution) {
+          console.log('[Practice] Task ' + idx + ' code has no solution, skipping')
+          return null
+        }
+      }
+      
+      // Добавляем id и difficulty если нет
+      task.id = task.id || idx + 1
+      task.difficulty = task.difficulty || 'medium'
+      task.explanation = task.explanation || 'Смотрите теорию по данной теме.'
+      
+      return task
+    }).filter(Boolean)
+    
     // Дедупликация: убираем задания с похожими вопросами
     const seenQuestions = new Set<string>()
-    const uniqueTasks = content.tasks.filter((task: any) => {
+    const uniqueTasks = validatedTasks.filter((task: any) => {
       if (!task.question) return false
       const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, 40)
       if (seenQuestions.has(normalized)) {
@@ -541,7 +639,12 @@ ${practiceInstructions}
       return true
     })
     
-    console.log('[Practice] Generated ' + content.tasks.length + ' tasks, unique: ' + uniqueTasks.length)
+    console.log('[Practice] Generated ' + content.tasks.length + ' tasks, validated: ' + validatedTasks.length + ', unique: ' + uniqueTasks.length)
+    
+    if (uniqueTasks.length < 3) {
+      throw new Error('Not enough valid tasks after validation')
+    }
+    
     return { tasks: uniqueTasks }
   } catch (e) {
     console.error('Practice from theory failed:', e)

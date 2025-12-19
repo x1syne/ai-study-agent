@@ -3,6 +3,9 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Check, X, Lightbulb, ChevronRight, ChevronLeft, RotateCcw, MessageCircle, Loader2, GripVertical } from 'lucide-react'
 import { Button, Badge } from '@/components/ui'
+import ReactMarkdown from 'react-markdown'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = []
@@ -552,7 +555,35 @@ export function StepikTask({
 
       {/* Question */}
       <div className="p-4 sm:p-6">
-        <p className="text-white text-lg mb-6 leading-relaxed">{task.question}</p>
+        <div className="text-white text-lg mb-6 leading-relaxed prose prose-invert max-w-none">
+          <ReactMarkdown
+            components={{
+              code({ node, className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || '')
+                const isInline = !match && !String(children).includes('\n')
+                return isInline ? (
+                  <code className="bg-slate-700 px-1.5 py-0.5 rounded text-primary-400 text-sm" {...props}>
+                    {children}
+                  </code>
+                ) : (
+                  <SyntaxHighlighter
+                    style={oneDark}
+                    language={match ? match[1] : 'text'}
+                    PreTag="div"
+                    className="rounded-lg my-3 text-sm"
+                  >
+                    {String(children).replace(/\n$/, '')}
+                  </SyntaxHighlighter>
+                )
+              },
+              p({ children }) {
+                return <p className="mb-2">{children}</p>
+              }
+            }}
+          >
+            {task.question}
+          </ReactMarkdown>
+        </div>
 
         {/* Single choice */}
         {task.type === 'single' && (task as SingleTask).options && (
