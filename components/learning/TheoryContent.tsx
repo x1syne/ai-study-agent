@@ -3,9 +3,77 @@
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { Copy, Check, Lightbulb, AlertTriangle, CheckCircle, XCircle, Play } from 'lucide-react'
 import { useState } from 'react'
 import { TextToSpeech } from '@/components/speech/TextToSpeech'
+
+// Функция для преобразования Unicode математических символов в LaTeX
+function convertMathToLatex(content: string): string {
+  // Заменяем Unicode символы на LaTeX эквиваленты
+  const replacements: [RegExp, string][] = [
+    // Степени (superscript)
+    [/⁰/g, '^0'], [/¹/g, '^1'], [/²/g, '^2'], [/³/g, '^3'],
+    [/⁴/g, '^4'], [/⁵/g, '^5'], [/⁶/g, '^6'], [/⁷/g, '^7'],
+    [/⁸/g, '^8'], [/⁹/g, '^9'], [/ⁿ/g, '^n'],
+    // Индексы (subscript)
+    [/₀/g, '_0'], [/₁/g, '_1'], [/₂/g, '_2'], [/₃/g, '_3'],
+    [/₄/g, '_4'], [/₅/g, '_5'], [/₆/g, '_6'], [/₇/g, '_7'],
+    [/₈/g, '_8'], [/₉/g, '_9'], [/ₙ/g, '_n'], [/ₓ/g, '_x'],
+    // Греческие буквы
+    [/α/g, '\\alpha'], [/β/g, '\\beta'], [/γ/g, '\\gamma'], [/δ/g, '\\delta'],
+    [/ε/g, '\\epsilon'], [/θ/g, '\\theta'], [/λ/g, '\\lambda'], [/μ/g, '\\mu'],
+    [/π/g, '\\pi'], [/σ/g, '\\sigma'], [/τ/g, '\\tau'], [/φ/g, '\\phi'],
+    [/ω/g, '\\omega'], [/Δ/g, '\\Delta'], [/Σ/g, '\\Sigma'], [/Ω/g, '\\Omega'],
+    // Математические операторы
+    [/×/g, '\\times'], [/÷/g, '\\div'], [/±/g, '\\pm'], [/∓/g, '\\mp'],
+    [/≈/g, '\\approx'], [/≠/g, '\\neq'], [/≤/g, '\\leq'], [/≥/g, '\\geq'],
+    [/√/g, '\\sqrt'], [/∞/g, '\\infty'], [/∑/g, '\\sum'], [/∏/g, '\\prod'],
+    [/∫/g, '\\int'], [/∂/g, '\\partial'], [/∇/g, '\\nabla'],
+    // Стрелки
+    [/→/g, '\\rightarrow'], [/←/g, '\\leftarrow'], [/↔/g, '\\leftrightarrow'],
+    [/⇒/g, '\\Rightarrow'], [/⇐/g, '\\Leftarrow'],
+  ]
+  
+  let result = content
+  
+  // Находим формулы в блоках цитат (> **Формула**) и оборачиваем в $$
+  result = result.replace(
+    /^(>\s*(?:\*\*[^*]+\*\*\s*)?)\n>\s*\n?>\s*([a-zA-Zα-ωΑ-Ω][^>\n]*[=<>≈≠≤≥][^>\n]*)/gm,
+    (match, prefix, formula) => {
+      // Применяем замены к формуле
+      let latexFormula = formula
+      for (const [pattern, replacement] of replacements) {
+        latexFormula = latexFormula.replace(pattern, replacement)
+      }
+      return `${prefix}\n> $$${latexFormula}$$`
+    }
+  )
+  
+  // Оборачиваем отдельные формулы (строки с = и математическими символами) в $...$
+  result = result.replace(
+    /(?<![`$])([a-zA-Zα-ωΑ-Ω][a-zA-Z0-9α-ωΑ-Ω_\s\(\)\[\]]*\s*[=<>≈≠≤≥]\s*[^`\n]{3,})(?![`$])/g,
+    (match) => {
+      // Не оборачиваем если уже в блоке кода или уже LaTeX
+      if (match.includes('```') || match.includes('$$')) return match
+      
+      let latexFormula = match.trim()
+      for (const [pattern, replacement] of replacements) {
+        latexFormula = latexFormula.replace(pattern, replacement)
+      }
+      return ` $${latexFormula}$ `
+    }
+  )
+  
+  // Применяем замены ко всему контенту для символов внутри существующих $...$
+  for (const [pattern, replacement] of replacements) {
+    result = result.replace(pattern, replacement)
+  }
+  
+  return result
+}
 
 interface TheoryContentProps {
   content: string
@@ -225,10 +293,14 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
           }
         }
         
-        // Обычный markdown
+        // Обычный markdown с поддержкой LaTeX формул
+        const processedContent = convertMathToLatex(part as string)
+        
         return (
           <ReactMarkdown
             key={index}
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             components={{
               h1: ({ children }) => (
                 <h1 className="text-3xl font-bold text-white mb-6 pb-4 border-b border-slate-700">
@@ -342,7 +414,7 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
               ),
             }}
           >
-            {part as string}
+            {processedContent}
           </ReactMarkdown>
         )
       })}
