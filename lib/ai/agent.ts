@@ -1,5 +1,7 @@
 /**
- * 🧠 AI COURSE ARCHITECT
+ * 🧠 AI COURSE ARCHITECT (LEGACY)
+ * 
+ * ⚠️ DEPRECATED: Используйте agent-fast.ts для новых функций
  * 
  * Интеллектуальная система генерации курсов:
  * 1. ИИ-Аналитик — определяет природу темы, сложность, методы обучения
@@ -7,8 +9,14 @@
  * 3. Умный генератор — создаёт контент под конкретный тип темы
  */
 
-import { generateCompletion } from '@/lib/groq'
+import { generateWithRouter } from '@/lib/ai-router'
 import { getRAGContext } from '@/lib/search'
+
+// Обёртка для совместимости со старым кодом
+async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
+  const result = await generateWithRouter('heavy', system, user, opts)
+  return result.content
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 📊 ТИПЫ И ИНТЕРФЕЙСЫ

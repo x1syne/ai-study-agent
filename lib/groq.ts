@@ -1,3 +1,15 @@
+/**
+ * ⚠️ DEPRECATED: Этот файл устарел!
+ * 
+ * Используйте lib/ai-router.ts вместо этого файла.
+ * Роутер поддерживает:
+ * - Fallback между провайдерами (Groq → DeepSeek → Gemini)
+ * - Таймауты для запросов
+ * - Rate limiting
+ * 
+ * Этот файл оставлен для обратной совместимости и будет удалён.
+ */
+
 import Groq from 'groq-sdk'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!

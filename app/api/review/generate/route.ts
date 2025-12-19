@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
-import { groq } from '@/lib/groq'
+import { generateWithRouter } from '@/lib/ai-router'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,17 +42,14 @@ export async function POST(request: NextRequest) {
   {"front": "Пример Y", "back": "Примером является..."}
 ]`
 
-      const response = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'Ты создаёшь образовательные карточки для запоминания. Отвечай только JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-      })
+      const result = await generateWithRouter(
+        'heavy',
+        'Ты создаёшь образовательные карточки для запоминания. Отвечай только JSON.',
+        prompt,
+        { temperature: 0.7, maxTokens: 8000, json: true }
+      )
 
-      const content = response.choices[0]?.message?.content || '[]'
+      const content = result.content || '[]'
       
       // Parse JSON from response
       let cards: { front: string; back: string }[] = []
@@ -109,17 +106,14 @@ export async function POST(request: NextRequest) {
   }
 ]`
 
-      const response = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'Ты создаёшь образовательные квизы. Отвечай только JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-      })
+      const result = await generateWithRouter(
+        'heavy',
+        'Ты создаёшь образовательные квизы. Отвечай только JSON.',
+        prompt,
+        { temperature: 0.7, maxTokens: 8000, json: true }
+      )
 
-      const content = response.choices[0]?.message?.content || '[]'
+      const content = result.content || '[]'
       
       // Parse JSON from response
       let questions: { question: string; options: string[]; correctAnswer: number; explanation: string }[] = []
