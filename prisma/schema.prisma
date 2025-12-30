@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ПОЛЬЗОВАТЕЛИ ====================
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  avatar          String?
+  googleId        String?   @unique
+  telegramId      String?   @unique  // Telegram ID для уведомлений через Pipedream
+  
+  preferredStyle  LearningStyle @default(BALANCED)
+  dailyGoalMinutes Int       @default(30)
+  timezone        String    @default("Europe/Moscow")
+  
+  goals           Goal[]
+  progress        TopicProgress[]
+  reviews         ReviewCard[]
+  stats           UserStats?
+  achievements    Achievement[]
+  chatMessages    ChatMessage[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum LearningStyle {
+  THEORY_FIRST
+  PRACTICE_FIRST
+  BALANCED
+}
+
+model UserStats {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  totalMinutes    Int       @default(0)
+  totalLessons    Int       @default(0)
+  totalTasks      Int       @default(0)
+  correctAnswers  Int       @default(0)
+  
+  // XP System
+  totalXP         Int       @default(0)
+  level           Int       @default(1)
+  
+  // Daily Challenge
+  dailyChallengeCompleted Boolean @default(false)
+  dailyChallengeDate      DateTime?
+  
+  lastActiveDate  DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
+// ==================== ЦЕЛИ ====================
+
+model Goal {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title           String
+  skill           String
+  description     String?
+  targetDate      DateTime?
+  status          GoalStatus @default(ACTIVE)
+  
+  topics          Topic[]
+  roadmap         Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  ABANDONED
+}
+
+// ==================== ГРАФ ЗНАНИЙ ====================
+
+model Topic {
+  id              String    @id @default(cuid())
+  goalId          String
+  goal            Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  slug            String
+  name            String
+  description     String?
+  icon            String?
+  
+  positionX       Float     @default(0)
+  positionY       Float     @default(0)
+  
+  estimatedMinutes Int      @default(30)
+  difficulty      Difficulty @default(MEDIUM)
+  order           Int       @default(0)
+  
+  prerequisiteIds String[]  @default([])
+  
+  lessons         Lesson[]
+  progress        TopicProgress[]
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([goalId, slug])
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+model TopicProgress {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId         String
+  topic           Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  
+  status          TopicStatus @default(LOCKED)
+  masteryLevel    Int       @default(0)
+  
+  diagnosisScore  Int?
+  diagnosisDate   DateTime?
+  
+  theoryCompleted Boolean   @default(false)
+  practiceScore   Int?
+  
+  timeSpentMinutes Int      @default(0)
+  
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, topicId])
+}
+
+enum TopicStatus {
+  LOCKED
+  AVAILABLE
+  IN_PROGRESS
+  COMPLETED
+  MASTERED
+}
+
+// ==================== УРОКИ ====================
+
+model Lesson {
+  id              String    @id @default(cuid())
+  topicId         String
+  topic           Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  userId          String?
+  
+  type            LessonType
+  order           Int       @default(0)
+  title           String?
+  
+  content         Json
+  
+  difficulty      Difficulty @default(MEDIUM)
+  hints           String[]  @default([])
+  solution        String?
+  
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+enum LessonType {
+  THEORY
+  PRACTICE
+  QUIZ
+  CODING
+  FILL_BLANK
+}
+
+// ==================== ЗАДАНИЯ ====================
+
+model TaskSubmission {
+  id              String    @id @default(cuid())
+  userId          String
+  lessonId        String
+  
+  code            String
+  isCorrect       Boolean   @default(false)
+  score           Int       @default(0)
+  feedback        String?
+  
+  createdAt       DateTime  @default(now())
+}
+
+// ==================== SPACED REPETITION ====================
+
+model ReviewCard {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  front           String
+  back            String
+  topicSlug       String
+  
+  easeFactor      Float     @default(2.5)
+  interval        Int       @default(1)
+  repetitions     Int       @default(0)
+  
+  nextReviewDate  DateTime  @default(now())
+  lastReviewDate  DateTime?
+  
+  createdAt       DateTime  @default(now())
+}
+
+// ==================== ЧАТ ====================
+
+model ChatMessage {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role            MessageRole
+  content         String
+  topicSlug       String?
+  characterId     String    @default("default")
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([userId, characterId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// ==================== ДОСТИЖЕНИЯ ====================
+
+model Achievement {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type            AchievementType
+  unlockedAt      DateTime  @default(now())
+  
+  @@unique([userId, type])
+}
+
+enum AchievementType {
+  FIRST_LESSON
+  FIRST_TOPIC
+  FIRST_GOAL
+  STREAK_3
+  STREAK_7
+  STREAK_30
+  STREAK_100
+  TASKS_10
+  TASKS_50
+  TASKS_100
+  CARDS_10
+  CARDS_50
+  CARDS_100
+  PERFECT_QUIZ
+  SPEED_LEARNER
+  NIGHT_OWL
+  EARLY_BIRD
+  XP_100
+  XP_500
+  XP_1000
+  XP_5000
+  LEVEL_5
+  LEVEL_10
+  DAILY_CHALLENGE_7
+}
+
+// ==================== ШАБЛОНЫ ====================
+
+model SkillTemplate {
+  id              String    @id @default(cuid())
+  slug            String    @unique
+  name            String
+  description     String
+  icon            String
+  category        String
+  
+  topicsTemplate  Json
+  diagnosisQuestions Json
+  
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+}
