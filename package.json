@@ -1,6 +1,6 @@
 {
   "name": "ai-study-agent",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,6 +13,8 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@huggingface/inference": "^2.6.4",
+    "@monaco-editor/react": "^4.6.0",
     "@phosphor-icons/react": "^2.1.10",
     "@prisma/client": "^5.7.0",
     "@supabase/auth-helpers-nextjs": "^0.8.7",
@@ -20,20 +22,31 @@
     "@xyflow/react": "^12.10.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
+    "dompurify": "^3.0.8",
     "edge-tts": "^1.0.1",
     "groq-sdk": "^0.3.2",
+    "isomorphic-dompurify": "^2.4.0",
+    "katex": "^0.16.9",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.294.0",
     "next": "14.0.4",
+    "pyodide": "^0.25.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
     "react-syntax-highlighter": "^15.5.0",
+    "rehype-katex": "^7.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^2.1.0",
     "vis-data": "^7.1.9",
     "vis-network": "^9.1.9",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/katex": "^0.16.7",
+    "@types/lodash": "^4.14.202",
     "@types/node": "^20.10.4",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.17",

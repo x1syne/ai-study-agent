@@ -1,0 +1,961 @@
+/**
+ * 🎨 GENERATOR AGENT - Content Generation
+ * 
+ * Третий агент в цепочке: Analyst → Constructor → Generator
+ * 
+ * Задачи:
+ * 1. Генерация теории уровня Harvard/MIT (storytelling, аналогии)
+ * 2. Генерация практики в стиле Codewars (easy/medium/hard)
+ * 3. Адаптация под тип темы
+ * 4. Авто-проверка для code задач (Pyodide)
+ * 
+ * Выход: GeneratedModuleContent с теорией и практикой
+ */
+
+import { callLLM, callLLMJson } from '../llm'
+import type {
+  CourseStructure,
+  CourseModule,
+  GeneratedModuleContent,
+  TheoryContent,
+  PracticeContent,
+  PracticeTask,
+  TopicType,
+  CodeTaskData,
+  MultipleChoiceData,
+  CalculationData,
+  TestCase
+} from './types'
+
+// ═══════════════════════════════════════════════════════════════
+// 🎯 SYSTEM PROMPTS BY TOPIC TYPE - HARVARD/MIT QUALITY
+// ═══════════════════════════════════════════════════════════════
+
+const THEORY_SYSTEM_PROMPTS: Record<TopicType, string> = {
+  programming: `Ты — профессор Computer Science из MIT/Stanford с 20+ годами опыта.
+Твои лекции вдохновляют студентов и делают сложное простым.
+
+СТИЛЬ ПРЕПОДАВАНИЯ (как CS50 Harvard):
+- Начинай с "зачем" — мотивация перед техникой
+- Используй storytelling: "Представьте, что вы строите..."
+- Аналогии из реальной жизни для каждой концепции
+- Код — это история, каждая строка имеет смысл
+
+СТРУКТУРА ОБЪЯСНЕНИЯ:
+1. 🎯 Проблема: Какую задачу решаем?
+2. 💡 Идея: Интуитивное объяснение решения
+3. 🔧 Реализация: Код с подробными комментариями
+4. 🧪 Пример: Конкретный use case с выводом
+5. ⚠️ Подводные камни: Типичные ошибки
+
+ФОРМАТ КОДА:
+\`\`\`python
+# 🎯 Цель: что делает этот код
+# Шаг 1: описание
+код_шага_1
+
+# Шаг 2: описание  
+код_шага_2
+
+# Результат
+print(результат)  # Вывод: ожидаемый_результат
+\`\`\`
+
+АНАЛОГИИ (примеры):
+- Класс = чертёж дома, объект = построенный дом
+- Рекурсия = матрёшка внутри матрёшки
+- API = официант между вами и кухней
+- Git = машина времени для кода
+
+НЕ ИСПОЛЬЗУЙ:
+- Сухие определения без примеров
+- Псевдо-формулы типа "Класс = (атрибуты, методы)"
+- LaTeX ($...$)
+- Абстракции без конкретики`,
+
+  scientific: `Ты — профессор физики/математики из Harvard/MIT.
+Твой стиль: Feynman Lectures — глубоко, но доступно.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- "Почему?" важнее "Как?" — объясняй причины
+- От интуиции к формализму, не наоборот
+- Каждая формула — это история
+- Связь с реальным миром обязательна
+
+СТРУКТУРА ОБЪЯСНЕНИЯ:
+1. 🌍 Феномен: Что наблюдаем в природе?
+2. 🤔 Вопрос: Почему это происходит?
+3. 💡 Модель: Упрощённое объяснение
+4. 📐 Математика: Формализация (с выводом!)
+5. 🔬 Применение: Где это работает?
+
+ФОРМАТ ФОРМУЛ (без LaTeX!):
+> **Второй закон Ньютона**
+> 
+> F = m × a
+> 
+> где:
+> - F — сила, действующая на тело (Ньютоны, Н)
+> - m — масса тела (килограммы, кг)
+> - a — ускорение (метры в секунду², м/с²)
+>
+> 📖 История: Ньютон понял, что яблоко падает не "потому что", а с определённым ускорением...
+
+МАТЕМАТИЧЕСКИЕ СИМВОЛЫ:
+Используй Unicode: ₀₁₂₃₄₅₆₇₈₉ ⁰¹²³⁴⁵⁶⁷⁸⁹ α β γ δ ε θ λ μ π σ ω
+Операции: × ÷ ± ≈ ≠ ≤ ≥ √ ∑ ∫ ∂ ∞ → ⇒ ∈ ∀ ∃
+
+АНАЛОГИИ (примеры):
+- Энтропия = беспорядок в комнате подростка
+- Волновая функция = облако вероятности
+- Электрическое поле = невидимые руки вокруг заряда`,
+
+  creative: `Ты — мастер-преподаватель творческих дисциплин из RISD/Parsons.
+Вдохновляешь и учишь через примеры великих мастеров.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- Начинай с вдохновения — покажи шедевры
+- Техника через ощущения и эмоции
+- "Попробуй сам" важнее "Запомни правило"
+- Ошибки — это эксперименты
+
+СТРУКТУРА:
+1. 🎨 Вдохновение: Примеры работ мастеров
+2. 👁️ Анализ: Что делает это великим?
+3. 🛠️ Техника: Пошаговый разбор
+4. ✋ Практика: Упражнение для закрепления
+5. 🔄 Вариации: Как сделать по-своему
+
+ОПИСАНИЕ ТЕХНИК:
+- Через ощущения: "Кисть должна танцевать по холсту"
+- Через метафоры: "Свет — это скульптор формы"
+- Через эмоции: "Какое настроение создаёт эта палитра?"`,
+
+  practical: `Ты — опытный мастер с 30+ годами практики.
+Учишь так, чтобы ученик мог повторить с первого раза.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- Чёткие пошаговые инструкции
+- "Делай как я" с объяснением почему
+- Предупреждай об ошибках ДО того, как их сделают
+- Лайфхаки из реального опыта
+
+СТРУКТУРА:
+1. 📋 Подготовка: Что понадобится (чек-лист)
+2. ⏱️ Тайминг: Сколько времени на каждый этап
+3. 📝 Шаги: Пронумерованные действия
+4. ⚠️ Внимание: На что смотреть
+5. ✅ Проверка: Как понять, что всё правильно
+
+ФОРМАТ ИНСТРУКЦИЙ:
+### Шаг 1: Название действия
+**Время:** 5 минут
+**Инструменты:** что нужно
+
+1. Первое действие
+2. Второе действие
+   - Подсказка: детали
+
+**⚠️ Важно:** на что обратить внимание
+**✅ Готово когда:** критерий успеха`,
+
+  business: `Ты — бизнес-консультант из McKinsey/BCG с опытом в Fortune 500.
+Учишь через фреймворки, кейсы и практические инструменты.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- Структурированное мышление (MECE)
+- Реальные кейсы > теория
+- Цифры и метрики обязательны
+- Actionable insights в конце
+
+СТРУКТУРА:
+1. 🎯 Бизнес-проблема: Контекст и вызов
+2. 📊 Фреймворк: Инструмент анализа
+3. 📈 Кейс: Реальный пример компании
+4. 🔧 Применение: Как использовать
+5. 📋 Чек-лист: Что делать завтра
+
+ФОРМАТ ФРЕЙМВОРКОВ:
+| Критерий | Вариант A | Вариант B |
+|----------|-----------|-----------|
+| ROI | 15% | 22% |
+| Риск | Низкий | Средний |
+
+**Вывод:** Рекомендация с обоснованием`,
+
+  humanities: `Ты — профессор гуманитарных наук из Оксфорда/Кембриджа.
+Учишь критическому мышлению и глубокому анализу.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- Контекст важнее фактов
+- Множество точек зрения
+- Вопросы важнее ответов
+- Связь прошлого с настоящим
+
+СТРУКТУРА:
+1. 🏛️ Контекст: Время, место, обстоятельства
+2. 👤 Ключевые фигуры: Кто и почему важен
+3. 💭 Идеи: Основные концепции
+4. ⚖️ Дебаты: Разные интерпретации
+5. 🔮 Актуальность: Почему это важно сегодня
+
+ФОРМАТ АНАЛИЗА:
+> **Цитата или первоисточник**
+> — Автор, год
+
+**Интерпретация A:** ...
+**Интерпретация B:** ...
+**Современный взгляд:** ...`,
+
+  technical: `Ты — инженер с 25+ годами опыта в индустрии.
+Учишь через схемы, расчёты и практические проекты.
+
+СТИЛЬ ПРЕПОДАВАНИЯ:
+- От принципа к реализации
+- Схемы и диаграммы обязательны
+- Расчёты с реальными числами
+- Стандарты и best practices
+
+СТРУКТУРА:
+1. ⚙️ Принцип: Как это работает
+2. 📐 Схема: Визуализация системы
+3. 🔢 Расчёт: Формулы и числа
+4. 🛠️ Реализация: Практические шаги
+5. 📋 Стандарты: Нормы и требования
+
+ФОРМАТ СХЕМ (ASCII):
+\`\`\`
+┌─────────┐     ┌─────────┐     ┌─────────┐
+│  Вход   │────▶│ Процесс │────▶│  Выход  │
+│ 220V AC │     │ Выпрям. │     │ 12V DC  │
+└─────────┘     └─────────┘     └─────────┘
+      │              │              │
+      ▼              ▼              ▼
+   Защита      Фильтрация     Стабилиз.
+\`\`\``
+}
+
+const PRACTICE_SYSTEM_PROMPTS: Record<TopicType, string> = {
+  programming: `Создавай задачи в стиле Codewars/LeetCode — чёткие, интересные, с прогрессией.
+
+ПРИНЦИПЫ ХОРОШИХ ЗАДАЧ:
+- Одна задача = одна концепция
+- Условие понятно с первого прочтения
+- Примеры покрывают edge cases
+- Тесты проверяют логику, не синтаксис
+
+УРОВНИ СЛОЖНОСТИ:
+- Easy: Базовое применение концепции (5-10 мин)
+- Medium: Комбинация концепций или нестандартный случай (15-20 мин)
+- Hard: Оптимизация, сложные алгоритмы (30+ мин)
+
+ФОРМАТ ЗАДАЧИ:
+{
+  "id": "task-1",
+  "title": "Краткое название (глагол + объект)",
+  "description": "## Условие\\n\\nОписание задачи с контекстом.\\n\\n## Примеры\\n\\n\`\`\`\\nВход: [1, 2, 3]\\nВыход: 6\\nОбъяснение: 1 + 2 + 3 = 6\\n\`\`\`\\n\\n## Ограничения\\n\\n- 0 ≤ len(arr) ≤ 1000\\n- -10⁹ ≤ arr[i] ≤ 10⁹",
+  "difficulty": "easy|medium|hard",
+  "type": "code",
+  "data": {
+    "language": "python",
+    "starterCode": "def solution(arr: list[int]) -> int:\\n    # Ваш код здесь\\n    pass",
+    "solution": "def solution(arr: list[int]) -> int:\\n    return sum(arr)",
+    "testCases": [
+      {"input": "solution([1, 2, 3])", "expectedOutput": "6", "description": "Базовый тест"},
+      {"input": "solution([])", "expectedOutput": "0", "description": "Пустой массив"},
+      {"input": "solution([-1, 1])", "expectedOutput": "0", "description": "Отрицательные числа"}
+    ]
+  },
+  "hints": ["Подумай о встроенных функциях Python", "sum() может помочь"],
+  "points": 10
+}
+
+ВАЖНО для testCases:
+- input должен быть вызовом функции: "solution([1,2,3])"
+- expectedOutput — строковое представление результата
+- Минимум 3 теста: базовый, граничный, особый случай`,
+
+  scientific: `Создавай расчётные задачи как в MIT Problem Sets — с реальным контекстом.
+
+ПРИНЦИПЫ:
+- Задача из реального мира (физика вокруг нас)
+- Данные реалистичные
+- Требуется понимание, не просто подстановка
+
+УРОВНИ:
+- Easy: Прямое применение формулы
+- Medium: Нужно вывести промежуточные величины
+- Hard: Комбинация нескольких законов
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Название с контекстом",
+  "description": "## Условие\\n\\nАвтомобиль массой 1500 кг разгоняется с 0 до 100 км/ч за 8 секунд.\\n\\n## Вопрос\\n\\nКакая сила действует на автомобиль?\\n\\n## Дано\\n\\n- m = 1500 кг\\n- v₀ = 0 м/с\\n- v = 27.8 м/с (100 км/ч)\\n- t = 8 с",
+  "difficulty": "easy|medium|hard",
+  "type": "calculation",
+  "data": {
+    "formula": "F = ma, где a = (v - v₀) / t",
+    "variables": {"m": 1500, "v": 27.8, "v0": 0, "t": 8},
+    "correctAnswer": 5212.5,
+    "tolerance": 0.05,
+    "unit": "Н"
+  },
+  "hints": ["Сначала найди ускорение", "a = Δv / Δt"],
+  "points": 10
+}`,
+
+  creative: `Создавай творческие задания с чёткими критериями оценки.
+
+ПРИНЦИПЫ:
+- Свобода творчества в рамках техники
+- Критерии оценки прозрачны
+- Примеры хороших работ
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Творческое задание",
+  "description": "## Задание\\n\\nСоздайте композицию, используя правило третей.\\n\\n## Требования\\n\\n- Минимум 3 объекта\\n- Главный объект на пересечении линий\\n- Контраст переднего и заднего плана\\n\\n## Критерии оценки\\n\\n- Соблюдение правила третей (40%)\\n- Баланс композиции (30%)\\n- Оригинальность (30%)",
+  "difficulty": "easy|medium|hard",
+  "type": "free_text",
+  "data": {
+    "sampleAnswer": "Описание эталонной работы...",
+    "keywords": ["правило третей", "композиция", "баланс", "контраст"],
+    "minLength": 100
+  },
+  "hints": ["Начни с сетки 3x3", "Главный объект не в центре"],
+  "points": 10
+}`,
+
+  practical: `Создавай пошаговые задания с чек-листами.
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Практическое задание",
+  "description": "## Задание\\n\\nПриготовьте классический омлет.\\n\\n## Ингредиенты\\n\\n- 3 яйца\\n- 30 мл молока\\n- Соль, перец\\n- 20 г сливочного масла",
+  "difficulty": "easy|medium|hard",
+  "type": "ordering",
+  "data": {
+    "items": [
+      "Взбить яйца с молоком",
+      "Разогреть сковороду",
+      "Растопить масло",
+      "Вылить смесь",
+      "Готовить 2-3 минуты",
+      "Сложить пополам"
+    ],
+    "correctOrder": [0, 1, 2, 3, 4, 5]
+  },
+  "hints": ["Сковорода должна быть горячей до масла"],
+  "points": 10
+}`,
+
+  business: `Создавай кейс-задачи как в Harvard Business School.
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Кейс: Название компании",
+  "description": "## Ситуация\\n\\nКомпания X столкнулась с падением продаж на 20%...\\n\\n## Данные\\n\\n- Выручка: $10M → $8M\\n- Маржа: 15%\\n- Конкуренты: ...\\n\\n## Вопрос\\n\\nКакую стратегию выбрать?",
+  "difficulty": "medium",
+  "type": "multiple_choice",
+  "data": {
+    "options": [
+      "Снизить цены на 15%",
+      "Инвестировать в маркетинг",
+      "Выйти на новый рынок",
+      "Оптимизировать издержки"
+    ],
+    "correctIndices": [1],
+    "explanation": "При падении продаж и сохранении маржи проблема в awareness. Снижение цен съест маржу, новый рынок рискован. Оптимизация не решит проблему спроса."
+  },
+  "hints": ["Проанализируй причину падения", "Маржа сохранилась — значит..."],
+  "points": 10
+}`,
+
+  humanities: `Создавай аналитические задания с множественными интерпретациями.
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Анализ: Название",
+  "description": "## Текст для анализа\\n\\n> Цитата из первоисточника...\\n\\n## Вопрос\\n\\nКакие интерпретации этого текста возможны?",
+  "difficulty": "medium",
+  "type": "multiple_choice",
+  "data": {
+    "options": [
+      "Интерпретация A: ...",
+      "Интерпретация B: ...",
+      "Интерпретация C: ...",
+      "Интерпретация D: ..."
+    ],
+    "correctIndices": [0, 2],
+    "explanation": "Интерпретации A и C подтверждаются текстом, потому что..."
+  },
+  "hints": ["Обрати внимание на контекст эпохи"],
+  "points": 10
+}`,
+
+  technical: `Создавай технические задачи с расчётами и схемами.
+
+ФОРМАТ:
+{
+  "id": "task-1",
+  "title": "Расчёт: Название",
+  "description": "## Условие\\n\\nСпроектируйте делитель напряжения...\\n\\n## Схема\\n\\n\`\`\`\\nVin ──┬── R1 ──┬── Vout\\n      │        │\\n     GND      R2\\n              │\\n             GND\\n\`\`\`\\n\\n## Требования\\n\\n- Vin = 12V\\n- Vout = 5V\\n- I ≤ 10mA",
+  "difficulty": "medium",
+  "type": "calculation",
+  "data": {
+    "formula": "Vout = Vin × R2 / (R1 + R2)",
+    "variables": {"Vin": 12, "Vout": 5, "I_max": 0.01},
+    "correctAnswer": 1.4,
+    "tolerance": 0.1,
+    "unit": "kΩ (R1)"
+  },
+  "hints": ["Сначала найди соотношение R1/R2", "Учти ограничение по току"],
+  "points": 10
+}`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📚 THEORY GENERATION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate theory content for a module
+ */
+async function generateTheory(
+  module: CourseModule,
+  topicType: TopicType,
+  courseTitle: string
+): Promise<TheoryContent> {
+  console.log(`[Generator] Generating theory for "${module.name}"`)
+  
+  const systemPrompt = `${THEORY_SYSTEM_PROMPTS[topicType]}
+
+ОБЩИЕ ПРАВИЛА:
+1. Пиши на русском языке
+2. Длина: 800-1500 слов
+3. Структура с ## и ### заголовками
+4. **Выделяй** ключевые термины
+5. Используй > блоки для определений
+6. Таблицы | для сравнений
+7. Списки для перечислений
+
+НЕ ИСПОЛЬЗУЙ:
+- LaTeX формулы ($...$)
+- Эмодзи в заголовках
+- Сплошной текст без структуры`
+
+  const userPrompt = `${module.theoryPrompt}
+
+КУРС: ${courseTitle}
+МОДУЛЬ: ${module.name}
+ОПИСАНИЕ: ${module.description}
+КЛЮЧЕВЫЕ ТЕРМИНЫ: ${module.keyTerms.join(', ')}
+
+Напиши теоретический материал.`
+
+  try {
+    const response = await callLLM(systemPrompt, userPrompt, {
+      temperature: 0.7,
+      maxTokens: 3000
+    })
+    
+    const markdown = response.content
+    const wordCount = markdown.split(/\s+/).length
+    
+    // Extract media placeholders
+    const media = extractMediaPlaceholders(markdown)
+    
+    // Extract interactive elements
+    const interactiveElements = extractInteractiveElements(markdown)
+    
+    return {
+      markdown,
+      media,
+      interactiveElements,
+      wordCount
+    }
+  } catch (error) {
+    console.error(`[Generator] Theory generation failed for ${module.name}:`, error)
+    
+    return {
+      markdown: generateFallbackTheory(module),
+      media: [],
+      interactiveElements: [],
+      wordCount: 200
+    }
+  }
+}
+
+/**
+ * Extract media placeholders from markdown
+ */
+function extractMediaPlaceholders(markdown: string): TheoryContent['media'] {
+  const media: TheoryContent['media'] = []
+  
+  // Look for [image: description] patterns
+  const imagePattern = /\[image:\s*([^\]]+)\]/gi
+  let match
+  
+  while ((match = imagePattern.exec(markdown)) !== null) {
+    media.push({
+      type: 'image',
+      description: match[1].trim()
+    })
+  }
+  
+  // Look for code blocks
+  const codePattern = /```(\w+)\n([\s\S]*?)```/g
+  
+  while ((match = codePattern.exec(markdown)) !== null) {
+    media.push({
+      type: 'code',
+      description: `Code block (${match[1]})`,
+      content: match[2]
+    })
+  }
+  
+  return media
+}
+
+/**
+ * Extract interactive elements from markdown
+ */
+function extractInteractiveElements(markdown: string): TheoryContent['interactiveElements'] {
+  const elements: TheoryContent['interactiveElements'] = []
+  
+  // Look for interactive:quiz blocks
+  const quizPattern = /```interactive:quiz\n([\s\S]*?)```/g
+  let match
+  
+  while ((match = quizPattern.exec(markdown)) !== null) {
+    try {
+      const data = JSON.parse(match[1])
+      elements.push({ type: 'quiz', data })
+    } catch {
+      // Invalid JSON, skip
+    }
+  }
+  
+  // Look for interactive:code blocks
+  const codePattern = /```interactive:code\n([\s\S]*?)```/g
+  
+  while ((match = codePattern.exec(markdown)) !== null) {
+    try {
+      const data = JSON.parse(match[1])
+      elements.push({ type: 'code_sandbox', data })
+    } catch {
+      // Invalid JSON, skip
+    }
+  }
+  
+  return elements
+}
+
+/**
+ * Generate fallback theory content
+ */
+function generateFallbackTheory(module: CourseModule): string {
+  return `## ${module.name}
+
+${module.description}
+
+### Основные понятия
+
+В этом модуле мы изучим следующие ключевые термины:
+${module.keyTerms.map(t => `- **${t}**`).join('\n')}
+
+### Подробное объяснение
+
+*Контент временно недоступен. Пожалуйста, обновите страницу.*
+
+### Итоги
+
+После изучения этого модуля вы будете понимать основы ${module.name.toLowerCase()}.`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎯 PRACTICE GENERATION
+// ═══════════════════════════════════════════════════════════════
+
+interface RawPracticeTask {
+  id?: string
+  title: string
+  description: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  type: string
+  data: Record<string, unknown>
+  hints?: string[]
+  points?: number
+}
+
+/**
+ * Generate practice tasks for a module
+ */
+async function generatePractice(
+  module: CourseModule,
+  topicType: TopicType,
+  courseTitle: string
+): Promise<PracticeContent> {
+  console.log(`[Generator] Generating practice for "${module.name}"`)
+  
+  const systemPrompt = `${PRACTICE_SYSTEM_PROMPTS[topicType]}
+
+ОБЩИЕ ПРАВИЛА:
+1. 5-10 заданий
+2. Прогрессия: 2-3 easy, 3-4 medium, 1-2 hard
+3. Каждое задание с hints
+4. Верни JSON: { "tasks": [...] }`
+
+  const userPrompt = `${module.practicePrompt}
+
+КУРС: ${courseTitle}
+МОДУЛЬ: ${module.name}
+СЛОЖНОСТЬ МОДУЛЯ: ${module.difficulty}
+
+Создай практические задания.`
+
+  try {
+    const { data } = await callLLMJson<{ tasks: RawPracticeTask[] }>(
+      systemPrompt,
+      userPrompt,
+      { temperature: 0.6, maxTokens: 3000 }
+    )
+    
+    // Normalize and validate tasks
+    const tasks = normalizeTasks(data.tasks, topicType)
+    
+    // Determine verification type
+    const verificationType = topicType === 'programming' ? 'auto' : 
+                            ['creative', 'humanities'].includes(topicType) ? 'llm' : 'self'
+    
+    return {
+      tasks,
+      verificationType
+    }
+  } catch (error) {
+    console.error(`[Generator] Practice generation failed for ${module.name}:`, error)
+    
+    return {
+      tasks: generateFallbackPractice(module, topicType),
+      verificationType: 'self'
+    }
+  }
+}
+
+/**
+ * Normalize and validate practice tasks
+ */
+function normalizeTasks(rawTasks: RawPracticeTask[], topicType: TopicType): PracticeTask[] {
+  return rawTasks.map((raw, index) => {
+    const task: PracticeTask = {
+      id: raw.id || `task-${index + 1}`,
+      title: raw.title || `Задание ${index + 1}`,
+      description: raw.description || '',
+      difficulty: raw.difficulty || 'medium',
+      type: normalizeTaskType(raw.type),
+      data: normalizeTaskData(raw.type, raw.data, topicType),
+      hints: raw.hints || [],
+      points: raw.points || (raw.difficulty === 'easy' ? 5 : raw.difficulty === 'hard' ? 15 : 10)
+    }
+    
+    return task
+  })
+}
+
+/**
+ * Normalize task type
+ */
+function normalizeTaskType(type: string): PracticeTask['type'] {
+  const typeMap: Record<string, PracticeTask['type']> = {
+    'code': 'code',
+    'coding': 'code',
+    'multiple_choice': 'multiple_choice',
+    'quiz': 'multiple_choice',
+    'calculation': 'calculation',
+    'calc': 'calculation',
+    'fill_blank': 'fill_blank',
+    'fill': 'fill_blank',
+    'ordering': 'ordering',
+    'order': 'ordering',
+    'matching': 'matching',
+    'match': 'matching',
+    'free_text': 'free_text',
+    'text': 'free_text',
+    'essay': 'free_text'
+  }
+  
+  return typeMap[type.toLowerCase()] || 'multiple_choice'
+}
+
+/**
+ * Normalize task data based on type
+ */
+function normalizeTaskData(
+  type: string,
+  data: Record<string, unknown>,
+  topicType: TopicType
+): PracticeTask['data'] {
+  const normalizedType = normalizeTaskType(type)
+  
+  switch (normalizedType) {
+    case 'code':
+      return {
+        language: (data.language as string) || 'python',
+        starterCode: (data.starterCode as string) || '# Ваш код здесь\n',
+        solution: (data.solution as string) || '',
+        testCases: normalizeTestCases(data.testCases)
+      } as CodeTaskData
+      
+    case 'multiple_choice':
+      return {
+        options: (data.options as string[]) || ['A', 'B', 'C', 'D'],
+        correctIndices: normalizeCorrectIndices(data),
+        explanation: (data.explanation as string) || ''
+      } as MultipleChoiceData
+      
+    case 'calculation':
+      return {
+        formula: (data.formula as string) || '',
+        variables: (data.variables as Record<string, number>) || {},
+        correctAnswer: (data.correctAnswer as number) || 0,
+        tolerance: (data.tolerance as number) || 0.01,
+        unit: (data.unit as string) || ''
+      } as CalculationData
+      
+    default:
+      return data as unknown as PracticeTask['data']
+  }
+}
+
+/**
+ * Normalize test cases for code tasks
+ */
+function normalizeTestCases(testCases: unknown): TestCase[] {
+  if (!Array.isArray(testCases)) return []
+  
+  return testCases.map((tc: any) => ({
+    input: String(tc.input || tc.inputs || ''),
+    expectedOutput: String(tc.expectedOutput || tc.expected || tc.output || ''),
+    description: tc.description || ''
+  }))
+}
+
+/**
+ * Normalize correct indices for multiple choice
+ */
+function normalizeCorrectIndices(data: Record<string, unknown>): number[] {
+  if (Array.isArray(data.correctIndices)) {
+    return data.correctIndices as number[]
+  }
+  if (typeof data.correctIndex === 'number') {
+    return [data.correctIndex]
+  }
+  if (typeof data.correct === 'number') {
+    return [data.correct]
+  }
+  return [0]
+}
+
+/**
+ * Generate fallback practice tasks
+ */
+function generateFallbackPractice(module: CourseModule, topicType: TopicType): PracticeTask[] {
+  const baseTask: Omit<PracticeTask, 'id' | 'difficulty' | 'points'> = {
+    title: `Проверка понимания: ${module.name}`,
+    description: `Выберите правильный ответ о ${module.name.toLowerCase()}`,
+    type: 'multiple_choice',
+    data: {
+      options: [
+        'Вариант A',
+        'Вариант B', 
+        'Вариант C',
+        'Вариант D'
+      ],
+      correctIndices: [0],
+      explanation: 'Правильный ответ - A'
+    } as MultipleChoiceData,
+    hints: ['Вспомните основные понятия из теории']
+  }
+  
+  return [
+    { ...baseTask, id: 'task-1', difficulty: 'easy', points: 5 },
+    { ...baseTask, id: 'task-2', difficulty: 'medium', points: 10, title: `Применение: ${module.name}` },
+    { ...baseTask, id: 'task-3', difficulty: 'hard', points: 15, title: `Анализ: ${module.name}` }
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎯 MAIN GENERATOR FUNCTION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate content for a single module
+ */
+export async function generateModuleContent(
+  module: CourseModule,
+  structure: CourseStructure
+): Promise<GeneratedModuleContent> {
+  console.log(`[Generator] Generating content for module "${module.name}"`)
+  const startTime = Date.now()
+  
+  // Generate theory and practice in parallel
+  const [theory, practice] = await Promise.all([
+    generateTheory(module, structure.topicType, structure.title),
+    generatePractice(module, structure.topicType, structure.title)
+  ])
+  
+  const result: GeneratedModuleContent = {
+    moduleId: module.id,
+    theory,
+    practice,
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      tokensUsed: 0, // Would need to track from LLM calls
+      provider: 'groq'
+    }
+  }
+  
+  console.log(`[Generator] Module "${module.name}" generated in ${Date.now() - startTime}ms`)
+  console.log(`[Generator] Theory: ${theory.wordCount} words, Practice: ${practice.tasks.length} tasks`)
+  
+  return result
+}
+
+/**
+ * Generate content for all modules in a course
+ * Uses batching to respect rate limits
+ */
+export async function generateAllModules(
+  structure: CourseStructure,
+  onProgress?: (completed: number, total: number) => void
+): Promise<GeneratedModuleContent[]> {
+  console.log(`[Generator] Generating ${structure.modules.length} modules`)
+  const startTime = Date.now()
+  
+  const results: GeneratedModuleContent[] = []
+  
+  // Generate modules sequentially with delays to avoid rate limits
+  for (let i = 0; i < structure.modules.length; i++) {
+    const module = structure.modules[i]
+    
+    // Delay between modules (except first)
+    if (i > 0) {
+      console.log('[Generator] Waiting 2s between modules...')
+      await new Promise(r => setTimeout(r, 2000))
+    }
+    
+    try {
+      const content = await generateModuleContent(module, structure)
+      results.push(content)
+      
+      if (onProgress) {
+        onProgress(i + 1, structure.modules.length)
+      }
+    } catch (error) {
+      console.error(`[Generator] Failed to generate module ${module.name}:`, error)
+      
+      // Add placeholder for failed module
+      results.push({
+        moduleId: module.id,
+        theory: {
+          markdown: generateFallbackTheory(module),
+          media: [],
+          interactiveElements: [],
+          wordCount: 100
+        },
+        practice: {
+          tasks: generateFallbackPractice(module, structure.topicType),
+          verificationType: 'self'
+        },
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          tokensUsed: 0,
+          provider: 'fallback'
+        }
+      })
+    }
+  }
+  
+  console.log(`[Generator] All modules generated in ${Date.now() - startTime}ms`)
+  
+  return results
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔧 CODE VERIFICATION (PYODIDE)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Verify code solution using Pyodide (browser-side)
+ * This function returns the verification code to run in browser
+ */
+export function generatePyodideVerificationCode(
+  userCode: string,
+  testCases: TestCase[]
+): string {
+  const testCode = testCases.map((tc, i) => `
+# Test ${i + 1}: ${tc.description || 'Test case'}
+try:
+    result = ${tc.input}
+    expected = ${tc.expectedOutput}
+    assert str(result) == str(expected), f"Expected {expected}, got {result}"
+    print(f"✅ Test ${i + 1} passed")
+except AssertionError as e:
+    print(f"❌ Test ${i + 1} failed: {e}")
+    failed_tests.append(${i + 1})
+except Exception as e:
+    print(f"❌ Test ${i + 1} error: {e}")
+    failed_tests.append(${i + 1})
+`).join('\n')
+
+  return `
+failed_tests = []
+
+# User code
+${userCode}
+
+# Run tests
+${testCode}
+
+# Summary
+if failed_tests:
+    print(f"\\n❌ Failed {len(failed_tests)} test(s)")
+else:
+    print(f"\\n✅ All tests passed!")
+`
+}
+
+/**
+ * Generate LLM verification prompt for non-code tasks
+ */
+export function generateLLMVerificationPrompt(
+  task: PracticeTask,
+  userAnswer: string
+): string {
+  return `Оцени ответ студента на задание.
+
+ЗАДАНИЕ:
+${task.title}
+${task.description}
+
+ОТВЕТ СТУДЕНТА:
+${userAnswer}
+
+КРИТЕРИИ:
+- Правильность (0-100%)
+- Полнота ответа
+- Понимание концепции
+
+Верни JSON:
+{
+  "score": число_0_100,
+  "correct": true/false,
+  "feedback": "Обратная связь для студента",
+  "suggestions": ["Что можно улучшить"]
+}`
+}
