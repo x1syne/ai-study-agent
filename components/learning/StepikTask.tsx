@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useCallback, useMemo } from 'react'
 import { Check, X, Lightbulb, ChevronRight, ChevronLeft, RotateCcw, MessageCircle, Loader2, GripVertical } from 'lucide-react'
@@ -63,7 +63,7 @@ interface StepikTaskProps {
   canGoPrev?: boolean
   taskResults?: TaskResult[]
   theoryContent?: string
-  savedAnswer?: SavedAnswer // ╨б╨╛╤Е╤А╨░╨╜╤С╨╜╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В ╨┤╨╗╤П ╨╛╤В╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╤П ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В╨░
+  savedAnswer?: SavedAnswer // Сохранённый ответ для отображения результата
 }
 
 
@@ -71,7 +71,7 @@ export function StepikTask({
   task, taskNumber, totalTasks, onAnswer, onNext, onPrev, onGoToTheory, onGoToTask, 
   canGoPrev = true, taskResults = [], theoryContent = '', savedAnswer
 }: StepikTaskProps) {
-  // ╨Ш╨╜╨╕╤Ж╨╕╨░╨╗╨╕╨╖╨╕╤А╤Г╨╡╨╝ ╨╕╨╖ ╤Б╨╛╤Е╤А╨░╨╜╤С╨╜╨╜╨╛╨│╨╛ ╨╛╤В╨▓╨╡╤В╨░ ╨╡╤Б╨╗╨╕ ╨╡╤Б╤В╤М
+  // Инициализируем из сохранённого ответа если есть
   const [selectedSingle, setSelectedSingle] = useState<number | null>(
     savedAnswer?.type === 'single' ? savedAnswer.value : null
   )
@@ -96,7 +96,7 @@ export function StepikTask({
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
   const [draggedItem, setDraggedItem] = useState<number | null>(null)
   
-  // ╨Х╤Б╨╗╨╕ ╨╡╤Б╤В╤М ╤Б╨╛╤Е╤А╨░╨╜╤С╨╜╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В - ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В
+  // Если есть сохранённый ответ - показываем результат
   const [isSubmitted, setIsSubmitted] = useState(!!savedAnswer)
   const [isCorrect, setIsCorrect] = useState(savedAnswer?.isCorrect ?? false)
   const [showHint, setShowHint] = useState(false)
@@ -116,9 +116,9 @@ export function StepikTask({
     medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
     hard: 'bg-red-500/20 text-red-400 border-red-500/30'
   }
-  const difficultyLabels = { easy: '╨Ы╤С╨│╨║╨╛╨╡', medium: '╨б╤А╨╡╨┤╨╜╨╡╨╡', hard: '╨б╨╗╨╛╨╢╨╜╨╛╨╡' }
+  const difficultyLabels = { easy: 'Лёгкое', medium: 'Среднее', hard: 'Сложное' }
 
-  // ╨д╤Г╨╜╨║╤Ж╨╕╤П ╨┤╨╗╤П ╨▒╨╡╨╖╨╛╨┐╨░╤Б╨╜╨╛╨│╨╛ ╨┐╨░╤А╤Б╨╕╨╜╨│╨░ JSON ╤Б ╨▓╨░╨╗╨╕╨┤╨░╤Ж╨╕╨╡╨╣
+  // Функция для безопасного парсинга JSON с валидацией
   const safeParseJSON = <T,>(content: string, validator: (obj: any) => obj is T): T | null => {
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/)
@@ -130,7 +130,7 @@ export function StepikTask({
     }
   }
 
-  // ╨Т╨░╨╗╨╕╨┤╨░╤В╨╛╤А ╨┤╨╗╤П ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В╨░ ╨┐╤А╨╛╨▓╨╡╤А╨║╨╕ ╨║╨╛╨┤╨░
+  // Валидатор для результата проверки кода
   const isCodeCheckResult = (obj: any): obj is { correct: boolean; feedback: string } => {
     return typeof obj === 'object' && typeof obj.correct === 'boolean' && typeof obj.feedback === 'string'
   }
@@ -141,15 +141,15 @@ export function StepikTask({
     const starterCode = codeTask.starterCode || ''
     const trimmedCode = codeAnswer.trim()
     
-    // ╨Я╤А╨╛╨▓╨╡╤А╨║╨░: ╨║╨╛╨┤ ╨╜╨╡ ╨┐╤Г╤Б╤В╨╛╨╣ ╨╕ ╨╛╤В╨╗╨╕╤З╨░╨╡╤В╤Б╤П ╨╛╤В ╤Б╤В╨░╤А╤В╨╛╨▓╨╛╨│╨╛
+    // Проверка: код не пустой и отличается от стартового
     if (!trimmedCode || trimmedCode.length < 10) {
-      setCodeCheckResult({ correct: false, feedback: '╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨║╨╛╨┤ ╨┤╨╗╤П ╤А╨╡╤И╨╡╨╜╨╕╤П ╨╖╨░╨┤╨░╤З╨╕' })
+      setCodeCheckResult({ correct: false, feedback: 'Напишите код для решения задачи' })
       return false
     }
     
-    // ╨Х╤Б╨╗╨╕ ╨║╨╛╨┤ ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б╨╛ ╤Б╤В╨░╤А╤В╨╛╨▓╤Л╨╝ - ╨╜╨╡ ╨╖╨░╤Б╤З╨╕╤В╤Л╨▓╨░╨╡╨╝
-    if (trimmedCode === starterCode.trim() || trimmedCode === '// ╨Э╨░╤З╨╜╨╕╤В╨╡ ╨┐╨╕╤Б╨░╤В╤М ╨║╨╛╨┤ ╨╖╨┤╨╡╤Б╤М') {
-      setCodeCheckResult({ correct: false, feedback: '╨Т╤Л ╨╜╨╡ ╨╜╨░╨┐╨╕╤Б╨░╨╗╨╕ ╤А╨╡╤И╨╡╨╜╨╕╨╡. ╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨║╨╛╨┤.' })
+    // Если код совпадает со стартовым - не засчитываем
+    if (trimmedCode === starterCode.trim() || trimmedCode === '// Начните писать код здесь') {
+      setCodeCheckResult({ correct: false, feedback: 'Вы не написали решение. Напишите код.' })
       return false
     }
     
@@ -158,7 +158,7 @@ export function StepikTask({
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
       
-      // ╨Ш╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╡╨╝ ╤Б╨┐╨╡╤Ж╨╕╨░╨╗╨╕╨╖╨╕╤А╨╛╨▓╨░╨╜╨╜╤Л╨╣ endpoint ╨▓╨╝╨╡╤Б╤В╨╛ chat
+      // Используем специализированный endpoint вместо chat
       const res = await fetch('/api/check-answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,14 +183,14 @@ export function StepikTask({
         }
       }
       
-      // Retry ╨╡╤Б╨╗╨╕ ╨╜╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╛╨╗╤Г╤З╨╕╤В╤М ╨▓╨░╨╗╨╕╨┤╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В
+      // Retry если не удалось получить валидный ответ
       if (retryCount < MAX_RETRIES) {
         console.log(`[StepikTask] Code check retry ${retryCount + 1}/${MAX_RETRIES}`)
         return checkCodeWithAI(retryCount + 1)
       }
       
-      // AI ╨╜╨╡ ╨╛╤В╨▓╨╡╤В╨╕╨╗ ╨┐╨╛╤Б╨╗╨╡ ╨▓╤Б╨╡╤Е ╨┐╨╛╨┐╤Л╤В╨╛╨║
-      setCodeCheckResult({ correct: false, feedback: '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╤А╨╛╨▓╨╡╤А╨╕╤В╤М ╨║╨╛╨┤. ╨Я╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╡╤Й╤С ╤А╨░╨╖.' })
+      // AI не ответил после всех попыток
+      setCodeCheckResult({ correct: false, feedback: 'Не удалось проверить код. Попробуйте ещё раз.' })
       return false
     } catch (e: any) { 
       if (e.name === 'AbortError') {
@@ -200,42 +200,42 @@ export function StepikTask({
         }
       }
       console.error('Code check failed:', e)
-      setCodeCheckResult({ correct: false, feedback: '╨Ю╤И╨╕╨▒╨║╨░ ╨┐╤А╨╛╨▓╨╡╤А╨║╨╕. ╨Я╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╡╤Й╤С ╤А╨░╨╖.' })
+      setCodeCheckResult({ correct: false, feedback: 'Ошибка проверки. Попробуйте ещё раз.' })
       return false
     }
     finally { setCodeCheckLoading(false) }
   }
 
-  // ╨б╨┐╨╕╤Б╨╛╨║ ╨▒╨╡╤Б╤Б╨╝╤Л╤Б╨╗╨╡╨╜╨╜╤Л╤Е ╨╛╤В╨▓╨╡╤В╨╛╨▓
-  const INVALID_ANSWERS = ['╨╜╨╡ ╨╖╨╜╨░╤О', '╨╜╨╡╨╖╨╜╨░╤О', '╨╜╨╖', '╤Е╨╖', '╨╜╨╡ ╨┐╨╛╨╝╨╜╤О', '╨╖╨░╤В╤А╤Г╨┤╨╜╤П╤О╤Б╤М', '╨┐╤А╨╛╨┐╤Г╤Б╤В╨╕╤В╤М', 'skip', 'idk', '╨▒╨╡╨╖ ╨┐╨╛╨╜╤П╤В╨╕╤П', '╤Д╨╕╨│ ╨╖╨╜╨░╨╡╤В']
+  // Список бессмысленных ответов
+  const INVALID_ANSWERS = ['не знаю', 'незнаю', 'нз', 'хз', 'не помню', 'затрудняюсь', 'пропустить', 'skip', 'idk', 'без понятия', 'фиг знает']
 
-  // AI-╨┐╤А╨╛╨▓╨╡╤А╨║╨░ ╤В╨╡╨║╤Б╤В╨╛╨▓╨╛╨│╨╛ ╨╛╤В╨▓╨╡╤В╨░
+  // AI-проверка текстового ответа
   const checkTextWithAI = async (userAnswer: string, correctAnswers: string[]): Promise<{ correct: boolean; feedback?: string; suggestion?: string }> => {
     const trimmedAnswer = userAnswer.trim()
     const correctAnswer = correctAnswers[0] || ''
     
-    // 1. ╨Я╤Г╤Б╤В╨╛╨╣ ╨╛╤В╨▓╨╡╤В
+    // 1. Пустой ответ
     if (trimmedAnswer.length === 0) {
-      return { correct: false, feedback: "╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╨╛╤В╨▓╨╡╤В", suggestion: "" }
+      return { correct: false, feedback: "Введите ответ", suggestion: "" }
     }
     
-    // 2. ╨С╨╡╤Б╤Б╨╝╤Л╤Б╨╗╨╡╨╜╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В ("╨╜╨╡ ╨╖╨╜╨░╤О" ╨╕ ╤В.╨┤.)
+    // 2. Бессмысленный ответ ("не знаю" и т.д.)
     const normalized = trimmedAnswer.toLowerCase()
     if (INVALID_ANSWERS.some(inv => normalized === inv)) {
-      return { correct: false, feedback: "╨Э╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛", suggestion: "╨Я╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╛╤В╨▓╨╡╤В╨╕╤В╤М ╨╜╨░ ╨▓╨╛╨┐╤А╨╛╤Б" }
+      return { correct: false, feedback: "Неправильно", suggestion: "Попробуйте ответить на вопрос" }
     }
     
-    // 3. ╨а╨░╨╜╨┤╨╛╨╝╨╜╤Л╨╡ ╨▒╤Г╨║╨▓╤Л
-    if (/^[╨▒╨▓╨│╨┤╨╢╨╖╨║╨╗╨╝╨╜╨┐╤А╤Б╤В╤Д╤Е╤Ж╤З╤И╤Й\s]+$/i.test(normalized) || /^(.)\1{3,}$/.test(normalized)) {
-      return { correct: false, feedback: "╨Э╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛", suggestion: "" }
+    // 3. Рандомные буквы
+    if (/^[бвгджзклмнпрстфхцчшщ\s]+$/i.test(normalized) || /^(.)\1{3,}$/.test(normalized)) {
+      return { correct: false, feedback: "Неправильно", suggestion: "" }
     }
     
-    // 4. ╨б╨╗╨╕╤И╨║╨╛╨╝ ╨║╨╛╤А╨╛╤В╨║╨╕╨╣ (╨╝╨╡╨╜╤М╤И╨╡ 3 ╤Б╨╕╨╝╨▓╨╛╨╗╨╛╨▓)
+    // 4. Слишком короткий (меньше 3 символов)
     if (trimmedAnswer.length < 3) {
-      return { correct: false, feedback: "╨Ю╤В╨▓╨╡╤В ╤Б╨╗╨╕╤И╨║╨╛╨╝ ╨║╨╛╤А╨╛╤В╨║╨╕╨╣", suggestion: "" }
+      return { correct: false, feedback: "Ответ слишком короткий", suggestion: "" }
     }
 
-    // 5. ╨Ю╤В╨┐╤А╨░╨▓╨╗╤П╨╡╨╝ ╨╜╨░ ╤Б╨╡╤А╨▓╨╡╤А ╨┤╨╗╤П AI ╨┐╤А╨╛╨▓╨╡╤А╨║╨╕ ╨┐╨╛ ╤Б╨╝╤Л╤Б╨╗╤Г
+    // 5. Отправляем на сервер для AI проверки по смыслу
     try {
       const res = await fetch('/api/check-answer', {
         method: 'POST',
@@ -252,7 +252,7 @@ export function StepikTask({
         const result = await res.json()
         return {
           correct: result.correct === true,
-          feedback: result.feedback || (result.correct ? "╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╨╛!" : "╨Э╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛"),
+          feedback: result.feedback || (result.correct ? "Правильно!" : "Неправильно"),
           suggestion: result.suggestion || ""
         }
       }
@@ -260,9 +260,9 @@ export function StepikTask({
       console.error('AI check failed:', e)
     }
     
-    // Fallback: ╨┐╤А╨╛╨▓╨╡╤А╨║╨░ ╨║╨╗╤О╤З╨╡╨▓╤Л╤Е ╤Б╨╗╨╛╨▓
+    // Fallback: проверка ключевых слов
     if (correctAnswer) {
-      const norm = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-тАУтАФ]/g, '').trim()
+      const norm = (s: string) => s.toLowerCase().replace(/[.,!?;:'"()\-–—]/g, '').trim()
       const userWords = norm(trimmedAnswer).split(/\s+/).filter(w => w.length > 3)
       const ansWords = norm(correctAnswer).split(/\s+/).filter(w => w.length > 3)
       
@@ -272,14 +272,14 @@ export function StepikTask({
       }
       
       if (matches >= 2 || (ansWords.length > 0 && matches / ansWords.length >= 0.3)) {
-        return { correct: true, feedback: "╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╨╛!", suggestion: "" }
+        return { correct: true, feedback: "Правильно!", suggestion: "" }
       }
     }
     
     return { 
       correct: false, 
-      feedback: "╨Э╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛", 
-      suggestion: correctAnswer ? `╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В: ${correctAnswer.slice(0, 150)}` : '' 
+      feedback: "Неправильно", 
+      suggestion: correctAnswer ? `Правильный ответ: ${correctAnswer.slice(0, 150)}` : '' 
     }
   }
 
@@ -300,14 +300,14 @@ export function StepikTask({
         const correctArr = (task.correctAnswers || []).map(v => typeof v === 'string' ? parseInt(v, 10) : v)
         const options = (task as MultipleTask).options || []
         
-        // ╨б╨╜╨░╤З╨░╨╗╨░ ╨┐╤А╨╛╨▓╨╡╤А╤П╨╡╨╝ ╨┐╨╛ ╨╕╨╜╨┤╨╡╨║╤Б╨░╨╝
+        // Сначала проверяем по индексам
         const basicMatch = selectedMultiple.length === correctArr.length && 
           selectedMultiple.every(i => correctArr.includes(i))
         
         if (basicMatch) {
           correct = true
         } else {
-          // ╨Х╤Б╨╗╨╕ ╨╜╨╡ ╤Б╨╛╨▓╨┐╨░╨╗╨╛ - ╨┐╤А╨╛╨▓╨╡╤А╤П╨╡╨╝ ╤З╨╡╤А╨╡╨╖ AI ╨┐╨╛ ╤Б╨╝╤Л╤Б╨╗╤Г
+          // Если не совпало - проверяем через AI по смыслу
           const selectedOptions = selectedMultiple.map(i => options[i]).filter(Boolean)
           const correctOptions = correctArr.map(i => options[i]).filter(Boolean)
           
@@ -336,15 +336,15 @@ export function StepikTask({
             }
           } catch (e) {
             console.error('AI multiple check failed:', e)
-            // Fallback: ╨╡╤Б╨╗╨╕ AI ╨╜╨╡╨┤╨╛╤Б╤В╤Г╨┐╨╡╨╜, ╨┐╤А╨╛╨▓╨╡╤А╤П╨╡╨╝ ╨╡╤Б╤В╤М ╨╗╨╕ ╤Е╨╛╤В╤П ╨▒╤Л ╤З╨░╤Б╤В╨╕╤З╨╜╨╛╨╡ ╤Б╨╛╨▓╨┐╨░╨┤╨╡╨╜╨╕╨╡
+            // Fallback: если AI недоступен, проверяем есть ли хотя бы частичное совпадение
             const matchCount = selectedMultiple.filter(i => correctArr.includes(i)).length
-            correct = matchCount >= Math.ceil(correctArr.length * 0.7) // 70% ╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╤Е
+            correct = matchCount >= Math.ceil(correctArr.length * 0.7) // 70% правильных
           }
         }
         break
       }
       case 'text': {
-        // ╨Я╨╛╨┤╨┤╨╡╤А╨╢╨║╨░ ╨╛╨▒╨╛╨╕╤Е ╤Д╨╛╤А╨╝╨░╤В╨╛╨▓: correctAnswers (╨╝╨░╤Б╤Б╨╕╨▓) ╨╕ correctAnswer (╤Б╤В╤А╨╛╨║╨░)
+        // Поддержка обоих форматов: correctAnswers (массив) и correctAnswer (строка)
         let answers: string[] = []
         if (task.correctAnswers && Array.isArray(task.correctAnswers)) {
           answers = task.correctAnswers.map(a => String(a))
@@ -361,7 +361,7 @@ export function StepikTask({
           console.log('[DEBUG] AI result:', aiResult)
           correct = aiResult.correct
         } else {
-          // ╨Х╤Б╨╗╨╕ ╨╜╨╡╤В ╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛╨│╨╛ ╨╛╤В╨▓╨╡╤В╨░ - ╨╕╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╡╨╝ AI ╨┤╨╗╤П ╨╛╤Ж╨╡╨╜╨║╨╕
+          // Если нет правильного ответа - используем AI для оценки
           console.log('[DEBUG] No correct answers, using AI evaluation')
           aiResult = await checkTextWithAI(textAnswer, [task.question])
           correct = aiResult.correct
@@ -391,12 +391,12 @@ export function StepikTask({
     setIsProcessing(false)
     setAttempts(prev => prev + 1)
     
-    // ╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В AI ╨░╨╜╨░╨╗╨╕╨╖╨░ ╨┤╨╗╤П ╨╛╤В╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╤П
+    // Сохраняем результат AI анализа для отображения
     if (aiResult && (aiResult.feedback || aiResult.suggestion)) {
       setAiFeedback(aiResult)
     }
     
-    // ╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝ ╨╛╤В╨▓╨╡╤В ╨┤╨╗╤П ╨╛╤В╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╤П ╨┐╤А╨╕ ╨▓╨╛╨╖╨▓╤А╨░╤В╨╡
+    // Сохраняем ответ для отображения при возврате
     const answerToSave: SavedAnswer = {
       type: task.type,
       value: task.type === 'single' ? selectedSingle
@@ -428,10 +428,10 @@ export function StepikTask({
   const askAI = async () => {
     if (!aiQuestion.trim() && !isSubmitted) return
     setAiLoading(true)
-    setAiResponse('') // ╨Ю╤З╨╕╤Й╨░╨╡╨╝ ╨┐╤А╨╡╨┤╤Л╨┤╤Г╤Й╨╕╨╣ ╨╛╤В╨▓╨╡╤В
+    setAiResponse('') // Очищаем предыдущий ответ
     try {
-      const prompt = aiQuestion.trim() || '╨Ю╨▒╤К╤П╤Б╨╜╨╕ ╨┐╨╛╤З╨╡╨╝╤Г ╨╝╨╛╨╣ ╨╛╤В╨▓╨╡╤В ╨╜╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╣ ╨╕ ╨║╨░╨║ ╤А╨╡╤И╨╕╤В╤М ╤Н╤В╨╛ ╨╖╨░╨┤╨░╨╜╨╕╨╡'
-      const contextInfo = theoryContent ? `\n\n╨в╨╡╨╛╤А╨╕╤П ╨┐╨╛ ╤В╨╡╨╝╨╡:\n${theoryContent.slice(0, 2000)}` : ''
+      const prompt = aiQuestion.trim() || 'Объясни почему мой ответ неправильный и как решить это задание'
+      const contextInfo = theoryContent ? `\n\nТеория по теме:\n${theoryContent.slice(0, 2000)}` : ''
       
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000)
@@ -440,8 +440,8 @@ export function StepikTask({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: `╨Ч╨░╨┤╨░╨╜╨╕╨╡: ${task.question}${contextInfo}\n\n╨Ь╨╛╨╣ ╨▓╨╛╨┐╤А╨╛╤Б: ${prompt}`,
-          systemPrompt: '╨в╤Л AI-╤А╨╡╨┐╨╡╤В╨╕╤В╨╛╤А. ╨Я╨╛╨╝╨╛╨│╨░╨╣ ╤Б╤В╤Г╨┤╨╡╨╜╤В╤Г ╨┐╨╛╨╜╤П╤В╤М ╨╝╨░╤В╨╡╤А╨╕╨░╨╗, ╨╛╨▒╤К╤П╤Б╨╜╤П╨╣ ╨┐╤А╨╛╤Б╤В╤Л╨╝ ╤П╨╖╤Л╨║╨╛╨╝, ╨┤╨░╨▓╨░╨╣ ╨┐╨╛╨┤╤Б╨║╨░╨╖╨║╨╕ ╨╜╨╛ ╨╜╨╡ ╤А╨╡╤И╨░╨╣ ╨╖╨░ ╨╜╨╡╨│╨╛.'
+          message: `Задание: ${task.question}${contextInfo}\n\nМой вопрос: ${prompt}`,
+          systemPrompt: 'Ты AI-репетитор. Помогай студенту понять материал, объясняй простым языком, давай подсказки но не решай за него.'
         }),
         signal: controller.signal
       })
@@ -450,15 +450,15 @@ export function StepikTask({
       
       if (res.ok) {
         const data = await res.json()
-        setAiResponse(data.aiMessage?.content || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╛╨╗╤Г╤З╨╕╤В╤М ╨╛╤В╨▓╨╡╤В')
+        setAiResponse(data.aiMessage?.content || 'Не удалось получить ответ')
       } else {
-        setAiResponse('╨Ю╤И╨╕╨▒╨║╨░ ╤Б╨╡╤А╨▓╨╡╤А╨░. ╨Я╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╡╤Й╤С ╤А╨░╨╖.')
+        setAiResponse('Ошибка сервера. Попробуйте ещё раз.')
       }
     } catch (e: any) { 
       if (e.name === 'AbortError') {
-        setAiResponse('╨Я╤А╨╡╨▓╤Л╤И╨╡╨╜╨╛ ╨▓╤А╨╡╨╝╤П ╨╛╨╢╨╕╨┤╨░╨╜╨╕╤П. ╨Я╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╡╤Й╤С ╤А╨░╨╖.')
+        setAiResponse('Превышено время ожидания. Попробуйте ещё раз.')
       } else {
-        setAiResponse('╨Ю╤И╨╕╨▒╨║╨░ ╤Б╨╛╨╡╨┤╨╕╨╜╨╡╨╜╨╕╤П. ╨Я╤А╨╛╨▓╨╡╤А╤М╤В╨╡ ╨╕╨╜╤В╨╡╤А╨╜╨╡╤В ╨╕ ╨┐╨╛╨┐╤А╨╛╨▒╤Г╨╣╤В╨╡ ╨╡╤Й╤С ╤А╨░╨╖.')
+        setAiResponse('Ошибка соединения. Проверьте интернет и попробуйте ещё раз.')
       }
     }
     finally { setAiLoading(false); setAiQuestion('') }
@@ -502,7 +502,7 @@ export function StepikTask({
       {totalTasks > 1 && (
         <div className="bg-slate-900/70 px-4 py-3 border-b border-slate-700/50">
           <div className="flex items-center gap-1 flex-wrap">
-            <span className="text-xs text-slate-400 mr-2">╨Ч╨░╨┤╨░╨╜╨╕╤П:</span>
+            <span className="text-xs text-slate-400 mr-2">Задания:</span>
             {Array.from({ length: totalTasks }, (_, idx) => {
               const result = taskResults[idx] || 'pending'
               const isCurrent = idx === taskNumber - 1
@@ -524,19 +524,19 @@ export function StepikTask({
       <div className="bg-slate-900/50 px-4 sm:px-6 py-4 border-b border-slate-700/50">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold text-white">╨Ч╨░╨┤╨░╨╜╨╕╨╡ {taskNumber}/{totalTasks}</span>
+            <span className="text-lg font-semibold text-white">Задание {taskNumber}/{totalTasks}</span>
             <Badge className={difficultyColors[task.difficulty || 'easy']}>{difficultyLabels[task.difficulty || 'easy']}</Badge>
-            {attempts > 0 && <span className="text-xs text-slate-400">╨Я╨╛╨┐╤Л╤В╨║╨░ {attempts}</span>}
+            {attempts > 0 && <span className="text-xs text-slate-400">Попытка {attempts}</span>}
           </div>
           <div className="flex items-center gap-2">
-            {onGoToTheory && <button onClick={onGoToTheory} className="text-xs text-slate-400 hover:text-primary-400 transition-colors">тЖР ╨Ъ ╤В╨╡╨╛╤А╨╕╨╕</button>}
+            {onGoToTheory && <button onClick={onGoToTheory} className="text-xs text-slate-400 hover:text-primary-400 transition-colors">← К теории</button>}
             {task.hint && !isSubmitted && (
               <button onClick={() => setShowHint(!showHint)} className="flex items-center gap-1 text-sm text-slate-400 hover:text-amber-400 transition-colors">
                 <Lightbulb className="w-4 h-4" />
               </button>
             )}
             <button onClick={() => setShowAIChat(!showAIChat)} className="flex items-center gap-1 text-sm text-slate-400 hover:text-primary-400 transition-colors">
-              <MessageCircle className="w-4 h-4" /><span className="hidden sm:inline">AI ╨┐╨╛╨╝╨╛╤Й╤М</span>
+              <MessageCircle className="w-4 h-4" /><span className="hidden sm:inline">AI помощь</span>
             </button>
           </div>
         </div>
@@ -557,21 +557,21 @@ export function StepikTask({
         <div className="mx-4 sm:mx-6 mt-4 p-4 bg-primary-500/10 border border-primary-500/30 rounded-lg">
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-primary-400" />
-            <span className="text-primary-400 font-medium">AI ╨а╨╡╨┐╨╡╤В╨╕╤В╨╛╤А</span>
+            <span className="text-primary-400 font-medium">AI Репетитор</span>
           </div>
           {aiResponse && <div className="mb-3 p-3 bg-slate-800/50 rounded-lg text-slate-200 text-sm whitespace-pre-wrap">{aiResponse}</div>}
           <div className="flex gap-2">
             <input type="text" value={aiQuestion} onChange={(e) => setAiQuestion(e.target.value)}
-              placeholder={isSubmitted && !isCorrect ? "╨б╨┐╤А╨╛╤Б╨╕ ╨┐╨╛╤З╨╡╨╝╤Г ╨╜╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛..." : "╨Ч╨░╨┤╨░╨╣ ╨▓╨╛╨┐╤А╨╛╤Б ╨┐╨╛ ╨╖╨░╨┤╨░╨╜╨╕╤О..."}
+              placeholder={isSubmitted && !isCorrect ? "Спроси почему неправильно..." : "Задай вопрос по заданию..."}
               className="flex-1 p-2 rounded-lg bg-slate-900/50 border border-slate-700 text-white text-sm placeholder:text-slate-500"
               onKeyDown={(e) => e.key === 'Enter' && askAI()} />
             <Button onClick={askAI} disabled={aiLoading} className="px-3">
-              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '╨б╨┐╤А╨╛╤Б╨╕╤В╤М'}
+              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Спросить'}
             </Button>
           </div>
           {isSubmitted && !isCorrect && (
             <button onClick={() => { setAiQuestion(''); askAI() }} className="mt-2 text-xs text-primary-400 hover:underline">
-              ╨Ю╨▒╤К╤П╤Б╨╜╨╕ ╨┐╨╛╤З╨╡╨╝╤Г ╨╜╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛
+              Объясни почему неправильно
             </button>
           )}
         </div>
@@ -642,12 +642,12 @@ export function StepikTask({
         {/* Multiple choice */}
         {task.type === 'multiple' && (task as MultipleTask).options && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-400 mb-2">╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨▓╤Б╨╡ ╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╡ ╨▓╨░╤А╨╕╨░╨╜╤В╤Л</p>
+            <p className="text-sm text-slate-400 mb-2">Выберите все правильные варианты</p>
             {(task as MultipleTask).options.map((option, idx) => {
               const correctArr = ((task as MultipleTask).correctAnswers || []).map(v => typeof v === 'string' ? parseInt(v as any, 10) : v)
               const isCorrectByKey = correctArr.includes(idx)
               const isSel = selectedMultiple.includes(idx)
-              // ╨Х╤Б╨╗╨╕ AI ╨╖╨░╤Б╤З╨╕╤В╨░╨╗ ╨╛╤В╨▓╨╡╤В ╨║╨░╨║ ╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╣ - ╨▓╤Б╨╡ ╨▓╤Л╨▒╤А╨░╨╜╨╜╤Л╨╡ ╨▓╨░╤А╨╕╨░╨╜╤В╤Л ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╨╖╨╡╨╗╤С╨╜╤Л╨╝╨╕
+              // Если AI засчитал ответ как правильный - все выбранные варианты показываем зелёными
               const showAsCorrect = isSubmitted && isCorrect && isSel
               const showAsWrong = isSubmitted && !isCorrect && isSel && !isCorrectByKey
               const showAsCorrectByKey = isSubmitted && !isCorrect && isCorrectByKey
@@ -679,7 +679,7 @@ export function StepikTask({
                 </button>
               )
             })}
-            {/* AI Feedback ╨┤╨╗╤П ╨╝╨╜╨╛╨╢╨╡╤Б╤В╨▓╨╡╨╜╨╜╨╛╨│╨╛ ╨▓╤Л╨▒╨╛╤А╨░ */}
+            {/* AI Feedback для множественного выбора */}
             {isSubmitted && aiFeedback && (
               <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                 <div className="flex items-start gap-2">
@@ -690,7 +690,7 @@ export function StepikTask({
                     )}
                     {aiFeedback.suggestion && (
                       <p className="text-blue-300 text-sm">
-                        <span className="font-medium">ЁЯТб</span> {aiFeedback.suggestion}
+                        <span className="font-medium">💡</span> {aiFeedback.suggestion}
                       </p>
                     )}
                   </div>
@@ -704,12 +704,12 @@ export function StepikTask({
         {task.type === 'text' && (
           <div>
             <input type="text" value={textAnswer} onChange={(e) => setTextAnswer(e.target.value)} disabled={isSubmitted}
-              placeholder="╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╨▓╨░╤И ╨╛╤В╨▓╨╡╤В..."
+              placeholder="Введите ваш ответ..."
               className={`w-full p-4 rounded-xl border-2 bg-slate-900/50 text-white placeholder:text-slate-500 focus:outline-none ${
                 isSubmitted ? isCorrect ? 'border-green-500' : 'border-red-500' : 'border-slate-700 focus:border-primary-500'
               }`} />
             
-            {/* AI Feedback ╨┤╨╗╤П ╤В╨╡╨║╤Б╤В╨╛╨▓╤Л╤Е ╨╛╤В╨▓╨╡╤В╨╛╨▓ */}
+            {/* AI Feedback для текстовых ответов */}
             {isSubmitted && aiFeedback && (
               <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                 <div className="flex items-start gap-2">
@@ -720,7 +720,7 @@ export function StepikTask({
                     )}
                     {aiFeedback.suggestion && (
                       <p className="text-blue-300 text-sm">
-                        <span className="font-medium">ЁЯТб ╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П:</span> {aiFeedback.suggestion}
+                        <span className="font-medium">💡 Рекомендация:</span> {aiFeedback.suggestion}
                       </p>
                     )}
                   </div>
@@ -729,7 +729,7 @@ export function StepikTask({
             )}
             
             {isSubmitted && !isCorrect && !aiFeedback && (
-              <p className="mt-2 text-sm text-slate-400">╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В: <span className="text-green-400">{(task as TextTask).correctAnswers?.[0] || (task as any).correctAnswer || '╨Э╨╡╤В ╤Н╤В╨░╨╗╨╛╨╜╨╜╨╛╨│╨╛ ╨╛╤В╨▓╨╡╤В╨░'}</span></p>
+              <p className="mt-2 text-sm text-slate-400">Правильный ответ: <span className="text-green-400">{(task as TextTask).correctAnswers?.[0] || (task as any).correctAnswer || 'Нет эталонного ответа'}</span></p>
             )}
           </div>
         )}
@@ -738,12 +738,12 @@ export function StepikTask({
         {task.type === 'number' && (
           <div>
             <input type="number" value={numberAnswer} onChange={(e) => setNumberAnswer(e.target.value)} disabled={isSubmitted}
-              placeholder="╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤З╨╕╤Б╨╗╨╛..."
+              placeholder="Введите число..."
               className={`w-full p-4 rounded-xl border-2 bg-slate-900/50 text-white placeholder:text-slate-500 focus:outline-none ${
                 isSubmitted ? isCorrect ? 'border-green-500' : 'border-red-500' : 'border-slate-700 focus:border-primary-500'
               }`} />
             {isSubmitted && !isCorrect && (
-              <p className="mt-2 text-sm text-slate-400">╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╣ ╨╛╤В╨▓╨╡╤В: <span className="text-green-400">{(task as NumberTask).correctAnswer}</span></p>
+              <p className="mt-2 text-sm text-slate-400">Правильный ответ: <span className="text-green-400">{(task as NumberTask).correctAnswer}</span></p>
             )}
           </div>
         )}
@@ -752,7 +752,7 @@ export function StepikTask({
         {/* Matching with Drag & Drop */}
         {task.type === 'matching' && (task as MatchingTask).leftItems && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-400">╨Я╨╡╤А╨╡╤В╨░╤Й╨╕╤В╨╡ ╨╕╨╗╨╕ ╨║╨╗╨╕╨║╨╜╨╕╤В╨╡ ╨┤╨╗╤П ╤Б╨╛╨╡╨┤╨╕╨╜╨╡╨╜╨╕╤П</p>
+            <p className="text-sm text-slate-400">Перетащите или кликните для соединения</p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 {(task as MatchingTask).leftItems.map((item, idx) => (
@@ -764,7 +764,7 @@ export function StepikTask({
                     }`}>
                     <GripVertical className="w-4 h-4 text-slate-500" />
                     <span className="text-slate-200 flex-1">{item}</span>
-                    {matchingPairs.has(idx) && <span className="text-xs text-green-400">тЖТ {(task as MatchingTask).rightItems[matchingPairs.get(idx)!]}</span>}
+                    {matchingPairs.has(idx) && <span className="text-xs text-green-400">→ {(task as MatchingTask).rightItems[matchingPairs.get(idx)!]}</span>}
                   </div>
                 ))}
               </div>
@@ -789,21 +789,21 @@ export function StepikTask({
             <div className="flex items-center justify-between">
               <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">{(task as CodeTask).language?.toUpperCase() || 'CODE'}</Badge>
               {(task as CodeTask).testCases && (task as CodeTask).testCases!.length > 0 && (
-                <span className="text-xs text-slate-400">{(task as CodeTask).testCases!.length} ╤В╨╡╤Б╤В-╨║╨╡╨╣╤Б╨╛╨▓</span>
+                <span className="text-xs text-slate-400">{(task as CodeTask).testCases!.length} тест-кейсов</span>
               )}
             </div>
             <textarea value={codeAnswer} onChange={(e) => setCodeAnswer(e.target.value)} disabled={isSubmitted}
-              placeholder="// ╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨▓╨░╤И ╨║╨╛╨┤ ╨╖╨┤╨╡╤Б╤М..."
+              placeholder="// Напишите ваш код здесь..."
               className={`w-full h-64 p-4 rounded-xl border-2 bg-slate-900 text-green-400 font-mono text-sm placeholder:text-slate-600 focus:outline-none resize-none ${
                 isSubmitted ? isCorrect ? 'border-green-500' : 'border-red-500' : 'border-slate-700 focus:border-primary-500'
               }`} spellCheck={false} />
             {(task as CodeTask).testCases && (task as CodeTask).testCases!.length > 0 && (
               <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                <p className="text-xs text-slate-400 mb-2">╨Я╤А╨╕╨╝╨╡╤А╤Л ╤В╨╡╤Б╤В╨╛╨▓:</p>
+                <p className="text-xs text-slate-400 mb-2">Примеры тестов:</p>
                 {(task as CodeTask).testCases!.slice(0, 3).map((tc, idx) => (
                   <div key={idx} className="text-xs font-mono mb-1">
-                    <span className="text-slate-500">╨Т╤Е╨╛╨┤:</span> <span className="text-blue-400">{tc.input}</span>
-                    <span className="text-slate-500 ml-2">тЖТ</span> <span className="text-green-400">{tc.expected}</span>
+                    <span className="text-slate-500">Вход:</span> <span className="text-blue-400">{tc.input}</span>
+                    <span className="text-slate-500 ml-2">→</span> <span className="text-green-400">{tc.expected}</span>
                   </div>
                 ))}
               </div>
@@ -816,7 +816,7 @@ export function StepikTask({
             {isSubmitted && (task as CodeTask).solution && (
               <div>
                 <button onClick={() => setShowSolution(!showSolution)} className="text-sm text-primary-400 hover:underline">
-                  {showSolution ? '╨б╨║╤А╤Л╤В╤М ╤А╨╡╤И╨╡╨╜╨╕╨╡' : '╨Я╨╛╨║╨░╨╖╨░╤В╤М ╤А╨╡╤И╨╡╨╜╨╕╨╡'}
+                  {showSolution ? 'Скрыть решение' : 'Показать решение'}
                 </button>
                 {showSolution && (
                   <pre className="mt-2 p-4 bg-slate-900 rounded-lg text-green-400 font-mono text-sm overflow-x-auto border border-green-500/30">
@@ -834,7 +834,7 @@ export function StepikTask({
         <div className={`mx-4 sm:mx-6 mb-4 p-4 rounded-xl ${isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
           <div className="flex items-center gap-2 mb-2">
             {isCorrect ? <Check className="w-5 h-5 text-green-400" /> : <X className="w-5 h-5 text-red-400" />}
-            <span className={`font-semibold ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>{isCorrect ? '╨Я╤А╨░╨▓╨╕╨╗╤М╨╜╨╛!' : '╨Э╨╡╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╨╛'}</span>
+            <span className={`font-semibold ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>{isCorrect ? 'Правильно!' : 'Неправильно'}</span>
           </div>
           <p className="text-slate-300 text-sm">{task.explanation}</p>
         </div>
@@ -849,16 +849,16 @@ export function StepikTask({
           <div className="flex-1">
             {!isSubmitted ? (
               <Button onClick={checkAnswer} disabled={!canSubmit || codeCheckLoading || isProcessing} className="w-full">
-                {(codeCheckLoading || isProcessing) ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> ╨Я╤А╨╛╨▓╨╡╤А╨║╨░...</> : '╨Я╤А╨╛╨▓╨╡╤А╨╕╤В╤М ╨╛╤В╨▓╨╡╤В'}
+                {(codeCheckLoading || isProcessing) ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Проверка...</> : 'Проверить ответ'}
               </Button>
             ) : isCorrect ? (
               <Button onClick={onNext} className="w-full" rightIcon={<ChevronRight className="w-4 h-4" />}>
-                {taskNumber < totalTasks ? '╨б╨╗╨╡╨┤╤Г╤О╤Й╨╡╨╡ ╨╖╨░╨┤╨░╨╜╨╕╨╡' : '╨Ч╨░╨▓╨╡╤А╤И╨╕╤В╤М ╨┐╤А╨░╨║╤В╨╕╨║╤Г'}
+                {taskNumber < totalTasks ? 'Следующее задание' : 'Завершить практику'}
               </Button>
             ) : (
               <div className="flex gap-2">
-                <Button onClick={handleRetry} variant="secondary" className="flex-1" leftIcon={<RotateCcw className="w-4 h-4" />}>╨Х╤Й╤С ╤А╨░╨╖</Button>
-                <Button onClick={onNext} className="flex-1" rightIcon={<ChevronRight className="w-4 h-4" />}>╨Ф╨░╨╗╤М╤И╨╡</Button>
+                <Button onClick={handleRetry} variant="secondary" className="flex-1" leftIcon={<RotateCcw className="w-4 h-4" />}>Ещё раз</Button>
+                <Button onClick={onNext} className="flex-1" rightIcon={<ChevronRight className="w-4 h-4" />}>Дальше</Button>
               </div>
             )}
           </div>
