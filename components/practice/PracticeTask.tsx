@@ -63,7 +63,16 @@ interface FreeTextData {
   minLength?: number
 }
 
-type TaskData = CodeTaskData | MultipleChoiceData | CalculationData | FreeTextData
+interface OrderingData {
+  items: string[]
+  correctOrder: number[]
+}
+
+interface MatchingData {
+  pairs: Array<{ left: string; right: string }>
+}
+
+type TaskData = CodeTaskData | MultipleChoiceData | CalculationData | FreeTextData | OrderingData | MatchingData
 
 interface PracticeTaskProps {
   id: string
@@ -430,6 +439,341 @@ const CalculationTask: React.FC<{
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 📝 FREE TEXT TASK
+// ═══════════════════════════════════════════════════════════════
+
+const FreeTextTask: React.FC<{
+  data: FreeTextData
+  onSubmit: (answer: string) => void
+}> = ({ data, onSubmit }) => {
+  const [answer, setAnswer] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [isCorrect, setIsCorrect] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  
+  const handleSubmit = () => {
+    const minLength = data.minLength || 50
+    
+    if (answer.length < minLength) {
+      setFeedback(`Ответ слишком короткий. Минимум ${minLength} символов.`)
+      return
+    }
+    
+    // Check for keywords
+    const foundKeywords = data.keywords.filter(kw => 
+      answer.toLowerCase().includes(kw.toLowerCase())
+    )
+    
+    const keywordScore = foundKeywords.length / data.keywords.length
+    const correct = keywordScore >= 0.5 // At least 50% keywords
+    
+    setIsCorrect(correct)
+    setSubmitted(true)
+    setFeedback(correct 
+      ? `Отлично! Вы упомянули ключевые понятия: ${foundKeywords.join(', ')}`
+      : `Попробуйте раскрыть тему подробнее. Ключевые понятия: ${data.keywords.join(', ')}`
+    )
+    onSubmit(answer)
+  }
+  
+  return (
+    <div className="space-y-4">
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        disabled={submitted}
+        placeholder="Введите ваш ответ..."
+        className="w-full h-40 p-4 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-blue-500 resize-none"
+      />
+      
+      <div className="flex items-center justify-between text-sm text-zinc-400">
+        <span>{answer.length} символов (мин. {data.minLength || 50})</span>
+      </div>
+      
+      {!submitted && (
+        <button
+          onClick={handleSubmit}
+          disabled={answer.length < (data.minLength || 50)}
+          className={cn(
+            'px-4 py-2 rounded-lg font-medium transition-colors',
+            answer.length < (data.minLength || 50)
+              ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-500 text-white'
+          )}
+        >
+          Отправить
+        </button>
+      )}
+      
+      {submitted && (
+        <div className={cn(
+          'p-4 rounded-lg',
+          isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-yellow-500/10 border border-yellow-500/30'
+        )}>
+          <div className="flex items-center gap-2 mb-2">
+            {isCorrect ? (
+              <CheckCircle className="w-5 h-5 text-green-400" />
+            ) : (
+              <Lightbulb className="w-5 h-5 text-yellow-400" />
+            )}
+            <span className="font-medium">
+              {isCorrect ? 'Хороший ответ!' : 'Можно улучшить'}
+            </span>
+          </div>
+          <p className="text-sm text-zinc-300">{feedback}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔢 ORDERING TASK (для практических навыков)
+// ═══════════════════════════════════════════════════════════════
+
+interface OrderingData {
+  items: string[]
+  correctOrder: number[]
+}
+
+const OrderingTask: React.FC<{
+  data: OrderingData
+  onSubmit: (order: number[]) => void
+}> = ({ data, onSubmit }) => {
+  const [items, setItems] = useState(() => 
+    data.items.map((text, index) => ({ id: index, text }))
+      .sort(() => Math.random() - 0.5) // Shuffle
+  )
+  const [submitted, setSubmitted] = useState(false)
+  const [isCorrect, setIsCorrect] = useState(false)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
+  
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === index) return
+    
+    const newItems = [...items]
+    const draggedItem = newItems[draggedIndex]
+    newItems.splice(draggedIndex, 1)
+    newItems.splice(index, 0, draggedItem)
+    setItems(newItems)
+    setDraggedIndex(index)
+  }
+  
+  const handleSubmit = () => {
+    const userOrder = items.map(item => item.id)
+    const correct = userOrder.every((id, index) => id === data.correctOrder[index])
+    
+    setIsCorrect(correct)
+    setSubmitted(true)
+    onSubmit(userOrder)
+  }
+  
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-zinc-400">Расположите элементы в правильном порядке (перетаскивайте):</p>
+      
+      <div className="space-y-2">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            draggable={!submitted}
+            onDragStart={() => handleDragStart(index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            className={cn(
+              'p-3 rounded-lg border cursor-move transition-colors flex items-center gap-3',
+              submitted && data.correctOrder[index] === item.id
+                ? 'border-green-500 bg-green-500/10'
+                : submitted
+                ? 'border-red-500 bg-red-500/10'
+                : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
+            )}
+          >
+            <span className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-sm">
+              {index + 1}
+            </span>
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
+      
+      {!submitted && (
+        <button
+          onClick={handleSubmit}
+          className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+        >
+          Проверить порядок
+        </button>
+      )}
+      
+      {submitted && (
+        <div className={cn(
+          'p-4 rounded-lg',
+          isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
+        )}>
+          <div className="flex items-center gap-2">
+            {isCorrect ? (
+              <CheckCircle className="w-5 h-5 text-green-400" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-400" />
+            )}
+            <span className="font-medium">
+              {isCorrect ? 'Правильный порядок!' : 'Неправильный порядок. Попробуйте ещё раз.'}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔗 MATCHING TASK (для гуманитарных наук)
+// ═══════════════════════════════════════════════════════════════
+
+interface MatchingData {
+  pairs: Array<{ left: string; right: string }>
+}
+
+const MatchingTask: React.FC<{
+  data: MatchingData
+  onSubmit: (matches: Record<number, number>) => void
+}> = ({ data, onSubmit }) => {
+  const [matches, setMatches] = useState<Record<number, number>>({})
+  const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+  const [correctCount, setCorrectCount] = useState(0)
+  
+  // Shuffle right side
+  const [shuffledRight] = useState(() => 
+    data.pairs.map((p, i) => ({ text: p.right, originalIndex: i }))
+      .sort(() => Math.random() - 0.5)
+  )
+  
+  const handleLeftClick = (index: number) => {
+    if (submitted) return
+    setSelectedLeft(index)
+  }
+  
+  const handleRightClick = (shuffledIndex: number) => {
+    if (submitted || selectedLeft === null) return
+    
+    setMatches(prev => ({
+      ...prev,
+      [selectedLeft]: shuffledRight[shuffledIndex].originalIndex
+    }))
+    setSelectedLeft(null)
+  }
+  
+  const handleSubmit = () => {
+    let correct = 0
+    Object.entries(matches).forEach(([left, right]) => {
+      if (parseInt(left) === right) correct++
+    })
+    
+    setCorrectCount(correct)
+    setSubmitted(true)
+    onSubmit(matches)
+  }
+  
+  const allMatched = Object.keys(matches).length === data.pairs.length
+  
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-zinc-400">Соедините соответствующие элементы:</p>
+      
+      <div className="grid grid-cols-2 gap-4">
+        {/* Left column */}
+        <div className="space-y-2">
+          {data.pairs.map((pair, index) => (
+            <button
+              key={`left-${index}`}
+              onClick={() => handleLeftClick(index)}
+              disabled={submitted}
+              className={cn(
+                'w-full p-3 rounded-lg border text-left transition-colors',
+                selectedLeft === index
+                  ? 'border-blue-500 bg-blue-500/20'
+                  : matches[index] !== undefined
+                  ? submitted && matches[index] === index
+                    ? 'border-green-500 bg-green-500/10'
+                    : submitted
+                    ? 'border-red-500 bg-red-500/10'
+                    : 'border-purple-500 bg-purple-500/10'
+                  : 'border-zinc-700 hover:border-zinc-500'
+              )}
+            >
+              {pair.left}
+            </button>
+          ))}
+        </div>
+        
+        {/* Right column */}
+        <div className="space-y-2">
+          {shuffledRight.map((item, index) => {
+            const isMatched = Object.values(matches).includes(item.originalIndex)
+            return (
+              <button
+                key={`right-${index}`}
+                onClick={() => handleRightClick(index)}
+                disabled={submitted || isMatched}
+                className={cn(
+                  'w-full p-3 rounded-lg border text-left transition-colors',
+                  isMatched
+                    ? 'border-purple-500 bg-purple-500/10 opacity-50'
+                    : 'border-zinc-700 hover:border-zinc-500'
+                )}
+              >
+                {item.text}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      
+      {!submitted && (
+        <button
+          onClick={handleSubmit}
+          disabled={!allMatched}
+          className={cn(
+            'px-4 py-2 rounded-lg font-medium transition-colors',
+            !allMatched
+              ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-500 text-white'
+          )}
+        >
+          Проверить ({Object.keys(matches).length}/{data.pairs.length})
+        </button>
+      )}
+      
+      {submitted && (
+        <div className={cn(
+          'p-4 rounded-lg',
+          correctCount === data.pairs.length 
+            ? 'bg-green-500/10 border border-green-500/30' 
+            : 'bg-yellow-500/10 border border-yellow-500/30'
+        )}>
+          <div className="flex items-center gap-2">
+            {correctCount === data.pairs.length ? (
+              <CheckCircle className="w-5 h-5 text-green-400" />
+            ) : (
+              <Lightbulb className="w-5 h-5 text-yellow-400" />
+            )}
+            <span className="font-medium">
+              Правильно: {correctCount} из {data.pairs.length}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 🎯 MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
@@ -453,7 +797,7 @@ export const PracticeTask: React.FC<PracticeTaskProps> = ({
     if (completed) return
     
     // Calculate points (reduce for hints used)
-    const hintPenalty = hintsRevealed * Math.floor(points / hints.length / 2)
+    const hintPenalty = hints.length > 0 ? hintsRevealed * Math.floor(points / hints.length / 2) : 0
     const finalPoints = correct ? Math.max(points - hintPenalty, 1) : 0
     
     setCompleted(true)
@@ -508,6 +852,30 @@ export const PracticeTask: React.FC<PracticeTaskProps> = ({
     handleComplete(correct)
   }
   
+  const handleFreeTextSubmit = (answer: string) => {
+    const ftData = data as FreeTextData
+    const foundKeywords = ftData.keywords.filter(kw => 
+      answer.toLowerCase().includes(kw.toLowerCase())
+    )
+    const correct = foundKeywords.length >= ftData.keywords.length * 0.5
+    handleComplete(correct)
+  }
+  
+  const handleOrderingSubmit = (order: number[]) => {
+    const ordData = data as OrderingData
+    const correct = order.every((id, index) => id === ordData.correctOrder[index])
+    handleComplete(correct)
+  }
+  
+  const handleMatchingSubmit = (matches: Record<number, number>) => {
+    let correct = 0
+    const total = (data as MatchingData).pairs.length
+    Object.entries(matches).forEach(([left, right]) => {
+      if (parseInt(left) === right) correct++
+    })
+    handleComplete(correct === total)
+  }
+  
   const revealNextHint = () => {
     if (hintsRevealed < hints.length) {
       setHintsRevealed(prev => prev + 1)
@@ -551,6 +919,27 @@ export const PracticeTask: React.FC<PracticeTaskProps> = ({
           <CalculationTask 
             data={data as CalculationData}
             onSubmit={handleCalculationSubmit}
+          />
+        )}
+        
+        {type === 'free_text' && (
+          <FreeTextTask
+            data={data as FreeTextData}
+            onSubmit={handleFreeTextSubmit}
+          />
+        )}
+        
+        {type === 'ordering' && (
+          <OrderingTask
+            data={data as OrderingData}
+            onSubmit={handleOrderingSubmit}
+          />
+        )}
+        
+        {type === 'matching' && (
+          <MatchingTask
+            data={data as MatchingData}
+            onSubmit={handleMatchingSubmit}
           />
         )}
       </div>
