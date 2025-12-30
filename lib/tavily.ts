@@ -384,31 +384,32 @@ function suggestStructureFromOutlines(
   }
   
   // Count frequency of similar modules
-  const moduleFrequency = new Map<string, number>()
+  const moduleFrequency: Record<string, number> = {}
   
   for (const module of allModules) {
     const normalized = module.toLowerCase()
     
     // Find similar existing module
     let found = false
-    for (const [key, count] of moduleFrequency) {
+    const keys = Object.keys(moduleFrequency)
+    for (const key of keys) {
       if (
         key.includes(normalized.slice(0, 10)) ||
         normalized.includes(key.slice(0, 10))
       ) {
-        moduleFrequency.set(key, count + 1)
+        moduleFrequency[key] = (moduleFrequency[key] || 0) + 1
         found = true
         break
       }
     }
     
     if (!found) {
-      moduleFrequency.set(normalized, 1)
+      moduleFrequency[normalized] = 1
     }
   }
   
   // Sort by frequency and return top modules
-  return Array.from(moduleFrequency.entries())
+  return Object.entries(moduleFrequency)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([module]) => module.charAt(0).toUpperCase() + module.slice(1))
