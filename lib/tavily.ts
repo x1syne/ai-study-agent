@@ -361,7 +361,7 @@ function extractKeyFacts(articles: ArticleSource[]): string[] {
   }
   
   // Deduplicate and limit
-  return [...new Set(facts)].slice(0, 10)
+  return Array.from(new Set(facts)).slice(0, 10)
 }
 
 /**
