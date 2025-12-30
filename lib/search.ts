@@ -257,3 +257,45 @@ export function extractCourseStructure(sources: EducationalSource[]): string[] {
 
   return modules.slice(0, 10)
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+// 🔍 RAG CONTEXT (для совместимости с lesson route)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Get RAG context for a topic (combines Wikipedia + Serper)
+ */
+export async function getRAGContext(
+  topicName: string,
+  courseTitle: string
+): Promise<string> {
+  try {
+    const query = `${topicName} ${courseTitle} tutorial guide explanation`
+    
+    // Get Wikipedia context
+    const wikiResult = await searchWikipedia(topicName)
+    
+    // Get Serper results
+    const serperResults = await searchSerper(query, 3)
+    
+    const parts: string[] = []
+    
+    if (wikiResult) {
+      parts.push(`[Wikipedia] ${wikiResult.title}:\n${wikiResult.extract.slice(0, 1000)}`)
+    }
+    
+    for (const result of serperResults) {
+      parts.push(`[${extractDomain(result.link)}] ${result.title}:\n${result.snippet}`)
+    }
+    
+    if (parts.length === 0) {
+      return ''
+    }
+    
+    return parts.join('\n\n---\n\n')
+  } catch (error) {
+    console.error('[RAG] Context error:', error)
+    return ''
+  }
+}
