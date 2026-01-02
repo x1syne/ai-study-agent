@@ -171,7 +171,7 @@ export default function NewGoalPage() {
           if (data.success && data.data?.id) {
             // Сохраняем курс в localStorage для отображения
             localStorage.setItem('generatedCourse', JSON.stringify(data.data))
-            router.push(`/learn/${data.data.id}`)
+            router.push(`/course/${data.data.id}`)
           } else {
             throw new Error(data.error || 'Ошибка создания курса')
           }
