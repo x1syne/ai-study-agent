@@ -9,6 +9,28 @@
  */
 
 import { createHash } from 'crypto'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+
+// ═══════════════════════════════════════════════════════════════
+// 🔌 SUPABASE CLIENT
+// ═══════════════════════════════════════════════════════════════
+
+let supabaseClient: SupabaseClient | null = null
+
+function getSupabaseClient(): SupabaseClient | null {
+  if (supabaseClient) return supabaseClient
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !key) {
+    console.warn('[MediaCache] Supabase credentials not set')
+    return null
+  }
+
+  supabaseClient = createClient(url, key)
+  return supabaseClient
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 🎯 TYPES
@@ -92,7 +114,8 @@ export async function cacheMedia(
   content: { url?: string; data?: string }
 ): Promise<CachedMedia | null> {
   try {
-    const { supabase } = await import('./supabase')
+    const supabase = getSupabaseClient()
+    if (!supabase) return null
     
     const hash = generateMediaHash(prompt, type)
     const now = new Date()
@@ -153,7 +176,8 @@ export async function getCachedMedia(
   type: MediaType
 ): Promise<CachedMedia | null> {
   try {
-    const { supabase } = await import('./supabase')
+    const supabase = getSupabaseClient()
+    if (!supabase) return null
     
     const hash = generateMediaHash(prompt, type)
     
@@ -204,7 +228,8 @@ export async function getCachedMedia(
  */
 export async function deleteCachedMedia(hash: string): Promise<boolean> {
   try {
-    const { supabase } = await import('./supabase')
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
     
     const { error } = await supabase
       .from('media_cache')
@@ -223,7 +248,8 @@ export async function deleteCachedMedia(hash: string): Promise<boolean> {
  */
 export async function cleanupExpiredCache(): Promise<number> {
   try {
-    const { supabase } = await import('./supabase')
+    const supabase = getSupabaseClient()
+    if (!supabase) return 0
     
     const { data, error } = await supabase
       .from('media_cache')
@@ -252,7 +278,10 @@ export async function getCacheStats(): Promise<{
   byType: Record<MediaType, number>
 }> {
   try {
-    const { supabase } = await import('./supabase')
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      return { totalEntries: 0, totalHits: 0, byType: {} as Record<MediaType, number> }
+    }
     
     const { data, error } = await supabase
       .from('media_cache')
