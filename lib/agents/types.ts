@@ -407,3 +407,493 @@ export interface AgentError {
   recoverable: boolean
   context?: Record<string, unknown>
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+// 🎨 VISUAL IDENTITY TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Цветовая схема курса на основе типа темы
+ */
+export type ColorScheme = 
+  | 'blue-gradient'    // programming, technical
+  | 'green-gradient'   // scientific
+  | 'purple-gradient'  // creative, humanities
+  | 'orange-gradient'  // business, practical
+
+/**
+ * Визуальная тема на основе уровня сложности
+ */
+export type VisualTheme = 
+  | 'minimalist-illustrations'  // beginner
+  | 'data-driven-infographics'  // intermediate
+  | 'animated-diagrams'         // advanced, expert
+
+/**
+ * Уровень интерактивности курса
+ */
+export type InteractivityLevel = 'high' | 'medium' | 'low'
+
+/**
+ * Визуальная идентичность курса
+ */
+export interface VisualIdentity {
+  /** Основной цвет (hex) */
+  primaryColor: string
+  
+  /** CSS градиент */
+  gradient: string
+  
+  /** Пара шрифтов [основной, моноширинный] */
+  fontPairing: [string, string]
+  
+  /** Семейство иконок */
+  iconFamily: string
+  
+  /** Цветовая схема */
+  colorScheme: ColorScheme
+  
+  /** Визуальная тема */
+  visualTheme: VisualTheme
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📊 MODULE VISUAL SPEC TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Тип основного визуального элемента модуля
+ */
+export type PrimaryVisualType = 
+  | 'diagram' 
+  | 'infographic' 
+  | 'timeline' 
+  | 'comparison_table' 
+  | 'flowchart'
+
+/**
+ * Основной визуальный элемент модуля
+ */
+export interface PrimaryVisual {
+  /** Тип визуала */
+  type: PrimaryVisualType
+  
+  /** Описание для генерации */
+  description: string
+  
+  /** Mermaid код (для diagram/flowchart) */
+  mermaidCode?: string
+}
+
+/**
+ * Тип вторичного визуального элемента
+ */
+export type SecondaryVisualType = 'icon_set' | 'badge' | 'illustration'
+
+/**
+ * Вторичный визуальный элемент
+ */
+export interface SecondaryVisual {
+  /** Тип визуала */
+  type: SecondaryVisualType
+  
+  /** Иконки/эмодзи */
+  icons?: string[]
+  
+  /** Назначение */
+  purpose: string
+}
+
+/**
+ * Декоративные элементы
+ */
+export type DecorationElement = 'geometric_shape' | 'gradient_orb' | 'floating_icon'
+
+/**
+ * Визуальная спецификация модуля
+ */
+export interface ModuleVisualSpec {
+  /** Промпт для генерации hero изображения */
+  heroImagePrompt: string
+  
+  /** Цветовая схема модуля */
+  colorScheme: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+  
+  /** Декоративные элементы */
+  decorationElements: DecorationElement[]
+  
+  /** Основной визуальный элемент */
+  primaryVisual: PrimaryVisual
+  
+  /** Вторичные визуальные элементы */
+  secondaryVisuals: SecondaryVisual[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📝 TEXT BLOCK TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Тип контента секции
+ */
+export type ContentType = 'theory' | 'example' | 'practice' | 'review'
+
+/**
+ * Тип сопровождающего визуала
+ */
+export type AccompanyingVisualType = 'icon' | 'illustration' | 'photo' | 'diagram'
+
+/**
+ * Сопровождающий визуальный элемент для текстового блока
+ */
+export interface AccompanyingVisual {
+  /** Тип визуала */
+  type: AccompanyingVisualType
+  
+  /** Описание/поисковый запрос */
+  description: string
+  
+  /** Имя иконки (для type: icon) */
+  iconName?: string
+  
+  /** Mermaid код (для type: diagram) */
+  mermaidCode?: string
+  
+  /** Конфигурация графика */
+  chartConfig?: ChartConfig
+}
+
+/**
+ * Тип интерактивного элемента в текстовом блоке
+ */
+export type TextBlockInteractiveType = 'toggle_detail' | 'flip_card' | 'scratch_to_reveal'
+
+/**
+ * Интерактивный элемент текстового блока
+ */
+export interface TextBlockInteractive {
+  /** Тип интерактива */
+  type: TextBlockInteractiveType
+  
+  /** Скрытый контент */
+  content: string
+}
+
+/**
+ * Текстовый блок (max 150 слов)
+ */
+export interface TextBlock {
+  /** Текст блока */
+  text: string
+  
+  /** Сопровождающий визуал */
+  accompanyingVisual: AccompanyingVisual
+  
+  /** Интерактивный элемент (опционально) */
+  interactiveElement?: TextBlockInteractive
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📈 DIAGRAM AND CHART TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Тип диаграммы
+ */
+export type DiagramType = 'mermaid' | 'chartjs'
+
+/**
+ * Mermaid диаграмма
+ */
+export interface MermaidDiagram {
+  /** Тип */
+  type: 'mermaid'
+  
+  /** Mermaid синтаксис */
+  code: string
+  
+  /** Интерактивность */
+  interactive: boolean
+}
+
+/**
+ * Тип графика Chart.js
+ */
+export type ChartType = 'bar_chart' | 'pie_chart' | 'line_graph' | 'mind_map'
+
+/**
+ * Конфигурация Chart.js
+ */
+export interface ChartConfig {
+  /** Тип графика */
+  type: ChartType
+  
+  /** Данные */
+  data: {
+    labels: string[]
+    datasets: Array<{
+      label: string
+      data: number[]
+      backgroundColor?: string[]
+    }>
+  }
+  
+  /** Интерактивность */
+  interactive: boolean
+}
+
+/**
+ * Конфигурация диаграммы (union type)
+ */
+export type DiagramConfig = MermaidDiagram | ChartConfig
+
+// ═══════════════════════════════════════════════════════════════
+// 🎮 INTERACTIVE COMPONENT TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Тип интерактивного компонента
+ */
+export type InteractiveComponentType = 
+  | 'drag_and_drop' 
+  | 'code_sandbox' 
+  | 'quiz_with_feedback' 
+  | 'simulation' 
+  | 'progress_checklist'
+
+/**
+ * Сложность drag-and-drop
+ */
+export type DragDropDifficulty = 'matching' | 'ordering' | 'fill_blank'
+
+/**
+ * Визуальная награда
+ */
+export type RewardVisual = 'confetti' | 'badge' | 'progress_bar'
+
+/**
+ * Конфигурация интерактивного компонента
+ */
+export interface InteractiveComponentConfig {
+  /** Тип компонента */
+  type: InteractiveComponentType
+  
+  /** Сложность (для drag_and_drop) */
+  difficulty?: DragDropDifficulty
+  
+  /** Визуальная награда */
+  rewardVisual: RewardVisual
+  
+  /** Количество доступных подсказок (0-3) */
+  hintsAvailable: number
+  
+  /** Данные компонента */
+  data: Record<string, unknown>
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎬 MULTIMEDIA TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Промпт для генерации изображения
+ */
+export interface ImageGenerationPrompt {
+  /** Стиль изображения */
+  style: string
+  
+  /** Объект изображения */
+  subject: string
+  
+  /** Действие/контекст */
+  action: string
+  
+  /** Уровень детализации */
+  detailLevel: string
+}
+
+/**
+ * Платформа для встраивания
+ */
+export type EmbedPlatform = 'youtube' | 'codepen' | 'observable'
+
+/**
+ * Соотношение сторон
+ */
+export type AspectRatio = '16:9' | '1:1' | '4:3'
+
+/**
+ * Источник видео
+ */
+export interface VideoSource {
+  /** Платформа */
+  platform: EmbedPlatform
+  
+  /** Поисковый запрос */
+  searchQuery: string
+  
+  /** Предпочтительная длительность */
+  durationPreference: string
+  
+  /** Наличие субтитров */
+  hasCaptions: boolean
+  
+  /** Соотношение сторон */
+  aspectRatio: AspectRatio
+}
+
+/**
+ * Мультимедиа спецификация
+ */
+export interface MultimediaSpec {
+  /** Промпты для генерации изображений */
+  imagePrompts: ImageGenerationPrompt[]
+  
+  /** Источники видео */
+  videoSources: VideoSource[]
+  
+  /** Диаграммы */
+  diagrams: DiagramConfig[]
+  
+  /** Встраиваемые элементы */
+  embeds: VideoSource[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🏆 GAMIFICATION TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Checkpoint (контрольная точка)
+ */
+export interface Checkpoint {
+  /** Название */
+  title: string
+  
+  /** Эмодзи */
+  emoji: string
+  
+  /** Текст награды */
+  rewardText: string
+}
+
+/**
+ * Тип визуализации прогресса
+ */
+export type ProgressVisualizationType = 'progress_bar' | 'pie_chart' | 'experience_points'
+
+/**
+ * Визуализация прогресса
+ */
+export interface ProgressVisualization {
+  /** Тип визуализации */
+  type: ProgressVisualizationType
+  
+  /** Максимальное значение */
+  maxValue: number
+  
+  /** Текущее значение */
+  currentValue: number
+}
+
+/**
+ * Badge уровня
+ */
+export interface LevelBadge {
+  /** Номер уровня */
+  level: number
+  
+  /** Эмодзи */
+  emoji: string
+  
+  /** Название */
+  title: string
+}
+
+/**
+ * Спецификация геймификации
+ */
+export interface GamificationSpec {
+  /** Контрольные точки */
+  checkpoints: Checkpoint[]
+  
+  /** Визуализация прогресса */
+  progressVisualization: ProgressVisualization
+  
+  /** Badges уровней */
+  levelBadges: LevelBadge[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📦 EXTENDED VISUAL COURSE TYPES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Визуальные метаданные курса
+ */
+export interface VisualCourseMetadata {
+  /** Визуальная идентичность */
+  visualIdentity: VisualIdentity
+  
+  /** Уровень интерактивности */
+  interactivityLevel: InteractivityLevel
+}
+
+/**
+ * Визуальная секция модуля
+ */
+export interface VisualSection {
+  /** Тип контента */
+  contentType: ContentType
+  
+  /** Текстовые блоки */
+  textBlocks: TextBlock[]
+  
+  /** Мультимедиа */
+  multimedia: MultimediaSpec
+  
+  /** Геймификация */
+  gamification: GamificationSpec
+  
+  /** Интерактивный компонент (опционально) */
+  interactiveComponent?: InteractiveComponentConfig
+}
+
+/**
+ * Визуальный модуль (расширение CourseModule)
+ */
+export interface VisualModule extends CourseModule {
+  /** Визуальная спецификация */
+  visualSpec: ModuleVisualSpec
+  
+  /** Секции модуля */
+  sections: VisualSection[]
+}
+
+/**
+ * Визуальная структура курса (расширение CourseStructure)
+ */
+export interface VisualCourseStructure extends Omit<CourseStructure, 'modules' | 'metadata'> {
+  /** Метаданные с визуальной информацией */
+  metadata: CourseStructure['metadata'] & VisualCourseMetadata
+  
+  /** Визуальные модули */
+  modules: VisualModule[]
+}
+
+/**
+ * Сгенерированный визуальный контент модуля
+ */
+export interface GeneratedVisualModuleContent extends GeneratedModuleContent {
+  /** Визуальная спецификация */
+  visualSpec: ModuleVisualSpec
+  
+  /** Секции с визуальным контентом */
+  sections: VisualSection[]
+}
+

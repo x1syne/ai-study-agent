@@ -8,11 +8,16 @@
  * 2. Генерация практики в стиле Codewars (easy/medium/hard)
  * 3. Адаптация под тип темы
  * 4. Авто-проверка для code задач (Pyodide)
+ * 5. Генерация визуального контента (text blocks, multimedia, gamification)
  * 
- * Выход: GeneratedModuleContent с теорией и практикой
+ * Выход: GeneratedModuleContent или GeneratedVisualModuleContent
  */
 
 import { callLLM, callLLMJson } from '../llm'
+import { generateTextBlocks } from './text-blocks'
+import { generateInteractiveComponent } from './interactive-generator'
+import { generateMultimediaSpec } from './multimedia-generator'
+import { generateGamificationSpec } from './gamification-generator'
 import type {
   CourseStructure,
   CourseModule,
@@ -24,7 +29,12 @@ import type {
   CodeTaskData,
   MultipleChoiceData,
   CalculationData,
-  TestCase
+  TestCase,
+  VisualCourseStructure,
+  VisualModule,
+  GeneratedVisualModuleContent,
+  VisualSection,
+  ContentType
 } from './types'
 
 // ═══════════════════════════════════════════════════════════════
@@ -958,4 +968,179 @@ ${userAnswer}
   "feedback": "Обратная связь для студента",
   "suggestions": ["Что можно улучшить"]
 }`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎨 VISUAL CONTENT GENERATION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Определяет тип контента секции на основе типа модуля
+ */
+function determineContentType(module: CourseModule): ContentType {
+  const contentTypeMap: Record<string, ContentType> = {
+    theory: 'theory',
+    hands_on: 'practice',
+    problem_solving: 'practice',
+    project: 'practice',
+    review: 'review'
+  }
+  return contentTypeMap[module.contentType] || 'theory'
+}
+
+/**
+ * Генерирует визуальную секцию для модуля
+ */
+function generateVisualSection(
+  module: VisualModule,
+  theoryMarkdown: string,
+  structure: VisualCourseStructure
+): VisualSection {
+  const visualIdentity = structure.metadata.visualIdentity
+  const topicType = structure.topicType
+  
+  // Генерируем текстовые блоки из теории
+  const textBlocks = generateTextBlocks(
+    theoryMarkdown,
+    topicType,
+    visualIdentity.visualTheme
+  )
+  
+  // Генерируем мультимедиа спецификацию
+  const multimedia = generateMultimediaSpec(
+    module,
+    topicType,
+    visualIdentity.visualTheme
+  )
+  
+  // Генерируем геймификацию (для одного модуля)
+  const gamification = generateGamificationSpec([module])
+  
+  // Генерируем интерактивный компонент
+  const interactiveComponent = generateInteractiveComponent(module, topicType)
+  
+  return {
+    contentType: determineContentType(module),
+    textBlocks,
+    multimedia,
+    gamification,
+    interactiveComponent
+  }
+}
+
+/**
+ * Generate visual content for a single module
+ */
+export async function generateVisualModuleContent(
+  module: VisualModule,
+  structure: VisualCourseStructure
+): Promise<GeneratedVisualModuleContent> {
+  console.log(`[Generator] Generating VISUAL content for module "${module.name}"`)
+  const startTime = Date.now()
+  
+  // Generate theory and practice in parallel
+  const [theory, practice] = await Promise.all([
+    generateTheory(module, structure.topicType, structure.title),
+    generatePractice(module, structure.topicType, structure.title)
+  ])
+  
+  // Generate visual section from theory
+  const visualSection = generateVisualSection(module, theory.markdown, structure)
+  
+  const result: GeneratedVisualModuleContent = {
+    moduleId: module.id,
+    theory,
+    practice,
+    visualSpec: module.visualSpec,
+    sections: [visualSection],
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      tokensUsed: 0,
+      provider: 'groq'
+    }
+  }
+  
+  console.log(`[Generator] Visual module "${module.name}" generated in ${Date.now() - startTime}ms`)
+  console.log(`[Generator] Theory: ${theory.wordCount} words, Practice: ${practice.tasks.length} tasks`)
+  console.log(`[Generator] TextBlocks: ${visualSection.textBlocks.length}, Diagrams: ${visualSection.multimedia.diagrams.length}`)
+  
+  return result
+}
+
+/**
+ * Generate visual content for all modules in a course
+ * Uses batching to respect rate limits
+ */
+export async function generateAllVisualModules(
+  structure: VisualCourseStructure,
+  onProgress?: (completed: number, total: number) => void
+): Promise<GeneratedVisualModuleContent[]> {
+  console.log(`[Generator] Generating ${structure.modules.length} VISUAL modules`)
+  const startTime = Date.now()
+  
+  const results: GeneratedVisualModuleContent[] = []
+  
+  // Generate modules sequentially with delays to avoid rate limits
+  for (let i = 0; i < structure.modules.length; i++) {
+    const module = structure.modules[i]
+    
+    // Delay between modules (except first)
+    if (i > 0) {
+      console.log('[Generator] Waiting 2s between modules...')
+      await new Promise(r => setTimeout(r, 2000))
+    }
+    
+    try {
+      const content = await generateVisualModuleContent(module, structure)
+      results.push(content)
+      
+      if (onProgress) {
+        onProgress(i + 1, structure.modules.length)
+      }
+    } catch (error) {
+      console.error(`[Generator] Failed to generate visual module ${module.name}:`, error)
+      
+      // Add placeholder for failed module
+      const fallbackTheory = generateFallbackTheory(module)
+      const fallbackSection: VisualSection = {
+        contentType: determineContentType(module),
+        textBlocks: generateTextBlocks(
+          fallbackTheory,
+          structure.topicType,
+          structure.metadata.visualIdentity.visualTheme
+        ),
+        multimedia: generateMultimediaSpec(
+          module,
+          structure.topicType,
+          structure.metadata.visualIdentity.visualTheme
+        ),
+        gamification: generateGamificationSpec([module])
+      }
+      
+      results.push({
+        moduleId: module.id,
+        theory: {
+          markdown: fallbackTheory,
+          media: [],
+          interactiveElements: [],
+          wordCount: 100
+        },
+        practice: {
+          tasks: generateFallbackPractice(module, structure.topicType),
+          verificationType: 'self'
+        },
+        visualSpec: module.visualSpec,
+        sections: [fallbackSection],
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          tokensUsed: 0,
+          provider: 'fallback'
+        }
+      })
+    }
+  }
+  
+  console.log(`[Generator] All visual modules generated in ${Date.now() - startTime}ms`)
+  
+  return results
 }

@@ -12,16 +12,19 @@
  * - Groq LLM (primary) + HuggingFace (fallback)
  * - Tavily RAG для поиска лучших course outlines
  * - Кэширование в Supabase (TTL 1 week)
+ * - Visual mode для интерактивных курсов с геймификацией
  */
 
 import { analyzeTopic } from './analyst'
-import { buildCourseStructure } from './constructor'
-import { generateAllModules, generateModuleContent } from './generator'
+import { buildCourseStructure, buildVisualCourseStructure } from './constructor'
+import { generateAllModules, generateModuleContent, generateAllVisualModules, generateVisualModuleContent } from './generator'
 import type {
   TopicAnalysisResult,
   CourseStructure,
   GeneratedModuleContent,
-  CachedCourse
+  CachedCourse,
+  VisualCourseStructure,
+  GeneratedVisualModuleContent
 } from './types'
 
 // Re-export types
@@ -29,8 +32,17 @@ export * from './types'
 
 // Re-export individual agents
 export { analyzeTopic } from './analyst'
-export { buildCourseStructure } from './constructor'
-export { generateAllModules, generateModuleContent } from './generator'
+export { buildCourseStructure, buildVisualCourseStructure } from './constructor'
+export { generateAllModules, generateModuleContent, generateAllVisualModules, generateVisualModuleContent } from './generator'
+
+// Re-export visual generators
+export { generateVisualIdentity } from './visual-identity'
+export { generateModuleVisualSpec, generateAllModuleVisualSpecs } from './visual-spec'
+export { generateTextBlocks, splitIntoTextBlocks } from './text-blocks'
+export { generateInteractiveComponent, generateAllInteractiveComponents } from './interactive-generator'
+export { generateMermaidDiagram, generateChartConfig } from './diagram-generator'
+export { generateMultimediaSpec, generateAllMultimediaSpecs } from './multimedia-generator'
+export { generateGamificationSpec, generateCheckpoints, generateLevelBadges } from './gamification-generator'
 
 // ═══════════════════════════════════════════════════════════════
 // 🎯 MAIN COURSE GENERATION
@@ -42,6 +54,18 @@ export interface CourseGenerationResult {
     analysis: TopicAnalysisResult
     structure: CourseStructure
     modules: GeneratedModuleContent[]
+  }
+  error?: string
+  cached?: boolean
+  generationTime?: number
+}
+
+export interface VisualCourseGenerationResult {
+  success: boolean
+  course?: {
+    analysis: TopicAnalysisResult
+    structure: VisualCourseStructure
+    modules: GeneratedVisualModuleContent[]
   }
   error?: string
   cached?: boolean
@@ -166,6 +190,135 @@ export async function generateCourse(
     
   } catch (error: any) {
     console.error('[CourseGen] Generation failed:', error)
+    
+    onProgress?.({
+      stage: 'error',
+      progress: 0,
+      message: `Ошибка: ${error.message}`
+    })
+    
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    }
+  }
+}
+
+/**
+ * Generate a complete VISUAL course from a topic query
+ * 
+ * Расширенная версия с визуальной идентичностью, интерактивными компонентами,
+ * геймификацией и мультимедиа.
+ * 
+ * @param query - User's topic (e.g., "ООП в Python", "Квантовая физика")
+ * @param onProgress - Progress callback
+ * @returns Complete visual course with theory, practice, and visual elements
+ * 
+ * @example
+ * const result = await generateVisualCourse("ООП в Python", (progress) => {
+ *   console.log(`${progress.stage}: ${progress.progress}%`)
+ * })
+ */
+export async function generateVisualCourse(
+  query: string,
+  onProgress?: (progress: GenerationProgress) => void
+): Promise<VisualCourseGenerationResult> {
+  const startTime = Date.now()
+  
+  try {
+    // ═══════════════════════════════════════════════════════════════
+    // STAGE 1: ANALYST - Topic Classification & RAG
+    // ═══════════════════════════════════════════════════════════════
+    
+    onProgress?.({
+      stage: 'analyzing',
+      progress: 10,
+      message: 'Анализируем тему и ищем лучшие источники...'
+    })
+    
+    console.log('[VisualCourseGen] Stage 1: Analyzing topic...')
+    const analysis = await analyzeTopic(query)
+    
+    console.log(`[VisualCourseGen] Analysis complete: type=${analysis.type}, concepts=${analysis.keyConcepts.length}`)
+    
+    onProgress?.({
+      stage: 'analyzing',
+      progress: 25,
+      message: `Тема: ${analysis.normalizedTopic} (${analysis.type})`
+    })
+    
+    // ═══════════════════════════════════════════════════════════════
+    // STAGE 2: CONSTRUCTOR - Visual Course Structure
+    // ═══════════════════════════════════════════════════════════════
+    
+    onProgress?.({
+      stage: 'structuring',
+      progress: 30,
+      message: 'Строим визуальную структуру курса...'
+    })
+    
+    console.log('[VisualCourseGen] Stage 2: Building visual structure...')
+    const structure = await buildVisualCourseStructure(analysis)
+    
+    console.log(`[VisualCourseGen] Visual structure complete: ${structure.modules.length} modules`)
+    console.log(`[VisualCourseGen] Visual identity: ${structure.metadata.visualIdentity.colorScheme}`)
+    
+    onProgress?.({
+      stage: 'structuring',
+      progress: 40,
+      message: `Структура: ${structure.modules.length} визуальных модулей`
+    })
+    
+    // ═══════════════════════════════════════════════════════════════
+    // STAGE 3: GENERATOR - Visual Content Generation
+    // ═══════════════════════════════════════════════════════════════
+    
+    onProgress?.({
+      stage: 'generating',
+      progress: 45,
+      message: 'Генерируем визуальный контент модулей...'
+    })
+    
+    console.log('[VisualCourseGen] Stage 3: Generating visual modules...')
+    
+    const modules = await generateAllVisualModules(structure, (completed, total) => {
+      const progress = 45 + Math.round((completed / total) * 50)
+      onProgress?.({
+        stage: 'generating',
+        progress,
+        message: `Генерация визуального модуля ${completed}/${total}`,
+        currentModule: structure.modules[completed - 1]?.name
+      })
+    })
+    
+    console.log(`[VisualCourseGen] Visual generation complete: ${modules.length} modules`)
+    
+    // ═══════════════════════════════════════════════════════════════
+    // COMPLETE
+    // ═══════════════════════════════════════════════════════════════
+    
+    const generationTime = Date.now() - startTime
+    
+    onProgress?.({
+      stage: 'complete',
+      progress: 100,
+      message: `Визуальный курс готов за ${Math.round(generationTime / 1000)}с`
+    })
+    
+    console.log(`[VisualCourseGen] Visual course generated in ${generationTime}ms`)
+    
+    return {
+      success: true,
+      course: {
+        analysis,
+        structure,
+        modules
+      },
+      generationTime
+    }
+    
+  } catch (error: any) {
+    console.error('[VisualCourseGen] Generation failed:', error)
     
     onProgress?.({
       stage: 'error',

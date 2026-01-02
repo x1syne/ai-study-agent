@@ -8,19 +8,25 @@
  * 2. Адаптация под тип темы (programming/scientific/creative/etc.)
  * 3. Генерация промптов для теории и практики каждого модуля
  * 4. Использование RAG данных для структуры
+ * 5. Генерация визуальной идентичности и спецификаций модулей
  * 
- * Выход: CourseStructure с 5-10 модулями
+ * Выход: CourseStructure или VisualCourseStructure с 5-10 модулями
  */
 
 import { callLLMJson } from '../llm'
 import { formatRAGContextForPrompt, getTopicTypeDescription } from './analyst'
+import { generateVisualIdentity } from './visual-identity'
+import { generateModuleVisualSpec } from './visual-spec'
 import type {
   TopicAnalysisResult,
   CourseStructure,
   CourseModule,
   TopicType,
   DifficultyLevel,
-  ModuleContentType
+  ModuleContentType,
+  VisualCourseStructure,
+  VisualModule,
+  InteractivityLevel
 } from './types'
 
 // ═══════════════════════════════════════════════════════════════
@@ -502,4 +508,162 @@ export function validateStructure(structure: CourseStructure): boolean {
       m.practicePrompt.length > 100
     )
   )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎨 VISUAL COURSE STRUCTURE BUILDER
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Определяет уровень интерактивности на основе типа темы и сложности
+ */
+export function determineInteractivityLevel(
+  topicType: TopicType,
+  difficulty: DifficultyLevel
+): InteractivityLevel {
+  // Высокая интерактивность для programming и practical
+  if (topicType === 'programming' || topicType === 'practical') {
+    return 'high'
+  }
+  
+  // Средняя интерактивность для scientific и technical
+  if (topicType === 'scientific' || topicType === 'technical') {
+    return difficulty === 'beginner' ? 'medium' : 'high'
+  }
+  
+  // Для остальных типов зависит от сложности
+  if (difficulty === 'advanced' || difficulty === 'expert') {
+    return 'medium'
+  }
+  
+  return 'low'
+}
+
+/**
+ * Build visual course structure from topic analysis
+ * 
+ * Расширенная версия buildCourseStructure с визуальной идентичностью
+ * и спецификациями для каждого модуля.
+ * 
+ * @param analysis - Result from Analyst agent
+ * @returns Complete visual course structure with visual identity and module specs
+ * 
+ * @example
+ * const structure = await buildVisualCourseStructure(analysis)
+ * // Returns: { title, modules: [{ visualSpec, ... }], metadata: { visualIdentity, ... } }
+ */
+export async function buildVisualCourseStructure(
+  analysis: TopicAnalysisResult
+): Promise<VisualCourseStructure> {
+  console.log(`[Constructor] Building VISUAL structure for "${analysis.normalizedTopic}"`)
+  const startTime = Date.now()
+  
+  // Step 1: Generate base structure with LLM
+  const llmStructure = await generateStructureWithLLM(analysis)
+  
+  // Step 2: Generate visual identity
+  const visualIdentity = generateVisualIdentity(analysis.type, analysis.difficulty)
+  console.log(`[Constructor] Visual identity: ${visualIdentity.colorScheme}, ${visualIdentity.visualTheme}`)
+  
+  // Step 3: Determine interactivity level
+  const interactivityLevel = determineInteractivityLevel(analysis.type, analysis.difficulty)
+  
+  // Step 4: Get templates for this topic type
+  const templates = MODULE_TEMPLATES[analysis.type]
+  
+  // Step 5: Build visual modules with prompts and visual specs
+  const modules: VisualModule[] = llmStructure.modules.map((m, index) => {
+    const template = templates[index % templates.length]
+    const baseDuration = analysis.estimatedDuration / llmStructure.modules.length
+    
+    // Base module properties
+    const baseModule: CourseModule = {
+      id: `module-${index + 1}`,
+      order: index + 1,
+      name: m.name,
+      description: m.description,
+      theoryPrompt: generateTheoryPrompt(m, analysis, index, llmStructure.modules.length),
+      practicePrompt: generatePracticePrompt(m, analysis),
+      keyTerms: m.keyTerms,
+      duration: Math.round(baseDuration * template.durationMultiplier),
+      difficulty: m.difficulty,
+      contentType: template.contentType
+    }
+    
+    // Generate visual spec for this module
+    const visualSpec = generateModuleVisualSpec(
+      baseModule,
+      visualIdentity,
+      analysis.type,
+      index
+    )
+    
+    // Return visual module (sections will be populated by Generator agent)
+    return {
+      ...baseModule,
+      visualSpec,
+      sections: [] // Will be populated by Generator agent
+    }
+  })
+  
+  // Step 6: Calculate total duration
+  const totalDuration = modules.reduce((sum, m) => sum + m.duration, 0)
+  
+  // Step 7: Build final visual structure
+  const structure: VisualCourseStructure = {
+    title: llmStructure.title,
+    subtitle: llmStructure.subtitle,
+    description: llmStructure.description,
+    objectives: llmStructure.objectives,
+    modules,
+    totalDuration,
+    topicType: analysis.type,
+    metadata: {
+      createdAt: new Date().toISOString(),
+      version: '2.0',
+      basedOnSources: analysis.recommendedSources,
+      visualIdentity,
+      interactivityLevel
+    }
+  }
+  
+  console.log(`[Constructor] Visual structure built in ${Date.now() - startTime}ms`)
+  console.log(`[Constructor] ${modules.length} visual modules, ${totalDuration} min total`)
+  
+  return structure
+}
+
+/**
+ * Validate visual course structure
+ */
+export function validateVisualStructure(structure: VisualCourseStructure): boolean {
+  // Base validation
+  if (!validateStructure(structure as unknown as CourseStructure)) {
+    return false
+  }
+  
+  // Visual identity validation
+  const vi = structure.metadata.visualIdentity
+  if (!vi || !vi.primaryColor || !vi.gradient || !vi.colorScheme || !vi.visualTheme) {
+    return false
+  }
+  
+  // Interactivity level validation
+  if (!structure.metadata.interactivityLevel) {
+    return false
+  }
+  
+  // Module visual specs validation
+  return structure.modules.every(m => {
+    const vs = m.visualSpec
+    return (
+      vs &&
+      vs.heroImagePrompt.length > 0 &&
+      vs.colorScheme &&
+      vs.colorScheme.primary &&
+      vs.primaryVisual &&
+      vs.primaryVisual.type &&
+      Array.isArray(vs.secondaryVisuals)
+    )
+  })
 }
