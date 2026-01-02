@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Sparkles, BookOpen, Clock, Target, Loader2 } from 'lucide-react'
+import { Sparkles, BookOpen, Clock, Target, Loader2, Palette, Gamepad2 } from 'lucide-react'
 
 interface GenerationProgress {
   stage: string
@@ -20,6 +20,7 @@ interface GenerationProgress {
 export default function CreateCoursePage() {
   const router = useRouter()
   const [query, setQuery] = useState('')
+  const [visualMode, setVisualMode] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState<GenerationProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +41,7 @@ export default function CreateCoursePage() {
       const response = await fetch('/api/create-course', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() })
+        body: JSON.stringify({ query: query.trim(), visualMode })
       })
 
       const data = await response.json()
@@ -84,6 +85,54 @@ export default function CreateCoursePage() {
           <p className="text-zinc-400">
             Введите любую тему — AI создаст полноценный курс уровня Harvard/MIT
           </p>
+        </div>
+
+        {/* Visual Mode Toggle */}
+        <div className="mb-6 p-4 bg-zinc-800/50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${visualMode ? 'bg-purple-500/20 text-purple-400' : 'bg-zinc-700 text-zinc-400'}`}>
+                <Palette className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-medium">Визуальный режим</h3>
+                <p className="text-xs text-zinc-500">Диаграммы, интерактив, геймификация</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVisualMode(!visualMode)}
+              disabled={isGenerating}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                visualMode ? 'bg-purple-500' : 'bg-zinc-600'
+              } disabled:opacity-50`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                visualMode ? 'left-7' : 'left-1'
+              }`} />
+            </button>
+          </div>
+          
+          {visualMode && (
+            <div className="mt-3 pt-3 border-t border-zinc-700 grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Gamepad2 className="w-3 h-3 text-green-400" />
+                Drag & Drop, квизы
+              </div>
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Sparkles className="w-3 h-3 text-yellow-400" />
+                Бейджи, прогресс
+              </div>
+              <div className="flex items-center gap-2 text-zinc-400">
+                <BookOpen className="w-3 h-3 text-blue-400" />
+                Mermaid диаграммы
+              </div>
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Target className="w-3 h-3 text-red-400" />
+                Chart.js графики
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Form */}
