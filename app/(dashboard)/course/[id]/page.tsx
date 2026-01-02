@@ -108,9 +108,41 @@ export default function VisualCoursePage() {
     )
   }
 
-  const currentModule = course.modules[currentModuleIndex]
-  const progress = Math.round((completedModules.size / course.modules.length) * 100)
-  const colors = course.metadata.visualIdentity?.colorScheme
+  const currentModule = course.modules?.[currentModuleIndex]
+  const progress = course.modules?.length ? Math.round((completedModules.size / course.modules.length) * 100) : 0
+  const colors = course.metadata?.visualIdentity?.colorScheme
+
+  // Если модули не загрузились
+  if (!course.modules || course.modules.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="py-16 text-center">
+            <h2 className="text-xl font-bold text-white mb-2">Курс пуст</h2>
+            <p className="text-slate-400 mb-6">Модули не были сгенерированы. Попробуйте создать курс заново.</p>
+            <button onClick={() => router.push('/goals/new')} className="btn-practicum">
+              Создать новый курс
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!currentModule) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="py-16 text-center">
+            <h2 className="text-xl font-bold text-white mb-2">Модуль не найден</h2>
+            <button onClick={() => setCurrentModuleIndex(0)} className="btn-practicum">
+              К первому модулю
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -146,8 +178,8 @@ export default function VisualCoursePage() {
       <div className="grid lg:grid-cols-4 gap-6">
         {/* Sidebar - Module List */}
         <div className="lg:col-span-1 space-y-2">
-          <h3 className="text-sm font-medium text-slate-400 mb-3">Модули ({course.modules.length})</h3>
-          {course.modules.map((module, idx) => (
+          <h3 className="text-sm font-medium text-slate-400 mb-3">Модули ({course.modules?.length || 0})</h3>
+          {(course.modules || []).map((module, idx) => (
             <button
               key={module.id}
               onClick={() => setCurrentModuleIndex(idx)}
@@ -211,14 +243,14 @@ export default function VisualCoursePage() {
           </Card>
 
           {/* Practice Tasks */}
-          {currentModule.practice.tasksCount > 0 && (
+          {currentModule.practice?.tasksCount > 0 && (
             <Card>
               <CardContent className="p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">
-                  Практика ({currentModule.practice.tasksCount} заданий)
+                  Практика ({currentModule.practice?.tasksCount || 0} заданий)
                 </h3>
                 <div className="space-y-3">
-                  {currentModule.practice.tasks.slice(0, 3).map((task, idx) => (
+                  {(currentModule.practice?.tasks || []).slice(0, 3).map((task, idx) => (
                     <div key={task.id || idx} className="p-4 bg-slate-800/50 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
@@ -247,8 +279,8 @@ export default function VisualCoursePage() {
             
             {completedModules.has(currentModuleIndex) ? (
               <button
-                onClick={() => setCurrentModuleIndex(prev => Math.min(course.modules.length - 1, prev + 1))}
-                disabled={currentModuleIndex === course.modules.length - 1}
+                onClick={() => setCurrentModuleIndex(prev => Math.min((course.modules?.length || 1) - 1, prev + 1))}
+                disabled={currentModuleIndex === (course.modules?.length || 1) - 1}
                 className="px-6 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
               >
                 Следующий модуль <ChevronRight className="w-4 h-4" />
