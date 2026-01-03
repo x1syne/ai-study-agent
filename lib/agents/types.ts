@@ -408,6 +408,106 @@ export interface AgentError {
   context?: Record<string, unknown>
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 📚 LESSON & PROGRESS TYPES (Enhanced Course Experience)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Статус урока в прогрессе пользователя
+ */
+export type LessonStatus = 'not_started' | 'theory_done' | 'practice_done' | 'completed'
+
+/**
+ * Определение ключевого термина
+ */
+export interface TermDefinition {
+  /** Термин */
+  term: string
+  /** Определение */
+  definition: string
+  /** Примеры использования */
+  examples?: string[]
+}
+
+/**
+ * Урок внутри модуля
+ */
+export interface Lesson {
+  /** Уникальный ID урока */
+  id: string
+  /** ID родительского модуля */
+  moduleId: string
+  /** Порядковый номер в модуле */
+  order: number
+  /** Название урока */
+  title: string
+  /** Краткое описание */
+  description: string
+  /** Теория в Markdown с ==highlights== */
+  theoryMarkdown: string
+  /** Ключевые термины урока */
+  keyTerms: TermDefinition[]
+  /** Время на чтение (минуты) */
+  estimatedReadTime: number
+  /** Количество слов */
+  wordCount: number
+  /** ID практических заданий */
+  practiceTaskIds: string[]
+}
+
+/**
+ * Прогресс по уроку
+ */
+export interface LessonProgress {
+  /** ID урока */
+  lessonId: string
+  /** Статус */
+  status: LessonStatus
+  /** Дата завершения */
+  completedAt?: string
+}
+
+/**
+ * Прогресс по модулю
+ */
+export interface ModuleProgress {
+  /** ID модуля */
+  moduleId: string
+  /** Прогресс по урокам */
+  lessons: LessonProgress[]
+  /** Процент завершения (0-100) */
+  completionPercent: number
+}
+
+/**
+ * Прогресс по курсу
+ */
+export interface CourseProgress {
+  /** ID курса */
+  courseId: string
+  /** Прогресс по модулям */
+  modules: ModuleProgress[]
+  /** ID последнего открытого урока */
+  lastAccessedLessonId: string
+  /** Общий процент завершения */
+  overallPercent: number
+}
+
+/**
+ * Модуль с уроками (расширение CourseModule)
+ */
+export interface ModuleWithLessons extends CourseModule {
+  /** Уроки модуля */
+  lessons: Lesson[]
+}
+
+/**
+ * Структура курса с уроками
+ */
+export interface CourseStructureWithLessons extends Omit<CourseStructure, 'modules'> {
+  /** Модули с уроками */
+  modules: ModuleWithLessons[]
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 🎨 VISUAL IDENTITY TYPES

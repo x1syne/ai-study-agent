@@ -17,6 +17,7 @@ import { callLLMJson } from '../llm'
 import { formatRAGContextForPrompt, getTopicTypeDescription } from './analyst'
 import { generateVisualIdentity } from './visual-identity'
 import { generateModuleVisualSpec } from './visual-spec'
+import { splitModuleIntoLessons } from './lesson-generator'
 import type {
   TopicAnalysisResult,
   CourseStructure,
@@ -26,7 +27,10 @@ import type {
   ModuleContentType,
   VisualCourseStructure,
   VisualModule,
-  InteractivityLevel
+  InteractivityLevel,
+  CourseStructureWithLessons,
+  ModuleWithLessons,
+  Lesson
 } from './types'
 
 // ═══════════════════════════════════════════════════════════════
@@ -666,4 +670,104 @@ export function validateVisualStructure(structure: VisualCourseStructure): boole
       Array.isArray(vs.secondaryVisuals)
     )
   })
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 📚 COURSE STRUCTURE WITH LESSONS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build course structure with lessons from generated theory content
+ * 
+ * This function takes a base course structure and generated theory content,
+ * then splits each module into 3-7 lessons.
+ * 
+ * @param structure - Base course structure
+ * @param generatedTheory - Map of moduleId to theory markdown
+ * @returns Course structure with lessons for each module
+ */
+export function buildCourseStructureWithLessons(
+  structure: CourseStructure,
+  generatedTheory: Map<string, string>
+): CourseStructureWithLessons {
+  console.log(`[Constructor] Building structure with lessons for "${structure.title}"`)
+  
+  const modulesWithLessons: ModuleWithLessons[] = structure.modules.map(module => {
+    const theoryMarkdown = generatedTheory.get(module.id) || ''
+    
+    // Split module into lessons
+    const lessons = splitModuleIntoLessons(
+      module,
+      theoryMarkdown,
+      structure.topicType
+    )
+    
+    console.log(`[Constructor] Module "${module.name}": ${lessons.length} lessons`)
+    
+    return {
+      ...module,
+      lessons
+    }
+  })
+  
+  return {
+    ...structure,
+    modules: modulesWithLessons
+  }
+}
+
+/**
+ * Get all lessons from a course structure with lessons
+ */
+export function getAllLessons(structure: CourseStructureWithLessons): Lesson[] {
+  return structure.modules.flatMap(m => m.lessons)
+}
+
+/**
+ * Get lesson by ID from course structure
+ */
+export function getLessonById(
+  structure: CourseStructureWithLessons,
+  lessonId: string
+): Lesson | undefined {
+  for (const module of structure.modules) {
+    const lesson = module.lessons.find(l => l.id === lessonId)
+    if (lesson) return lesson
+  }
+  return undefined
+}
+
+/**
+ * Get next lesson after the given lesson ID
+ */
+export function getNextLesson(
+  structure: CourseStructureWithLessons,
+  currentLessonId: string
+): Lesson | undefined {
+  const allLessons = getAllLessons(structure)
+  const currentIndex = allLessons.findIndex(l => l.id === currentLessonId)
+  
+  if (currentIndex === -1 || currentIndex === allLessons.length - 1) {
+    return undefined
+  }
+  
+  return allLessons[currentIndex + 1]
+}
+
+/**
+ * Get previous lesson before the given lesson ID
+ */
+export function getPreviousLesson(
+  structure: CourseStructureWithLessons,
+  currentLessonId: string
+): Lesson | undefined {
+  const allLessons = getAllLessons(structure)
+  const currentIndex = allLessons.findIndex(l => l.id === currentLessonId)
+  
+  if (currentIndex <= 0) {
+    return undefined
+  }
+  
+  return allLessons[currentIndex - 1]
 }

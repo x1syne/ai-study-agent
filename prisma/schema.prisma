@@ -187,6 +187,26 @@ enum LessonType {
   FILL_BLANK
 }
 
+// ==================== ПРОГРЕСС ПО УРОКАМ КУРСА ====================
+
+model CourseLessonProgress {
+  id              String    @id @default(cuid())
+  lessonId        String    // ID урока в формате moduleId-lesson-N
+  userId          String
+  courseId        String    // ID курса
+  
+  status          String    // 'not_started' | 'theory_done' | 'practice_done' | 'completed'
+  completedAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([lessonId, userId])
+  @@index([userId])
+  @@index([courseId, userId])
+  @@map("course_lesson_progress")
+}
+
 // ==================== ЗАДАНИЯ ====================
 
 model TaskSubmission {

@@ -30,8 +30,20 @@ export * from './types'
 
 // Re-export individual agents
 export { analyzeTopic } from './analyst'
-export { buildCourseStructure } from './constructor'
+export { 
+  buildCourseStructure, 
+  buildCourseStructureWithLessons,
+  getAllLessons,
+  getLessonById,
+  getNextLesson,
+  getPreviousLesson
+} from './constructor'
 export { generateAllModules, generateModuleContent } from './generator'
+export { 
+  splitModuleIntoLessons, 
+  extractKeyTerms, 
+  calculateReadingTime 
+} from './lesson-generator'
 
 // ═══════════════════════════════════════════════════════════════
 // 🎯 MAIN COURSE GENERATION
