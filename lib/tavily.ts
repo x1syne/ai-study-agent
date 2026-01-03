@@ -43,23 +43,44 @@ interface TavilyResponse {
   response_time: number
 }
 
-// Educational domains to prioritize
-const EDUCATIONAL_DOMAINS = [
-  'harvard.edu',
-  'mit.edu',
-  'stanford.edu',
-  'coursera.org',
-  'edx.org',
-  'khanacademy.org',
-  'freecodecamp.org',
-  'w3schools.com',
-  'developer.mozilla.org',
-  'docs.python.org',
-  'geeksforgeeks.org',
-  'tutorialspoint.com',
-  'realpython.com',
-  'brilliant.org'
-]
+// Educational domains to prioritize with quality scores
+const EDUCATIONAL_DOMAINS_WITH_SCORES: Record<string, number> = {
+  // Tier 1: Top Universities (highest priority)
+  'harvard.edu': 1.0,
+  'mit.edu': 1.0,
+  'stanford.edu': 1.0,
+  'berkeley.edu': 0.95,
+  'caltech.edu': 0.95,
+  'princeton.edu': 0.95,
+  'yale.edu': 0.95,
+  'ox.ac.uk': 0.95,
+  'cam.ac.uk': 0.95,
+  
+  // Tier 2: Major MOOC Platforms
+  'coursera.org': 0.9,
+  'edx.org': 0.9,
+  'udacity.com': 0.85,
+  'khanacademy.org': 0.85,
+  'brilliant.org': 0.85,
+  
+  // Tier 3: Official Documentation
+  'developer.mozilla.org': 0.85,
+  'docs.python.org': 0.85,
+  'docs.microsoft.com': 0.8,
+  'developer.apple.com': 0.8,
+  'cloud.google.com': 0.8,
+  'aws.amazon.com': 0.8,
+  
+  // Tier 4: Quality Educational Sites
+  'freecodecamp.org': 0.75,
+  'realpython.com': 0.75,
+  'geeksforgeeks.org': 0.7,
+  'w3schools.com': 0.65,
+  'tutorialspoint.com': 0.6
+}
+
+// Legacy array for backward compatibility
+const EDUCATIONAL_DOMAINS = Object.keys(EDUCATIONAL_DOMAINS_WITH_SCORES)
 
 // ═══════════════════════════════════════════════════════════════
 // 📊 USAGE TRACKING
@@ -139,6 +160,7 @@ async function searchTavily(params: TavilySearchParams): Promise<TavilyResponse 
 
 /**
  * Search for course outlines from top universities
+ * Results are sorted by educational domain quality score
  */
 export async function searchCourseOutlines(
   topic: string,
@@ -150,31 +172,49 @@ export async function searchCourseOutlines(
     query,
     search_depth: 'advanced',
     include_domains: EDUCATIONAL_DOMAINS,
-    max_results: maxResults,
+    max_results: maxResults * 2, // Request more to filter and sort
     include_answer: true
   })
   
   if (!response) return []
   
-  const outlines: CourseOutlineSource[] = []
+  const outlines: Array<CourseOutlineSource & { score: number }> = []
   
   for (const result of response.results) {
     // Extract source name from URL
     const urlObj = new URL(result.url)
-    let source = urlObj.hostname.replace('www.', '')
+    const hostname = urlObj.hostname.replace('www.', '')
+    
+    // Calculate quality score based on domain
+    let domainScore = 0.5 // Default score for unknown domains
+    for (const [domain, score] of Object.entries(EDUCATIONAL_DOMAINS_WITH_SCORES)) {
+      if (hostname.includes(domain.split('.')[0])) {
+        domainScore = score
+        break
+      }
+    }
+    
+    // Combined score: domain quality + Tavily relevance
+    const combinedScore = (domainScore * 0.6) + (result.score * 0.4)
     
     // Map to friendly names
     const sourceMap: Record<string, string> = {
       'harvard.edu': 'Harvard University',
       'mit.edu': 'MIT OpenCourseWare',
       'stanford.edu': 'Stanford University',
+      'berkeley.edu': 'UC Berkeley',
       'coursera.org': 'Coursera',
       'edx.org': 'edX',
-      'khanacademy.org': 'Khan Academy'
+      'khanacademy.org': 'Khan Academy',
+      'brilliant.org': 'Brilliant',
+      'freecodecamp.org': 'freeCodeCamp',
+      'realpython.com': 'Real Python',
+      'developer.mozilla.org': 'MDN Web Docs'
     }
     
+    let source = hostname
     for (const [domain, name] of Object.entries(sourceMap)) {
-      if (source.includes(domain.split('.')[0])) {
+      if (hostname.includes(domain.split('.')[0])) {
         source = name
         break
       }
@@ -187,15 +227,21 @@ export async function searchCourseOutlines(
       source,
       title: result.title,
       modules,
-      url: result.url
+      url: result.url,
+      score: combinedScore
     })
   }
   
+  // Sort by combined score (highest first) and take top results
   return outlines
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults)
+    .map(({ score, ...outline }) => outline)
 }
 
 /**
  * Search for educational articles on topic
+ * Results are sorted by educational domain quality score
  */
 export async function searchEducationalArticles(
   topic: string,
@@ -206,18 +252,40 @@ export async function searchEducationalArticles(
   const response = await searchTavily({
     query,
     search_depth: 'basic',
-    max_results: maxResults,
+    max_results: maxResults * 2, // Request more to filter and sort
     include_answer: false
   })
   
   if (!response) return []
   
-  return response.results.map(r => ({
-    title: r.title,
-    snippet: r.content.slice(0, 500),
-    url: r.url,
-    relevance: r.score
-  }))
+  // Score and sort results
+  const scoredResults = response.results.map(r => {
+    const hostname = new URL(r.url).hostname.replace('www.', '')
+    
+    // Calculate domain quality score
+    let domainScore = 0.5
+    for (const [domain, score] of Object.entries(EDUCATIONAL_DOMAINS_WITH_SCORES)) {
+      if (hostname.includes(domain.split('.')[0])) {
+        domainScore = score
+        break
+      }
+    }
+    
+    // Combined score
+    const combinedScore = (domainScore * 0.5) + (r.score * 0.5)
+    
+    return {
+      title: r.title,
+      snippet: r.content.slice(0, 500),
+      url: r.url,
+      relevance: combinedScore
+    }
+  })
+  
+  // Sort by combined relevance and take top results
+  return scoredResults
+    .sort((a, b) => b.relevance - a.relevance)
+    .slice(0, maxResults)
 }
 
 /**
@@ -501,4 +569,53 @@ function getDefaultStructure(topicType: string): string[] {
 
 export function getTavilyUsage(): TavilyUsage {
   return { ...tavilyUsage }
+}
+
+/**
+ * Get quality score for a domain
+ * Higher score = more authoritative educational source
+ */
+export function getDomainQualityScore(url: string): number {
+  try {
+    const hostname = new URL(url).hostname.replace('www.', '')
+    
+    for (const [domain, score] of Object.entries(EDUCATIONAL_DOMAINS_WITH_SCORES)) {
+      if (hostname.includes(domain.split('.')[0])) {
+        return score
+      }
+    }
+    
+    return 0.5 // Default score for unknown domains
+  } catch {
+    return 0.5
+  }
+}
+
+/**
+ * Check if URL is from a prioritized educational domain
+ */
+export function isEducationalDomain(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace('www.', '')
+    
+    return EDUCATIONAL_DOMAINS.some(domain => 
+      hostname.includes(domain.split('.')[0])
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Get list of prioritized educational domains
+ */
+export function getEducationalDomains(): string[] {
+  return [...EDUCATIONAL_DOMAINS]
+}
+
+/**
+ * Get educational domains with their quality scores
+ */
+export function getEducationalDomainsWithScores(): Record<string, number> {
+  return { ...EDUCATIONAL_DOMAINS_WITH_SCORES }
 }

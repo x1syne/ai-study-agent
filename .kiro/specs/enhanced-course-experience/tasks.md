@@ -14,7 +14,7 @@
     - Добавить интерфейс CourseProgress, ModuleProgress, LessonProgress
     - _Requirements: 5.1, 5.2, 5.3, 6.1_
 
-  - [ ]* 1.2 Написать property test для типов уроков
+  - [x] 1.2 Написать property test для типов уроков
     - **Property 3: Lesson Count Per Module**
     - **Validates: Requirements 5.1**
 
@@ -26,11 +26,11 @@
     - Добавить инструкцию для использования реальных числовых примеров
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [ ]* 2.2 Написать property test для структуры теории
+  - [x] 2.2 Написать property test для структуры теории
     - **Property 1: Theory Content Structure**
     - **Validates: Requirements 1.1, 1.5**
 
-  - [ ]* 2.3 Написать property test для выделения терминов
+  - [x] 2.3 Написать property test для выделения терминов
     - **Property 2: Key Term Highlighting**
     - **Validates: Requirements 1.2, 4.1**
 
@@ -42,7 +42,7 @@
     - Добавить извлечение keyTerms для каждого урока
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ]* 3.2 Написать property test для длины уроков
+  - [x] 3.2 Написать property test для длины уроков
     - **Property 4: Lesson Length Constraint**
     - **Validates: Requirements 5.2**
 
@@ -60,7 +60,7 @@
     - Добавить процент завершения модуля
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ]* 5.2 Написать property test для навигации
+  - [x] 5.2 Написать property test для навигации
     - **Property 5: Navigation Shows All Lessons**
     - **Validates: Requirements 2.2**
 
@@ -72,7 +72,7 @@
     - Добавить кликабельность для перехода между секциями
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ]* 6.2 Написать property test для переходов прогресс-бара
+  - [x] 6.2 Написать property test для переходов прогресс-бара
     - **Property 6: Progress Bar State Transitions**
     - **Validates: Requirements 3.2, 3.3**
 
@@ -84,11 +84,11 @@
     - Реализовать syncLocalProgress(userId) для синхронизации при авторизации
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-  - [ ]* 7.2 Написать property test для round-trip прогресса
+  - [x] 7.2 Написать property test для round-trip прогресса
     - **Property 8: Progress Persistence Round-Trip**
     - **Validates: Requirements 6.1, 6.2, 6.3**
 
-  - [ ]* 7.3 Написать property test для расчёта завершения
+  - [x] 7.3 Написать property test для расчёта завершения
     - **Property 7: Module Completion Calculation**
     - **Validates: Requirements 3.4, 3.5**
 
