@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Search, Sparkles, ChevronRight, Loader2, Palette, Gamepad2, BookOpen, Target } from 'lucide-react'
+import { ArrowLeft, Search, Sparkles, ChevronRight, Loader2 } from 'lucide-react'
 import { Card, CardContent, Button, Input } from '@/components/ui'
 import Link from 'next/link'
 
@@ -123,7 +123,6 @@ export default function NewGoalPage() {
   const [selectedSubtopic, setSelectedSubtopic] = useState<string>('')
   const [customTopic, setCustomTopic] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [visualMode, setVisualMode] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState('')
 
@@ -158,42 +157,18 @@ export default function NewGoalPage() {
     setError('')
 
     try {
-      if (visualMode) {
-        // Визуальный режим - используем новый API с диаграммами, интерактивом и геймификацией
-        const res = await fetch('/api/create-course', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: skill || title, visualMode: true }),
-        })
+      const res = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, skill, level: 'beginner' }),
+      })
 
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data?.id) {
-            // Сохраняем курс в localStorage для отображения
-            localStorage.setItem('generatedCourse', JSON.stringify(data.data))
-            router.push(`/course/${data.data.id}`)
-          } else {
-            throw new Error(data.error || 'Ошибка создания курса')
-          }
-        } else {
-          const data = await res.json()
-          throw new Error(data.error || 'Ошибка создания курса')
-        }
+      if (res.ok) {
+        const goal = await res.json()
+        router.push(`/goals/${goal.id}`)
       } else {
-        // Обычный режим - старый API
-        const res = await fetch('/api/goals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, skill, level: 'beginner' }),
-        })
-
-        if (res.ok) {
-          const goal = await res.json()
-          router.push(`/goals/${goal.id}`)
-        } else {
-          const data = await res.json()
-          throw new Error(data.error || 'Ошибка создания курса')
-        }
+        const data = await res.json()
+        throw new Error(data.error || 'Ошибка создания курса')
       }
     } catch (e: any) {
       setError(e.message || 'Ошибка сети')
@@ -211,13 +186,10 @@ export default function NewGoalPage() {
             <Loader2 className="w-16 h-16 text-primary-400 animate-spin mx-auto mb-6" />
             <h2 className="text-2xl font-bold text-white mb-2">Создаём курс...</h2>
             <p className="text-slate-400">
-              {visualMode 
-                ? 'AI генерирует визуальный курс с диаграммами, интерактивом и геймификацией'
-                : 'AI генерирует учебный план, теорию и карточки для повторения'
-              }
+              AI генерирует учебный план, теорию и практические задания
             </p>
             <p className="text-slate-500 text-sm mt-4">
-              {visualMode ? 'Это может занять 1-2 минуты' : 'Это может занять 30-60 секунд'}
+              Это может занять 30-60 секунд
             </p>
           </CardContent>
         </Card>
@@ -259,55 +231,6 @@ export default function NewGoalPage() {
               className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-primary-500"
             />
           </div>
-
-          {/* Visual Mode Toggle */}
-          <Card className={`border ${visualMode ? 'border-purple-500/50 bg-purple-500/10' : 'border-slate-700'}`}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${visualMode ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-700 text-slate-400'}`}>
-                    <Palette className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-white">Визуальный режим</h3>
-                    <p className="text-xs text-slate-400">Диаграммы, интерактив, геймификация</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setVisualMode(!visualMode)}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    visualMode ? 'bg-purple-500' : 'bg-slate-600'
-                  }`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                    visualMode ? 'left-7' : 'left-1'
-                  }`} />
-                </button>
-              </div>
-              
-              {visualMode && (
-                <div className="mt-3 pt-3 border-t border-slate-700/50 grid grid-cols-2 gap-2 text-xs">
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <Gamepad2 className="w-3 h-3 text-green-400" />
-                    Drag & Drop, квизы
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <Sparkles className="w-3 h-3 text-yellow-400" />
-                    Бейджи, прогресс
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <BookOpen className="w-3 h-3 text-blue-400" />
-                    Mermaid диаграммы
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <Target className="w-3 h-3 text-red-400" />
-                    Chart.js графики
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Custom topic */}
           <Card className="border-primary-500/30 bg-primary-500/5">
