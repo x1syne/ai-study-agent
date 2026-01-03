@@ -176,7 +176,85 @@ const IconRenderer: React.FC<IconRendererProps> = ({ iconName, className, size =
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🖼️ IMAGE PLACEHOLDER
+// 🖼️ UNSPLASH IMAGE RENDERER
+// ═══════════════════════════════════════════════════════════════
+
+interface UnsplashImageProps {
+  query: string
+  className?: string
+  size?: 'small' | 'medium' | 'large'
+}
+
+const UnsplashImage: React.FC<UnsplashImageProps> = ({ 
+  query, 
+  className,
+  size = 'medium'
+}) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  // Размеры для Unsplash Source API
+  const dimensions = {
+    small: { w: 200, h: 150 },
+    medium: { w: 400, h: 300 },
+    large: { w: 800, h: 600 }
+  }
+
+  useEffect(() => {
+    if (!query) {
+      setLoading(false)
+      setError(true)
+      return
+    }
+
+    // Используем Unsplash Source API (бесплатный, без ключа)
+    const { w, h } = dimensions[size]
+    const searchQuery = encodeURIComponent(query.slice(0, 100))
+    const url = `https://source.unsplash.com/${w}x${h}/?${searchQuery}`
+    
+    setImageUrl(url)
+    setLoading(false)
+  }, [query, size])
+
+  if (loading) {
+    return (
+      <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} 
+           style={{ minHeight: dimensions[size].h / 2 }} />
+    )
+  }
+
+  if (error || !imageUrl) {
+    return (
+      <div className={`
+        bg-gradient-to-br from-purple-100 to-blue-100 
+        rounded-lg p-4 flex flex-col items-center justify-center
+        ${className}
+      `} style={{ minHeight: dimensions[size].h / 2 }}>
+        <LucideIcons.Image className="w-8 h-8 text-purple-400 mb-2" />
+        <p className="text-xs text-purple-600 text-center">{query}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`relative overflow-hidden rounded-lg ${className}`}>
+      <img
+        src={imageUrl}
+        alt={query}
+        className="w-full h-full object-cover"
+        style={{ minHeight: dimensions[size].h / 2 }}
+        onError={() => setError(true)}
+      />
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2">
+        <p className="text-xs text-white/80 truncate">{query}</p>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🖼️ IMAGE PLACEHOLDER (fallback)
 // ═══════════════════════════════════════════════════════════════
 
 const ImagePlaceholder: React.FC<{ description: string; className?: string }> = ({ 
@@ -253,9 +331,10 @@ export const MediaOrchestrator: React.FC<MediaOrchestratorProps> = ({
       case 'illustration':
       case 'photo':
         return (
-          <ImagePlaceholder 
-            description={visual.description} 
+          <UnsplashImage 
+            query={visual.description} 
             className={className}
+            size="medium"
           />
         )
       

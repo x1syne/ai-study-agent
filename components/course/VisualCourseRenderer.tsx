@@ -100,6 +100,32 @@ const generateCSSVariables = (identity: VisualIdentity): React.CSSProperties => 
 } as React.CSSProperties)
 
 // ═══════════════════════════════════════════════════════════════
+// 📝 MARKDOWN PARSER
+// ═══════════════════════════════════════════════════════════════
+
+const parseMarkdown = (text: string): string => {
+  if (!text) return ''
+  
+  return text
+    // Headers
+    .replace(/^### (.*$)/gim, '<h4 class="text-lg font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
+    .replace(/^## (.*$)/gim, '<h3 class="text-xl font-bold text-gray-800 mt-6 mb-3">$1</h3>')
+    .replace(/^# (.*$)/gim, '<h2 class="text-2xl font-bold text-gray-800 mt-6 mb-4">$1</h2>')
+    // Bold and italic
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong class="font-bold"><em>$1</em></strong>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
+    // Code
+    .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-gray-100 rounded text-purple-600 text-sm font-mono">$1</code>')
+    // Lists
+    .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
+    .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 mb-1">$1</li>')
+    // Line breaks
+    .replace(/\n\n/g, '</p><p class="mb-3">')
+    .replace(/\n/g, '<br/>')
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 📝 TEXT BLOCK RENDERER
 // ═══════════════════════════════════════════════════════════════
 
@@ -120,7 +146,10 @@ const TextBlockRenderer: React.FC<TextBlockRendererProps> = ({ block, index }) =
 
       {/* Text content */}
       <div className="flex-1">
-        <p className="text-gray-700 leading-relaxed">{block.text}</p>
+        <div 
+          className="text-gray-700 leading-relaxed prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: parseMarkdown(block.text) }}
+        />
 
         {/* Interactive element */}
         {block.interactiveElement && (
