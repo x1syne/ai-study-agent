@@ -4,32 +4,31 @@
  * 🎓 VISUAL COURSE PAGE
  * 
  * Страница просмотра визуального курса с диаграммами, интерактивом и геймификацией
+ * Использует VisualCourseRenderer для полноценного визуального отображения
  */
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, BookOpen, ChevronRight, CheckCircle, Loader2, Sparkles } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui'
+import dynamic from 'next/dynamic'
+import type { VisualModule, VisualIdentity } from '@/lib/agents/types'
 
-interface CourseModule {
-  id: string
-  name: string
-  description: string
-  duration: number
-  difficulty: string
-  theory: {
-    markdown: string
-    wordCount: number
+// Lazy load VisualCourseRenderer для оптимизации
+const VisualCourseRenderer = dynamic(
+  () => import('@/components/course/VisualCourseRenderer'),
+  { 
+    ssr: false, 
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+      </div>
+    )
   }
-  practice: {
-    tasksCount: number
-    tasks: any[]
-  }
-  visualSpec?: any
-  sections?: any[]
-}
+)
 
-interface CourseData {
+// Типы данных курса из localStorage (формат API response)
+interface StoredCourseData {
   id: string
   title: string
   subtitle: string
@@ -39,67 +38,97 @@ interface CourseData {
   totalDuration: number
   modulesCount: number
   objectives: string[]
-  modules: CourseModule[]
+  modules: Array<{
+    id: string
+    name: string
+    description: string
+    duration: number
+    difficulty: string
+    theory: { markdown: string; wordCount: number }
+    practice: { tasksCount: number; tasks: any[] }
+    visualSpec?: any
+    sections?: any[]
+    keyTerms?: string[]
+  }>
   metadata: {
     generatedAt: string
     generationTime: number
     cached: boolean
     visualIdentity?: {
-      colorScheme: {
-        primary: string
-        secondary: string
-        accent: string
-        background: string
-      }
+      primaryColor: string
+      gradient: string
+      fontPairing: [string, string]
+      iconFamily: string
+      colorScheme: string
+      visualTheme: string
     }
+    interactivityLevel?: string
   }
+}
+
+// Дефолтная визуальная идентичность
+const defaultVisualIdentity: VisualIdentity = {
+  primaryColor: '#8B5CF6',
+  gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%)',
+  fontPairing: ['Inter', 'JetBrains Mono'],
+  iconFamily: 'lucide',
+  colorScheme: 'purple-gradient',
+  visualTheme: 'minimalist-illustrations'
 }
 
 export default function VisualCoursePage() {
   const params = useParams()
   const router = useRouter()
-  const [course, setCourse] = useState<CourseData | null>(null)
-  const [currentModuleIndex, setCurrentModuleIndex] = useState(0)
-  const [completedModules, setCompletedModules] = useState<Set<number>>(new Set())
+  const [course, setCourse] = useState<StoredCourseData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     // Загружаем курс из localStorage
     const stored = localStorage.getItem('generatedCourse')
     if (stored) {
       try {
-        const data = JSON.parse(stored)
+        const data = JSON.parse(stored) as StoredCourseData
         setCourse(data)
       } catch (e) {
         console.error('Failed to parse course:', e)
+        setError('Не удалось загрузить курс')
       }
+    } else {
+      setError('Курс не найден')
     }
     setIsLoading(false)
   }, [params.id])
 
-  const handleCompleteModule = () => {
-    setCompletedModules(prev => new Set([...Array.from(prev), currentModuleIndex]))
-    if (currentModuleIndex < (course?.modules.length || 0) - 1) {
-      setCurrentModuleIndex(prev => prev + 1)
-    }
-  }
-
+  // Loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-primary-400 animate-spin" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Загрузка курса...</p>
+        </div>
       </div>
     )
   }
 
-  if (!course) {
+  // Error state
+  if (error || !course) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <Card>
+      <div className="max-w-4xl mx-auto p-6">
+        <Card className="border-red-500/20">
           <CardContent className="py-16 text-center">
-            <h2 className="text-xl font-bold text-white mb-2">Курс не найден</h2>
-            <p className="text-slate-400 mb-6">Попробуйте создать новый курс</p>
-            <button onClick={() => router.push('/goals/new')} className="btn-practicum">
+            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">
+              {error || 'Курс не найден'}
+            </h2>
+            <p className="text-slate-400 mb-6">
+              Попробуйте создать новый курс с визуальным режимом
+            </p>
+            <button 
+              onClick={() => router.push('/goals/new')} 
+              className="px-6 py-3 bg-purple-500 hover:bg-purple-400 text-white rounded-xl transition-colors"
+            >
               Создать курс
             </button>
           </CardContent>
@@ -108,19 +137,21 @@ export default function VisualCoursePage() {
     )
   }
 
-  const currentModule = course.modules?.[currentModuleIndex]
-  const progress = course.modules?.length ? Math.round((completedModules.size / course.modules.length) * 100) : 0
-  const colors = course.metadata?.visualIdentity?.colorScheme
-
-  // Если модули не загрузились
+  // Проверяем наличие модулей
   if (!course.modules || course.modules.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto p-6">
         <Card>
           <CardContent className="py-16 text-center">
+            <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-white mb-2">Курс пуст</h2>
-            <p className="text-slate-400 mb-6">Модули не были сгенерированы. Попробуйте создать курс заново.</p>
-            <button onClick={() => router.push('/goals/new')} className="btn-practicum">
+            <p className="text-slate-400 mb-6">
+              Модули не были сгенерированы. Попробуйте создать курс заново.
+            </p>
+            <button 
+              onClick={() => router.push('/goals/new')} 
+              className="px-6 py-3 bg-purple-500 hover:bg-purple-400 text-white rounded-xl transition-colors"
+            >
               Создать новый курс
             </button>
           </CardContent>
@@ -129,191 +160,192 @@ export default function VisualCoursePage() {
     )
   }
 
-  if (!currentModule) {
-    return (
-      <div className="max-w-4xl mx-auto">
-        <Card>
-          <CardContent className="py-16 text-center">
-            <h2 className="text-xl font-bold text-white mb-2">Модуль не найден</h2>
-            <button onClick={() => setCurrentModuleIndex(0)} className="btn-practicum">
-              К первому модулю
-            </button>
-          </CardContent>
-        </Card>
-      </div>
-    )
+  // Проверяем, есть ли визуальные данные (sections, visualSpec)
+  const hasVisualData = course.modules.some(m => m.sections && m.sections.length > 0)
+  const visualIdentity = course.metadata?.visualIdentity || defaultVisualIdentity
+
+  // Преобразуем модули в формат VisualModule
+  const visualModules: VisualModule[] = course.modules.map((m, index) => ({
+    id: m.id || `module-${index + 1}`,
+    order: index + 1,
+    name: m.name,
+    description: m.description,
+    theoryPrompt: '',
+    practicePrompt: '',
+    keyTerms: m.keyTerms || extractKeyTerms(m.theory?.markdown || ''),
+    duration: m.duration,
+    difficulty: m.difficulty as any,
+    contentType: 'theory' as const,
+    visualSpec: m.visualSpec || generateDefaultVisualSpec(m.name, index),
+    sections: m.sections || generateDefaultSections(m.theory?.markdown || '', m.practice?.tasks || [])
+  }))
+
+  // Если нет визуальных данных, показываем fallback с предупреждением
+  if (!hasVisualData) {
+    console.warn('Course has no visual sections, using generated defaults')
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-slate-950">
+      {/* Back button */}
+      <div className="fixed top-4 left-4 z-50">
         <button 
           onClick={() => router.push('/goals')} 
-          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+          className="p-2 rounded-xl bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-400" />
-            <h1 className="text-2xl font-bold text-white">{course.title}</h1>
-          </div>
-          <p className="text-slate-400">{course.subtitle}</p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-white">{progress}%</div>
-          <div className="text-xs text-slate-400">завершено</div>
-        </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
-      <div className="grid lg:grid-cols-4 gap-6">
-        {/* Sidebar - Module List */}
-        <div className="lg:col-span-1 space-y-2">
-          <h3 className="text-sm font-medium text-slate-400 mb-3">Модули ({course.modules?.length || 0})</h3>
-          {(course.modules || []).map((module, idx) => (
-            <button
-              key={module.id}
-              onClick={() => setCurrentModuleIndex(idx)}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                idx === currentModuleIndex 
-                  ? 'bg-purple-500/20 border border-purple-500/50' 
-                  : 'bg-slate-800/50 hover:bg-slate-800'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {completedModules.has(idx) ? (
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                ) : (
-                  <div className={`w-4 h-4 rounded-full border-2 ${
-                    idx === currentModuleIndex ? 'border-purple-500' : 'border-slate-600'
-                  }`} />
-                )}
-                <span className={`text-sm ${idx === currentModuleIndex ? 'text-white' : 'text-slate-300'}`}>
-                  {module.name}
-                </span>
-              </div>
-              <div className="text-xs text-slate-500 mt-1 ml-6">
-                {module.duration} мин • {module.difficulty}
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Main Content */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Module Header */}
-          <Card style={colors ? { borderColor: colors.primary + '40' } : undefined}>
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <BookOpen className="w-5 h-5 text-purple-400" />
-                    <span className="text-sm text-slate-400">
-                      Модуль {currentModuleIndex + 1} из {course.modules.length}
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-bold text-white">{currentModule.name}</h2>
-                  <p className="text-slate-400 mt-1">{currentModule.description}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-slate-400">{currentModule.duration} мин</div>
-                  <div className="text-xs text-slate-500">{currentModule.theory.wordCount} слов</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Theory Content */}
-          <Card>
-            <CardContent className="p-6">
-              <div 
-                className="prose prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: formatMarkdown(currentModule.theory.markdown) }}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Practice Tasks */}
-          {currentModule.practice?.tasksCount > 0 && (
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">
-                  Практика ({currentModule.practice?.tasksCount || 0} заданий)
-                </h3>
-                <div className="space-y-3">
-                  {(currentModule.practice?.tasks || []).slice(0, 3).map((task, idx) => (
-                    <div key={task.id || idx} className="p-4 bg-slate-800/50 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
-                          {task.difficulty}
-                        </span>
-                        <span className="text-xs text-slate-500">{task.type}</span>
-                      </div>
-                      <h4 className="text-white font-medium">{task.title}</h4>
-                      <p className="text-sm text-slate-400 mt-1">{task.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setCurrentModuleIndex(prev => Math.max(0, prev - 1))}
-              disabled={currentModuleIndex === 0}
-              className="px-4 py-2 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ← Предыдущий
-            </button>
-            
-            {completedModules.has(currentModuleIndex) ? (
-              <button
-                onClick={() => setCurrentModuleIndex(prev => Math.min((course.modules?.length || 1) - 1, prev + 1))}
-                disabled={currentModuleIndex === (course.modules?.length || 1) - 1}
-                className="px-6 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
-              >
-                Следующий модуль <ChevronRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                onClick={handleCompleteModule}
-                className="px-6 py-2 bg-purple-500 hover:bg-purple-400 text-white rounded-lg flex items-center gap-2"
-              >
-                Завершить модуль <CheckCircle className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Visual Course Renderer */}
+      <VisualCourseRenderer
+        modules={visualModules}
+        visualIdentity={visualIdentity as VisualIdentity}
+        onModuleComplete={(moduleId) => {
+          console.log('Module completed:', moduleId)
+        }}
+      />
     </div>
   )
 }
 
-// Simple markdown to HTML converter
-function formatMarkdown(markdown: string): string {
-  if (!markdown) return ''
+// Извлечение ключевых терминов из markdown
+function extractKeyTerms(markdown: string): string[] {
+  const terms: string[] = []
   
-  return markdown
-    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold text-white mt-6 mb-3">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-white mt-8 mb-4">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-white mt-8 mb-4">$1</h1>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-slate-800 rounded text-purple-400">$1</code>')
-    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="p-4 bg-slate-900 rounded-lg overflow-x-auto my-4"><code>$2</code></pre>')
-    .replace(/^- (.*$)/gim, '<li class="ml-4 text-slate-300">$1</li>')
-    .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 text-slate-300">$1</li>')
-    .replace(/\n\n/g, '</p><p class="text-slate-300 mb-4">')
-    .replace(/^(?!<[h|l|p|c])/gm, '<p class="text-slate-300 mb-4">')
+  // Ищем жирный текст **term**
+  const boldMatches = markdown.match(/\*\*([^*]+)\*\*/g)
+  if (boldMatches) {
+    boldMatches.slice(0, 6).forEach(match => {
+      const term = match.replace(/\*\*/g, '').trim()
+      if (term.length > 2 && term.length < 50) {
+        terms.push(term)
+      }
+    })
+  }
+  
+  return terms.slice(0, 6)
+}
+
+// Генерация дефолтной визуальной спецификации
+function generateDefaultVisualSpec(moduleName: string, index: number) {
+  const colors = [
+    { primary: '#8B5CF6', secondary: '#6366F1', accent: '#A78BFA' },
+    { primary: '#3B82F6', secondary: '#2563EB', accent: '#60A5FA' },
+    { primary: '#10B981', secondary: '#059669', accent: '#34D399' },
+    { primary: '#F59E0B', secondary: '#D97706', accent: '#FBBF24' },
+  ]
+  const colorSet = colors[index % colors.length]
+  
+  return {
+    heroImagePrompt: `Educational illustration for ${moduleName}`,
+    colorScheme: colorSet,
+    decorationElements: ['geometric_shape', 'gradient_orb'] as const,
+    primaryVisual: {
+      type: 'diagram' as const,
+      description: `Concept diagram for ${moduleName}`
+    },
+    secondaryVisuals: [{
+      type: 'icon_set' as const,
+      icons: ['📚', '💡', '🎯', '✨', '🚀'],
+      purpose: 'section markers'
+    }]
+  }
+}
+
+// Генерация дефолтных секций из markdown и практики
+function generateDefaultSections(markdown: string, tasks: any[]) {
+  const sections = []
+  
+  // Разбиваем markdown на части
+  const parts = markdown.split(/^##\s+/m).filter(Boolean)
+  
+  parts.slice(0, 4).forEach((part, index) => {
+    const lines = part.trim().split('\n')
+    const title = lines[0] || `Раздел ${index + 1}`
+    const content = lines.slice(1).join('\n').trim()
+    
+    // Разбиваем контент на блоки по ~150 слов
+    const words = content.split(/\s+/)
+    const blocks = []
+    
+    for (let i = 0; i < words.length; i += 100) {
+      const blockText = words.slice(i, i + 100).join(' ')
+      if (blockText.trim()) {
+        blocks.push({
+          text: blockText,
+          accompanyingVisual: {
+            type: 'icon' as const,
+            description: title,
+            iconName: ['BookOpen', 'Lightbulb', 'Target', 'Sparkles'][index % 4]
+          }
+        })
+      }
+    }
+    
+    sections.push({
+      contentType: index === 0 ? 'theory' : index === parts.length - 1 ? 'practice' : 'example',
+      textBlocks: blocks.slice(0, 3),
+      multimedia: {
+        imagePrompts: [],
+        videoSources: [],
+        diagrams: [],
+        embeds: []
+      },
+      gamification: {
+        checkpoints: [],
+        progressVisualization: { type: 'progress_bar', maxValue: 100, currentValue: 0 },
+        levelBadges: []
+      }
+    })
+  })
+  
+  // Добавляем секцию практики если есть задания
+  if (tasks.length > 0) {
+    sections.push({
+      contentType: 'practice' as const,
+      textBlocks: tasks.slice(0, 3).map(task => ({
+        text: `${task.title}: ${task.description}`,
+        accompanyingVisual: {
+          type: 'icon' as const,
+          description: 'Practice task',
+          iconName: 'Target'
+        }
+      })),
+      multimedia: {
+        imagePrompts: [],
+        videoSources: [],
+        diagrams: [],
+        embeds: []
+      },
+      gamification: {
+        checkpoints: [{ title: 'Практика', emoji: '🎯', rewardText: 'Отлично!' }],
+        progressVisualization: { type: 'progress_bar', maxValue: 100, currentValue: 0 },
+        levelBadges: []
+      }
+    })
+  }
+  
+  return sections.length > 0 ? sections : [{
+    contentType: 'theory' as const,
+    textBlocks: [{
+      text: markdown.slice(0, 500) || 'Контент модуля',
+      accompanyingVisual: {
+        type: 'icon' as const,
+        description: 'Module content',
+        iconName: 'BookOpen'
+      }
+    }],
+    multimedia: {
+      imagePrompts: [],
+      videoSources: [],
+      diagrams: [],
+      embeds: []
+    },
+    gamification: {
+      checkpoints: [],
+      progressVisualization: { type: 'progress_bar', maxValue: 100, currentValue: 0 },
+      levelBadges: []
+    }
+  }]
 }
