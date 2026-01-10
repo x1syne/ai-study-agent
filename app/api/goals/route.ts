@@ -3,8 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS, getGraphGenerationPrompt } from '@/lib/ai/prompts'
-import { enrichContextWithArxiv } from '@/lib/arxiv'
-import { getBookContext } from '@/lib/openlibrary'
+import { getFullRAGContext } from '@/lib/rag'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,11 +86,8 @@ export async function POST(request: NextRequest) {
       
       // ПАРАЛЛЕЛЬНО: получаем контекст И генерируем базовую структуру
       const [externalContextResult, baseStructureResult] = await Promise.allSettled([
-        // Внешние источники (не блокируем если упадут)
-        Promise.all([
-          enrichContextWithArxiv(title, { maxPapers: 2, forceSearch: true }).catch(() => ({ arxivContext: '' })),
-          getBookContext(title).catch(() => '')
-        ]),
+        // Полный RAG контекст с персонализацией
+        getFullRAGContext(title, skill, user.id).catch(() => ''),
         // Генерация структуры через AI Router (с fallback)
         generateWithRouter(
           'fast',

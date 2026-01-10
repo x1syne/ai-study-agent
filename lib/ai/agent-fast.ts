@@ -6,6 +6,7 @@
  * 2. Кэширование результатов
  * 3. Мульти-провайдер с fallback
  * 4. Уменьшенные задержки
+ * 5. RAG интеграция с персонализацией
  */
 
 import { generateWithRouter } from '@/lib/ai-router'
@@ -14,6 +15,7 @@ import {
   getCachedTasks, setCachedTasks,
   getCachedAnalysis, setCachedAnalysis 
 } from '@/lib/ai-cache'
+import { getFullRAGContext } from '@/lib/rag'
 
 // Types
 export interface TopicAnalysis {
@@ -142,16 +144,30 @@ async function generateSection(
 }
 
 // ПАРАЛЛЕЛЬНАЯ генерация всех секций
-async function generateAllSectionsParallel(analysis: TopicAnalysis): Promise<string> {
+async function generateAllSectionsParallel(
+  analysis: TopicAnalysis,
+  ragContext: string = ''
+): Promise<string> {
   console.log('[Fast Agent] Generating sections in PARALLEL...')
+  if (ragContext) {
+    console.log(`[Fast Agent] Using RAG context: ${ragContext.length} chars`)
+  }
   
   const topicType = getTopicType(analysis)
   const baseContext = `Тема: "${analysis.topic}", Курс: "${analysis.courseName}"`
   
+  // Добавляем RAG контекст в системный промпт
+  const ragInstruction = ragContext ? `
+
+ИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ДЛЯ ТОЧНОСТИ:
+${ragContext.slice(0, 3000)}
+
+Цитируй факты из контекста, упоминай источники.` : ''
+  
   const systemPrompt = `Ты профессор. Пиши на русском, используй ### заголовки, **жирный** текст, списки.
 НЕ используй LaTeX. НЕ повторяй заголовок секции. Сразу начинай с контента.
 ${topicType === 'programming' ? 'Используй примеры кода в блоках ```python```.' : ''}
-${topicType === 'science' ? 'Используй символы: ₀₁₂₃ × ÷ ± ≈ √ для формул.' : ''}`
+${topicType === 'science' ? 'Используй символы: ₀₁₂₃ × ÷ ± ≈ √ для формул.' : ''}${ragInstruction}`
 
   // Определяем секции для генерации
   const sections = [
@@ -283,13 +299,15 @@ function getDefaultTasks(topic: string): any[] {
   ]
 }
 
-// ГЛАВНАЯ ФУНКЦИЯ - оптимизированная версия
+// ГЛАВНАЯ ФУНКЦИЯ - оптимизированная версия с RAG
 export async function runLessonAgentFast(
   topic: string,
-  courseName: string
+  courseName: string,
+  userId?: string
 ): Promise<{ content: string; analysis: TopicAnalysis; plan: LessonPlan; metadata: any; tasks: any[] }> {
   console.log(`\n${'='.repeat(50)}`)
   console.log(`[Fast Agent] Starting: "${topic}"`)
+  console.log(`[Fast Agent] User: ${userId || 'anonymous'}`)
   console.log(`${'='.repeat(50)}\n`)
   
   const startTime = Date.now()
@@ -310,13 +328,23 @@ export async function runLessonAgentFast(
     }
   }
 
-  // 1. Анализ темы
-  const analysis = await analyzeTopicFast(topic, courseName)
-  console.log(`[Fast Agent] Analysis done in ${Date.now() - startTime}ms`)
+  // 1. Параллельно: анализ темы + RAG контекст
+  const [analysis, ragContext] = await Promise.all([
+    analyzeTopicFast(topic, courseName),
+    getFullRAGContext(topic, courseName, userId).catch(e => {
+      console.warn('[Fast Agent] RAG context failed:', e)
+      return ''
+    })
+  ])
+  
+  console.log(`[Fast Agent] Analysis + RAG done in ${Date.now() - startTime}ms`)
+  if (ragContext) {
+    console.log(`[Fast Agent] RAG context: ${ragContext.length} chars`)
+  }
 
-  // 2. ПАРАЛЛЕЛЬНАЯ генерация контента И заданий
+  // 2. ПАРАЛЛЕЛЬНАЯ генерация контента И заданий (с RAG контекстом)
   const [content, tasks] = await Promise.all([
-    generateAllSectionsParallel(analysis),
+    generateAllSectionsParallel(analysis, ragContext),
     generateTasksFast(analysis)
   ])
   
@@ -349,7 +377,8 @@ export async function runLessonAgentFast(
       totalTimeMs: totalTime,
       sectionsCount: 6,
       tasksCount: tasks.length,
-      fromCache: false
+      fromCache: false,
+      ragContextLength: ragContext.length
     },
     tasks
   }

@@ -8,6 +8,7 @@
  * 4. Web Search (Serper, DuckDuckGo)
  * 5. Open Library (книги)
  * 6. Контекст пользователя
+ * 7. Reranking по релевантности
  */
 
 export { 
@@ -23,6 +24,21 @@ export {
   formatUserContextForPrompt,
   getRelatedTopicsContext
 } from './user-context'
+
+export {
+  rerankResults,
+  formatRankedResultsForPrompt,
+  type RankedResult
+} from './reranker'
+
+export {
+  assessContentQuality,
+  filterContentByQuality,
+  cleanContent,
+  extractKeyInfo,
+  detectLanguage,
+  type ContentQualityResult
+} from './content-filter'
 
 // Re-export from main modules
 export { getRAGContext, searchWikipedia, searchSerper, searchDuckDuckGo } from '../search'

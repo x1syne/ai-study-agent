@@ -3,9 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
-import { getScientificContext } from '@/lib/arxiv'
-import { getBookContext } from '@/lib/openlibrary'
-import { getRAGContext } from '@/lib/search'
+import { getFullRAGContext } from '@/lib/rag'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
 
@@ -132,8 +130,8 @@ export async function GET(
     if (lessonType === 'theory') {
       try {
         if (USE_AGENT) {
-          // Оптимизированный агент с параллельной генерацией
-          const agentResult = await runLessonAgent(topic.name, topic.goal.title)
+          // Оптимизированный агент с параллельной генерацией и RAG
+          const agentResult = await runLessonAgent(topic.name, topic.goal.title, user.id)
           content = { 
             markdown: agentResult.content,
             analysis: agentResult.analysis,
@@ -141,12 +139,8 @@ export async function GET(
             metadata: agentResult.metadata
           }
         } else {
-          const [scientificContext, bookContext, ragContext] = await Promise.all([
-            getScientificContext(topic.name, topic.goal.title),
-            getBookContext(topic.name),
-            getRAGContext(topic.name, topic.goal.title)
-          ])
-          const allContext = [scientificContext, bookContext, ragContext].filter(Boolean).join('\n\n')
+          // Fallback: используем getFullRAGContext
+          const allContext = await getFullRAGContext(topic.name, topic.goal.title, user.id)
           const prompt = getTheoryPrompt(topic.name, topic.goal.title, allContext)
           const response = await generateCompletion(SYSTEM_PROMPTS.theory, prompt, { temperature: 0.7, maxTokens: 16000 })
           content = { markdown: response }

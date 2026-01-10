@@ -3,9 +3,11 @@
  * Retrieval-Augmented Generation - поиск актуальной информации для улучшения генерации
  */
 
-import { getVectorContext, indexRAGContent } from './embeddings'
+import { indexRAGContent, searchSimilar } from './embeddings'
 import { withCache, cacheKey, CACHE_TTL } from './rag/cache'
-import { searchArxiv, formatArxivForContext } from './arxiv'
+import { searchArxiv } from './arxiv'
+import { rerankResults, formatRankedResultsForPrompt, RankedResult } from './rag/reranker'
+import { assessContentQuality, cleanContent } from './rag/content-filter'
 
 interface SearchResult {
   title: string
@@ -181,6 +183,7 @@ export async function searchDuckDuckGo(query: string): Promise<SearchResult[]> {
  * Комбинированный поиск контекста для RAG
  * Собирает информацию из нескольких источников + векторный поиск
  * С ранжированием: векторная база → Wikipedia → arXiv → Web
+ * + Reranking по релевантности
  */
 export async function getRAGContext(
   topicName: string, 
@@ -189,29 +192,53 @@ export async function getRAGContext(
   const key = cacheKey('rag', topicName, courseName)
   
   return withCache(key, async () => {
-    const searchQuery = `${topicName} ${courseName} обучение tutorial`
+    const searchQuery = `${topicName} ${courseName}`
+    const fullQuery = `${topicName} ${courseName} обучение tutorial`
     
     // Параллельный поиск из всех источников с таймаутом
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
     
-    const [vectorContext, wikiResult, arxivResult, ddgResults, serperResults] = await Promise.all([
-      Promise.race([getVectorContext(topicName, courseName), timeoutPromise]).catch(() => ''),
+    const [vectorResults, wikiResult, arxivResult, ddgResults, serperResults] = await Promise.all([
+      Promise.race([searchSimilar(searchQuery, { limit: 5, threshold: 0.3 }), timeoutPromise]).catch(() => []),
       Promise.race([searchWikipedia(topicName), timeoutPromise]).catch(() => null),
-      Promise.race([searchArxiv(topicName, 2), timeoutPromise]).catch(() => ({ papers: [], totalResults: 0, query: topicName })),
+      Promise.race([searchArxiv(topicName, 3), timeoutPromise]).catch(() => ({ papers: [], totalResults: 0, query: topicName })),
       Promise.race([searchDuckDuckGo(topicName), timeoutPromise]).catch(() => []),
-      Promise.race([searchSerper(searchQuery, 3), timeoutPromise]).catch(() => [])
+      Promise.race([searchSerper(fullQuery, 3), timeoutPromise]).catch(() => [])
     ])
 
-    const contextParts: string[] = []
+    // Собираем все результаты в единый формат для reranking
+    const allResults: RankedResult[] = []
 
-    // 1. ПРИОРИТЕТ: Векторный поиск (из базы знаний)
-    if (vectorContext) {
-      contextParts.push(vectorContext as string)
+    // Функция проверки качества контента
+    const isQualityContent = (content: string, minLength: number = 50): boolean => {
+      const quality = assessContentQuality(content, { minLength, minScore: 0.25 })
+      return quality.isValid
     }
 
-    // 2. Wikipedia (надёжный источник)
-    if (wikiResult) {
-      contextParts.push(`📚 WIKIPEDIA - ${wikiResult.title}:\n${wikiResult.extract}`)
+    // 1. Векторные результаты
+    if (vectorResults && Array.isArray(vectorResults)) {
+      for (const doc of vectorResults) {
+        if (doc.content && isQualityContent(doc.content, 50)) {
+          allResults.push({
+            content: cleanContent(doc.content),
+            source: doc.metadata?.source || 'vector',
+            type: 'vector',
+            url: doc.metadata?.url,
+            score: doc.similarity || 0.5
+          })
+        }
+      }
+    }
+
+    // 2. Wikipedia
+    if (wikiResult && isQualityContent(wikiResult.extract, 100)) {
+      allResults.push({
+        content: cleanContent(wikiResult.extract),
+        source: 'wikipedia',
+        type: 'wikipedia',
+        url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(wikiResult.title)}`,
+        score: 0.8 // Wikipedia обычно релевантна
+      })
       
       // Индексируем Wikipedia контент
       indexRAGContent(wikiResult.extract, {
@@ -224,35 +251,43 @@ export async function getRAGContext(
 
     // 3. arXiv (научные статьи)
     if (arxivResult && arxivResult.papers && arxivResult.papers.length > 0) {
-      const arxivContext = formatArxivForContext(arxivResult)
-      if (arxivContext) {
-        contextParts.push(arxivContext)
-        
-        // Индексируем научные статьи
-        for (const paper of arxivResult.papers) {
-          if (paper.summary && paper.summary.length > 100) {
-            indexRAGContent(paper.summary, {
-              source: 'arxiv',
-              topic: topicName,
-              type: 'arxiv',
-              url: paper.link
-            }).catch(() => {})
-          }
+      for (const paper of arxivResult.papers) {
+        const paperContent = `${paper.title}\n\n${paper.summary}`
+        if (paper.summary && isQualityContent(paperContent, 100)) {
+          allResults.push({
+            content: cleanContent(paperContent),
+            source: 'arxiv',
+            type: 'arxiv',
+            url: paper.link,
+            score: 0.7
+          })
+          
+          // Индексируем научные статьи
+          indexRAGContent(paper.summary, {
+            source: 'arxiv',
+            topic: topicName,
+            type: 'arxiv',
+            url: paper.link
+          }).catch(() => {})
         }
       }
     }
 
-    // 4. Web Search Results (дополнительно)
-    const webResults = [...(serperResults || []), ...(ddgResults || [])].slice(0, 5)
-    if (webResults.length > 0) {
-      const webContext = webResults
-        .map(r => `• ${r.title}: ${r.snippet}`)
-        .join('\n')
-      contextParts.push(`🌐 ВЕБ-ИСТОЧНИКИ:\n${webContext}`)
-      
-      // Индексируем веб-результаты (только качественные)
-      for (const result of webResults.slice(0, 3)) {
-        if (result.snippet && result.snippet.length > 100) {
+    // 4. Web Search Results
+    const webResults = [...(serperResults || []), ...(ddgResults || [])]
+    for (const result of webResults) {
+      const webContent = `${result.title}\n\n${result.snippet}`
+      if (result.snippet && isQualityContent(webContent, 50)) {
+        allResults.push({
+          content: cleanContent(webContent),
+          source: result.link || 'web',
+          type: 'web',
+          url: result.link,
+          score: 0.5
+        })
+        
+        // Индексируем веб-результаты (только качественные)
+        if (result.snippet.length > 100) {
           indexRAGContent(result.snippet, {
             source: result.link || 'web',
             topic: topicName,
@@ -263,20 +298,43 @@ export async function getRAGContext(
       }
     }
 
-    if (contextParts.length === 0) {
+    if (allResults.length === 0) {
       return ''
     }
+
+    // RERANKING: переранжируем по релевантности
+    const rankedResults = rerankResults(allResults, {
+      query: searchQuery,
+      topK: 8,
+      minScore: 0.15,
+      boostFactors: {
+        vector: 1.3,
+        wikipedia: 1.2,
+        arxiv: 1.1,
+        book: 1.0,
+        web: 0.9
+      }
+    })
+
+    if (rankedResults.length === 0) {
+      return ''
+    }
+
+    // Форматируем результаты
+    const formattedContext = formatRankedResultsForPrompt(rankedResults, 4000)
 
     return `
 ═══════════════════════════════════════════════════════════════
                     RAG КОНТЕКСТ (актуальная информация)
+                    Найдено ${rankedResults.length} релевантных источников
 ═══════════════════════════════════════════════════════════════
 
-${contextParts.join('\n\n')}
+${formattedContext}
 
 ═══════════════════════════════════════════════════════════════
 ИНСТРУКЦИЯ: Используй эту актуальную информацию как основу.
 Цитируй факты, упоминай источники, создавай точный контент.
+Приоритет: источники с высокой релевантностью.
 ═══════════════════════════════════════════════════════════════
 `
   }, { ttl: CACHE_TTL.RAG_CONTEXT })

@@ -10,7 +10,7 @@
  */
 
 import { generateWithRouter } from '@/lib/ai-router'
-import { getRAGContext } from '@/lib/search'
+import { getFullRAGContext } from '@/lib/rag'
 
 // Обёртка для совместимости со старым кодом
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
@@ -1806,11 +1806,11 @@ export async function runLessonAgent(
   })
   
   // ═══════════════════════════════════════════════════════════════
-  // ЭТАП 3: Сбор контекста (RAG)
+  // ЭТАП 3: Сбор контекста (RAG с персонализацией)
   // ═══════════════════════════════════════════════════════════════
   let ragContext = ''
   try {
-    ragContext = await getRAGContext(topic, courseName)
+    ragContext = await getFullRAGContext(topic, courseName)
     if (ragContext) {
       console.log('[AI Architect] RAG context gathered:', ragContext.length, 'chars')
     }
