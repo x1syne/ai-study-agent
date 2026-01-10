@@ -3,11 +3,12 @@
  * Retrieval-Augmented Generation - поиск актуальной информации для улучшения генерации
  */
 
-import { indexRAGContent, searchSimilar } from './embeddings'
+import { indexRAGContent } from './embeddings'
 import { withCache, cacheKey, CACHE_TTL } from './rag/cache'
 import { searchArxiv } from './arxiv'
 import { rerankResults, formatRankedResultsForPrompt, RankedResult } from './rag/reranker'
 import { assessContentQuality, cleanContent } from './rag/content-filter'
+import { smartSearch } from './rag/hybrid-search'
 
 interface SearchResult {
   title: string
@@ -198,8 +199,8 @@ export async function getRAGContext(
     // Параллельный поиск из всех источников с таймаутом
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
     
-    const [vectorResults, wikiResult, arxivResult, ddgResults, serperResults] = await Promise.all([
-      Promise.race([searchSimilar(searchQuery, { limit: 5, threshold: 0.3 }), timeoutPromise]).catch(() => []),
+    const [hybridResults, wikiResult, arxivResult, ddgResults, serperResults] = await Promise.all([
+      Promise.race([smartSearch(searchQuery, { limit: 8, threshold: 0.25 }), timeoutPromise]).catch(() => []),
       Promise.race([searchWikipedia(topicName), timeoutPromise]).catch(() => null),
       Promise.race([searchArxiv(topicName, 3), timeoutPromise]).catch(() => ({ papers: [], totalResults: 0, query: topicName })),
       Promise.race([searchDuckDuckGo(topicName), timeoutPromise]).catch(() => []),
@@ -215,16 +216,16 @@ export async function getRAGContext(
       return quality.isValid
     }
 
-    // 1. Векторные результаты
-    if (vectorResults && Array.isArray(vectorResults)) {
-      for (const doc of vectorResults) {
+    // 1. Hybrid Search результаты (векторный + keyword)
+    if (hybridResults && Array.isArray(hybridResults)) {
+      for (const doc of hybridResults) {
         if (doc.content && isQualityContent(doc.content, 50)) {
           allResults.push({
             content: cleanContent(doc.content),
             source: doc.metadata?.source || 'vector',
             type: 'vector',
             url: doc.metadata?.url,
-            score: doc.similarity || 0.5
+            score: doc.score || 0.5
           })
         }
       }

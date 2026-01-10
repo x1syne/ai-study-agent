@@ -40,6 +40,14 @@ export {
   type ContentQualityResult
 } from './content-filter'
 
+export {
+  hybridSearch,
+  searchKeyword,
+  smartSearch,
+  type HybridSearchResult,
+  type HybridSearchOptions
+} from './hybrid-search'
+
 // Re-export from main modules
 export { getRAGContext, searchWikipedia, searchSerper, searchDuckDuckGo } from '../search'
 export { getVectorContext, searchSimilar, indexRAGContent, generateEmbedding } from '../embeddings'
