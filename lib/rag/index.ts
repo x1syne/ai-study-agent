@@ -48,6 +48,17 @@ export {
   type HybridSearchOptions
 } from './hybrid-search'
 
+export {
+  logRAGMetrics,
+  createRAGMetrics,
+  getRAGStats,
+  getMetricsHistory,
+  formatRAGStats,
+  checkRAGHealth,
+  type RAGMetrics,
+  type RAGStats
+} from './metrics'
+
 // Re-export from main modules
 export { getRAGContext, searchWikipedia, searchSerper, searchDuckDuckGo } from '../search'
 export { getVectorContext, searchSimilar, indexRAGContent, generateEmbedding } from '../embeddings'

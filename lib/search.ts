@@ -9,6 +9,7 @@ import { searchArxiv } from './arxiv'
 import { rerankResults, formatRankedResultsForPrompt, RankedResult } from './rag/reranker'
 import { assessContentQuality, cleanContent } from './rag/content-filter'
 import { smartSearch } from './rag/hybrid-search'
+import { logRAGMetrics, createRAGMetrics } from './rag/metrics'
 
 interface SearchResult {
   title: string
@@ -191,6 +192,8 @@ export async function getRAGContext(
   courseName: string
 ): Promise<string> {
   const key = cacheKey('rag', topicName, courseName)
+  const startTime = Date.now()
+  let cacheHit = false
   
   return withCache(key, async () => {
     const searchQuery = `${topicName} ${courseName}`
@@ -300,6 +303,10 @@ export async function getRAGContext(
     }
 
     if (allResults.length === 0) {
+      // Логируем пустой результат
+      const searchTimeMs = Date.now() - startTime
+      const metrics = createRAGMetrics(searchQuery, [], searchTimeMs, cacheHit, 0)
+      logRAGMetrics(metrics)
       return ''
     }
 
@@ -318,11 +325,26 @@ export async function getRAGContext(
     })
 
     if (rankedResults.length === 0) {
+      // Логируем пустой результат после reranking
+      const searchTimeMs = Date.now() - startTime
+      const metrics = createRAGMetrics(searchQuery, [], searchTimeMs, cacheHit, 0)
+      logRAGMetrics(metrics)
       return ''
     }
 
     // Форматируем результаты
     const formattedContext = formatRankedResultsForPrompt(rankedResults, 4000)
+
+    // Логируем метрики
+    const searchTimeMs = Date.now() - startTime
+    const metrics = createRAGMetrics(
+      searchQuery,
+      rankedResults.map(r => ({ score: r.score, type: r.type })),
+      searchTimeMs,
+      cacheHit,
+      formattedContext.length
+    )
+    logRAGMetrics(metrics)
 
     return `
 ═══════════════════════════════════════════════════════════════
