@@ -325,31 +325,104 @@ export async function searchSimilar(
 }
 
 /**
- * Разбиение текста на чанки
+ * Разбиение текста на чанки с overlap по предложениям
+ * 
+ * Улучшения:
+ * - Overlap по целым предложениям (не режет слова)
+ * - Сохраняет контекст между чанками
+ * - Умная обработка коротких/длинных предложений
  */
 export function chunkText(
   text: string,
-  options: { chunkSize?: number; overlap?: number } = {}
+  options: { 
+    chunkSize?: number
+    overlapSentences?: number
+    minChunkSize?: number 
+  } = {}
 ): string[] {
-  const { chunkSize = 500, overlap = 50 } = options
-  const chunks: string[] = []
+  const { 
+    chunkSize = 500, 
+    overlapSentences = 2,
+    minChunkSize = 100 
+  } = options
   
-  // Разбиваем по предложениям
-  const sentences = text.split(/(?<=[.!?])\s+/)
-  let currentChunk = ''
+  // Разбиваем по предложениям (учитываем разные знаки препинания)
+  const sentences = text
+    .split(/(?<=[.!?。])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
   
-  for (const sentence of sentences) {
-    if ((currentChunk + sentence).length > chunkSize && currentChunk) {
-      chunks.push(currentChunk.trim())
-      // Overlap: берём последние N символов
-      currentChunk = currentChunk.slice(-overlap) + sentence
-    } else {
-      currentChunk += (currentChunk ? ' ' : '') + sentence
-    }
+  if (sentences.length === 0) return []
+  
+  // Если текст короткий — возвращаем как есть
+  if (text.length <= chunkSize) {
+    return [text.trim()]
   }
   
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim())
+  const chunks: string[] = []
+  let currentSentences: string[] = []
+  let currentLength = 0
+  
+  for (const sentence of sentences) {
+    const sentenceLength = sentence.length
+    
+    // Если одно предложение длиннее chunkSize — разбиваем его
+    if (sentenceLength > chunkSize) {
+      // Сначала сохраняем текущий чанк
+      if (currentSentences.length > 0) {
+        chunks.push(currentSentences.join(' '))
+      }
+      
+      // Разбиваем длинное предложение по словам
+      const words = sentence.split(/\s+/)
+      let wordChunk = ''
+      
+      for (const word of words) {
+        if ((wordChunk + ' ' + word).length > chunkSize && wordChunk) {
+          chunks.push(wordChunk.trim())
+          // Overlap: берём последние слова
+          const overlapWords = wordChunk.split(/\s+/).slice(-5).join(' ')
+          wordChunk = overlapWords + ' ' + word
+        } else {
+          wordChunk += (wordChunk ? ' ' : '') + word
+        }
+      }
+      
+      if (wordChunk.trim()) {
+        currentSentences = [wordChunk.trim()]
+        currentLength = wordChunk.length
+      } else {
+        currentSentences = []
+        currentLength = 0
+      }
+      continue
+    }
+    
+    // Проверяем, поместится ли предложение
+    if (currentLength + sentenceLength + 1 > chunkSize && currentSentences.length > 0) {
+      // Сохраняем текущий чанк
+      chunks.push(currentSentences.join(' '))
+      
+      // Overlap: берём последние N предложений для контекста
+      const overlapStart = Math.max(0, currentSentences.length - overlapSentences)
+      currentSentences = currentSentences.slice(overlapStart)
+      currentLength = currentSentences.join(' ').length
+    }
+    
+    currentSentences.push(sentence)
+    currentLength += sentenceLength + 1
+  }
+  
+  // Добавляем последний чанк
+  if (currentSentences.length > 0) {
+    const lastChunk = currentSentences.join(' ')
+    // Не добавляем если слишком короткий и уже есть чанки
+    if (lastChunk.length >= minChunkSize || chunks.length === 0) {
+      chunks.push(lastChunk)
+    } else if (chunks.length > 0) {
+      // Присоединяем к предыдущему чанку
+      chunks[chunks.length - 1] += ' ' + lastChunk
+    }
   }
   
   return chunks
