@@ -81,6 +81,7 @@ export { searchArxiv, getScientificContext, enrichContextWithArxiv } from '../ar
 export { searchOpenLibrary, getBookContext } from '../openlibrary'
 export { searchStackOverflow, getStackOverflowContext, shouldUseStackOverflow } from '../stackoverflow'
 export { searchRepositories, getGitHubContext, shouldUseGitHub } from '../github'
+export { searchWikidata, getWikidataContext, shouldUseWikidata } from '../wikidata'
 
 import { getDomainRAGContext } from '../search'
 import { getUserLearningContext, formatUserContextForPrompt, getRelatedTopicsContext } from './user-context'

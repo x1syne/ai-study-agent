@@ -16,6 +16,7 @@ import {
   shouldUseArxiv,
   shouldUseStackOverflow,
   shouldUseGitHub,
+  shouldUseWikidata,
   getMinRelevanceThreshold,
   getMaxResults,
   getSearchLanguages
@@ -23,6 +24,7 @@ import {
 import { DomainType } from '@/lib/ai/domain-prompts'
 import { getStackOverflowContext } from './stackoverflow'
 import { getGitHubContext } from './github'
+import { getWikidataContext } from './wikidata'
 
 interface SearchResult {
   title: string
@@ -445,9 +447,10 @@ export async function getDomainRAGContext(
     const useArxiv = shouldUseArxiv(domain)
     const useStackOverflow = shouldUseStackOverflow(domain)
     const useGitHub = shouldUseGitHub(domain)
+    const useWikidata = shouldUseWikidata(domain)
     const languages = getSearchLanguages(domain)
     
-    console.log(`[RAG] Domain: ${domain}, useArxiv: ${useArxiv}, useStackOverflow: ${useStackOverflow}, useGitHub: ${useGitHub}`)
+    console.log(`[RAG] Domain: ${domain}, arXiv: ${useArxiv}, SO: ${useStackOverflow}, GH: ${useGitHub}, WD: ${useWikidata}`)
     
     // Параллельный поиск с таймаутом
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
@@ -481,6 +484,13 @@ export async function getDomainRAGContext(
       )
     }
     
+    // Wikidata для истории и искусства
+    if (useWikidata) {
+      searchPromises.push(
+        Promise.race([getWikidataContext(topicName, { maxEntities: 2 }), timeoutPromise]).catch(() => '')
+      )
+    }
+    
     const results = await Promise.all(searchPromises)
     
     const hybridResults = results[0] || []
@@ -493,6 +503,7 @@ export async function getDomainRAGContext(
     const arxivResult = useArxiv ? results[resultIndex++] : null
     const stackOverflowContext = useStackOverflow ? results[resultIndex++] : ''
     const githubContext = useGitHub ? results[resultIndex++] : ''
+    const wikidataContext = useWikidata ? results[resultIndex++] : ''
 
     // Собираем все результаты
     const allResults: RankedResult[] = []
@@ -606,9 +617,10 @@ export async function getDomainRAGContext(
 
     const formattedContext = formatRankedResultsForPrompt(rankedResults, 4000)
     
-    // Добавляем StackOverflow и GitHub контекст если есть
+    // Добавляем специализированные контексты
     const stackOverflowSection = stackOverflowContext ? `\n${stackOverflowContext}` : ''
     const githubSection = githubContext ? `\n${githubContext}` : ''
+    const wikidataSection = wikidataContext ? `\n${wikidataContext}` : ''
 
     const searchTimeMs = Date.now() - startTime
     const metrics = createRAGMetrics(
@@ -616,7 +628,7 @@ export async function getDomainRAGContext(
       rankedResults.map(r => ({ score: r.score, type: r.type })),
       searchTimeMs,
       false,
-      formattedContext.length + stackOverflowSection.length + githubSection.length
+      formattedContext.length + stackOverflowSection.length + githubSection.length + wikidataSection.length
     )
     logRAGMetrics(metrics)
 
@@ -629,6 +641,7 @@ export async function getDomainRAGContext(
 ${formattedContext}
 ${stackOverflowSection}
 ${githubSection}
+${wikidataSection}
 ═══════════════════════════════════════════════════════════════
 ИНСТРУКЦИЯ: Используй эту информацию для создания точного контента.
 Домен: ${domain} | Приоритет источников настроен под предметную область.
