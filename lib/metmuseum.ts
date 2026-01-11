@@ -276,6 +276,44 @@ export function formatMetMuseumForPrompt(artworks: MetArtwork[]): string {
 // ==================== ГЛАВНАЯ ФУНКЦИЯ ====================
 
 /**
+ * Базовый перевод для поиска в Met Museum
+ */
+function translateForMetMuseum(query: string): string {
+  const terms: Record<string, string> = {
+    'импрессионизм': 'impressionism',
+    'ренессанс': 'renaissance',
+    'барокко': 'baroque',
+    'модернизм': 'modernism',
+    'живопись': 'painting',
+    'скульптура': 'sculpture',
+    'портрет': 'portrait',
+    'пейзаж': 'landscape',
+    'натюрморт': 'still life',
+    'художник': 'artist'
+  }
+  
+  let result = query.toLowerCase()
+  for (const [ru, en] of Object.entries(terms)) {
+    result = result.replace(new RegExp(ru, 'gi'), en)
+  }
+  
+  // Транслитерация имён
+  const translit: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+  }
+  
+  if (/[а-яА-ЯёЁ]/.test(result)) {
+    result = result.split('').map(c => translit[c] || translit[c.toLowerCase()]?.toUpperCase() || c).join('')
+  }
+  
+  return result
+}
+
+/**
  * Получение контекста из Met Museum для темы искусства
  */
 export async function getMetMuseumContext(
@@ -284,7 +322,10 @@ export async function getMetMuseumContext(
 ): Promise<string> {
   const { maxArtworks = 3 } = options
   
-  const result = await searchMetMuseum(topic, { maxResults: maxArtworks })
+  // Переводим русский запрос на английский
+  const searchQuery = /[а-яА-ЯёЁ]/.test(topic) ? translateForMetMuseum(topic) : topic
+  
+  const result = await searchMetMuseum(searchQuery, { maxResults: maxArtworks })
   
   if (result.artworks.length === 0) return ''
   

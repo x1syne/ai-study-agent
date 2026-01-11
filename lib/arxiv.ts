@@ -24,11 +24,68 @@ export interface EnrichedContext {
   searchQuery: string
 }
 
+/**
+ * Базовый перевод научных терминов для arXiv
+ */
+function translateForArxiv(query: string): string {
+  const terms: Record<string, string> = {
+    'квантовая механика': 'quantum mechanics',
+    'квантовый': 'quantum',
+    'механика': 'mechanics',
+    'термодинамика': 'thermodynamics',
+    'электромагнетизм': 'electromagnetism',
+    'оптика': 'optics',
+    'ядерная физика': 'nuclear physics',
+    'физика': 'physics',
+    'математика': 'mathematics',
+    'алгебра': 'algebra',
+    'геометрия': 'geometry',
+    'анализ': 'analysis',
+    'теорема': 'theorem',
+    'интеграл': 'integral',
+    'производная': 'derivative',
+    'химия': 'chemistry',
+    'биология': 'biology',
+    'нейронные сети': 'neural networks',
+    'машинное обучение': 'machine learning',
+    'глубокое обучение': 'deep learning',
+    'искусственный интеллект': 'artificial intelligence',
+    'теория': 'theory',
+    'закон': 'law',
+    'формула': 'formula',
+    'эксперимент': 'experiment',
+    'исследование': 'research',
+    'статья': 'paper'
+  }
+  
+  let result = query.toLowerCase()
+  for (const [ru, en] of Object.entries(terms)) {
+    result = result.replace(new RegExp(ru, 'gi'), en)
+  }
+  
+  // Транслитерация оставшихся русских слов
+  if (/[а-яА-ЯёЁ]/.test(result)) {
+    const translit: Record<string, string> = {
+      'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+      'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+      'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+      'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+      'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    }
+    result = result.split('').map(c => translit[c] || c).join('')
+  }
+  
+  return result
+}
+
 // Поиск научных статей на arXiv
 export async function searchArxiv(query: string, maxResults: number = 3): Promise<ArxivSearchResult> {
   try {
+    // Переводим русский запрос на английский
+    const searchQuery = /[а-яА-ЯёЁ]/.test(query) ? translateForArxiv(query) : query
+    
     // Формируем запрос к arXiv API
-    const encodedQuery = encodeURIComponent(query)
+    const encodedQuery = encodeURIComponent(searchQuery)
     const url = `https://export.arxiv.org/api/query?search_query=all:${encodedQuery}&start=0&max_results=${maxResults}&sortBy=relevance&sortOrder=descending`
     
     const response = await fetch(url, {

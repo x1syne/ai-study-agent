@@ -391,6 +391,29 @@ export async function formatWikidataForPrompt(
 // ==================== ГЛАВНАЯ ФУНКЦИЯ ====================
 
 /**
+ * Базовый перевод для поиска
+ */
+function translateForWikidata(query: string): string {
+  const terms: Record<string, string> = {
+    'импрессионизм': 'impressionism',
+    'ренессанс': 'renaissance',
+    'барокко': 'baroque',
+    'художник': 'artist',
+    'картина': 'painting',
+    'скульптура': 'sculpture',
+    'история': 'history',
+    'война': 'war',
+    'революция': 'revolution'
+  }
+  
+  let result = query.toLowerCase()
+  for (const [ru, en] of Object.entries(terms)) {
+    result = result.replace(new RegExp(ru, 'gi'), en)
+  }
+  return result
+}
+
+/**
  * Получение контекста из Wikidata для темы
  */
 export async function getWikidataContext(
@@ -399,8 +422,14 @@ export async function getWikidataContext(
 ): Promise<string> {
   const { language = 'ru', maxEntities = 2 } = options
   
-  // Поиск сущностей
-  const searchResult = await searchWikidata(topic, { language, limit: maxEntities })
+  // Пробуем сначала на русском, потом на английском
+  let searchResult = await searchWikidata(topic, { language, limit: maxEntities })
+  
+  // Если не нашли на русском - пробуем перевести
+  if (searchResult.entities.length === 0 && /[а-яА-ЯёЁ]/.test(topic)) {
+    const englishQuery = translateForWikidata(topic)
+    searchResult = await searchWikidata(englishQuery, { language: 'en', limit: maxEntities })
+  }
   
   if (searchResult.entities.length === 0) return ''
   

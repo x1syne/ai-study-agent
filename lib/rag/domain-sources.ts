@@ -357,6 +357,101 @@ export function getDomainSourceConfig(domain: DomainType): DomainSourceConfig {
 }
 
 /**
+ * Базовый словарь русско-английских терминов для поиска
+ */
+const RU_EN_TERMS: Record<string, string> = {
+  // Физика
+  'квантовая механика': 'quantum mechanics',
+  'квантовый': 'quantum',
+  'механика': 'mechanics',
+  'термодинамика': 'thermodynamics',
+  'электромагнетизм': 'electromagnetism',
+  'оптика': 'optics',
+  'ядерная физика': 'nuclear physics',
+  'физика': 'physics',
+  
+  // Математика
+  'математика': 'mathematics',
+  'алгебра': 'algebra',
+  'геометрия': 'geometry',
+  'анализ': 'analysis',
+  'теорема': 'theorem',
+  'интеграл': 'integral',
+  'производная': 'derivative',
+  
+  // Искусство
+  'импрессионизм': 'impressionism',
+  'ренессанс': 'renaissance',
+  'барокко': 'baroque',
+  'модернизм': 'modernism',
+  'живопись': 'painting',
+  'скульптура': 'sculpture',
+  'художник': 'artist',
+  'картина': 'painting',
+  
+  // История
+  'история': 'history',
+  'война': 'war',
+  'революция': 'revolution',
+  'империя': 'empire',
+  'династия': 'dynasty',
+  
+  // Общие
+  'теория': 'theory',
+  'закон': 'law',
+  'формула': 'formula',
+  'эксперимент': 'experiment'
+}
+
+/**
+ * Транслитерация русского текста в латиницу (для имён)
+ */
+function transliterate(text: string): string {
+  const map: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo',
+    'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
+    'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
+    'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch',
+    'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+  }
+  
+  return text.split('').map(char => map[char] || char).join('')
+}
+
+/**
+ * Проверка, содержит ли текст кириллицу
+ */
+function hasCyrillic(text: string): boolean {
+  return /[а-яА-ЯёЁ]/.test(text)
+}
+
+/**
+ * Перевод русских терминов на английский для API поиска
+ */
+export function translateForSearch(query: string): string {
+  if (!hasCyrillic(query)) return query
+  
+  let result = query.toLowerCase()
+  
+  // Сначала пробуем заменить известные термины
+  for (const [ru, en] of Object.entries(RU_EN_TERMS)) {
+    result = result.replace(new RegExp(ru, 'gi'), en)
+  }
+  
+  // Если остались русские слова - транслитерируем (для имён)
+  if (hasCyrillic(result)) {
+    result = transliterate(result)
+  }
+  
+  return result
+}
+
+/**
  * Оптимизация поискового запроса для домена
  */
 export function optimizeSearchQuery(
@@ -380,6 +475,13 @@ export function optimizeSearchQuery(
   }
   
   return query
+}
+
+/**
+ * Оптимизация запроса для английских API (arXiv, Met Museum)
+ */
+export function optimizeQueryForEnglishAPI(query: string): string {
+  return translateForSearch(query)
 }
 
 /**
