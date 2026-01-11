@@ -15,12 +15,14 @@ import {
   optimizeSearchQuery, 
   shouldUseArxiv,
   shouldUseStackOverflow,
+  shouldUseGitHub,
   getMinRelevanceThreshold,
   getMaxResults,
   getSearchLanguages
 } from './rag/domain-sources'
 import { DomainType } from '@/lib/ai/domain-prompts'
 import { getStackOverflowContext } from './stackoverflow'
+import { getGitHubContext } from './github'
 
 interface SearchResult {
   title: string
@@ -442,9 +444,10 @@ export async function getDomainRAGContext(
     const maxResults = getMaxResults(domain)
     const useArxiv = shouldUseArxiv(domain)
     const useStackOverflow = shouldUseStackOverflow(domain)
+    const useGitHub = shouldUseGitHub(domain)
     const languages = getSearchLanguages(domain)
     
-    console.log(`[RAG] Domain: ${domain}, useArxiv: ${useArxiv}, useStackOverflow: ${useStackOverflow}, threshold: ${minThreshold}`)
+    console.log(`[RAG] Domain: ${domain}, useArxiv: ${useArxiv}, useStackOverflow: ${useStackOverflow}, useGitHub: ${useGitHub}`)
     
     // Параллельный поиск с таймаутом
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
@@ -471,6 +474,13 @@ export async function getDomainRAGContext(
       )
     }
     
+    // GitHub для программирования
+    if (useGitHub) {
+      searchPromises.push(
+        Promise.race([getGitHubContext(topicName, { maxRepos: 2 }), timeoutPromise]).catch(() => '')
+      )
+    }
+    
     const results = await Promise.all(searchPromises)
     
     const hybridResults = results[0] || []
@@ -482,6 +492,7 @@ export async function getDomainRAGContext(
     let resultIndex = 4
     const arxivResult = useArxiv ? results[resultIndex++] : null
     const stackOverflowContext = useStackOverflow ? results[resultIndex++] : ''
+    const githubContext = useGitHub ? results[resultIndex++] : ''
 
     // Собираем все результаты
     const allResults: RankedResult[] = []
@@ -595,8 +606,9 @@ export async function getDomainRAGContext(
 
     const formattedContext = formatRankedResultsForPrompt(rankedResults, 4000)
     
-    // Добавляем StackOverflow контекст если есть
+    // Добавляем StackOverflow и GitHub контекст если есть
     const stackOverflowSection = stackOverflowContext ? `\n${stackOverflowContext}` : ''
+    const githubSection = githubContext ? `\n${githubContext}` : ''
 
     const searchTimeMs = Date.now() - startTime
     const metrics = createRAGMetrics(
@@ -604,7 +616,7 @@ export async function getDomainRAGContext(
       rankedResults.map(r => ({ score: r.score, type: r.type })),
       searchTimeMs,
       false,
-      formattedContext.length + stackOverflowSection.length
+      formattedContext.length + stackOverflowSection.length + githubSection.length
     )
     logRAGMetrics(metrics)
 
@@ -616,6 +628,7 @@ export async function getDomainRAGContext(
 
 ${formattedContext}
 ${stackOverflowSection}
+${githubSection}
 ═══════════════════════════════════════════════════════════════
 ИНСТРУКЦИЯ: Используй эту информацию для создания точного контента.
 Домен: ${domain} | Приоритет источников настроен под предметную область.

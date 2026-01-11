@@ -80,6 +80,7 @@ export { getVectorContext, searchSimilar, indexRAGContent, generateEmbedding } f
 export { searchArxiv, getScientificContext, enrichContextWithArxiv } from '../arxiv'
 export { searchOpenLibrary, getBookContext } from '../openlibrary'
 export { searchStackOverflow, getStackOverflowContext, shouldUseStackOverflow } from '../stackoverflow'
+export { searchRepositories, getGitHubContext, shouldUseGitHub } from '../github'
 
 import { getDomainRAGContext } from '../search'
 import { getUserLearningContext, formatUserContextForPrompt, getRelatedTopicsContext } from './user-context'

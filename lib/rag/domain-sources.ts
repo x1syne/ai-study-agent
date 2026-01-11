@@ -18,6 +18,7 @@ export interface DomainSourceConfig {
     book: number
     web: number
     stackoverflow?: number  // Для программирования
+    github?: number         // Для программирования
   }
   
   // Дополнительные ключевые слова для поиска
@@ -34,6 +35,9 @@ export interface DomainSourceConfig {
   
   // Нужен ли StackOverflow
   useStackOverflow: boolean
+  
+  // Нужен ли GitHub
+  useGitHub: boolean
   
   // Минимальный порог релевантности
   minRelevanceThreshold: number
@@ -62,6 +66,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['physics.stackexchange.com', 'hyperphysics.phy-astr.gsu.edu']
@@ -81,6 +86,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['math.stackexchange.com', 'mathworld.wolfram.com']
@@ -100,6 +106,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['chemistry.stackexchange.com', 'chemguide.co.uk']
@@ -113,13 +120,15 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
       arxiv: 0.9,
       book: 0.9,
       web: 1.2,
-      stackoverflow: 1.5  // StackOverflow — главный источник!
+      stackoverflow: 1.5,  // StackOverflow — главный источник!
+      github: 1.4          // GitHub — примеры кода
     },
     searchKeywords: ['programming', 'tutorial', 'documentation', 'example', 'code'],
     searchLanguages: ['en', 'ru'],
     useArxiv: false,      // Для программирования arXiv менее полезен
     useBooks: false,
     useStackOverflow: true,  // ✅ Включён!
+    useGitHub: true,         // ✅ Включён!
     minRelevanceThreshold: 0.2,
     maxResults: 12,
     preferredSites: ['stackoverflow.com', 'developer.mozilla.org', 'docs.python.org', 'reactjs.org']
@@ -139,6 +148,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['biology.stackexchange.com', 'nature.com']
@@ -158,6 +168,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: false,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['history.com', 'britannica.com']
@@ -177,6 +188,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['investopedia.com', 'economist.com']
@@ -196,6 +208,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: false,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['grammarly.com', 'cambridge.org']
@@ -215,6 +228,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['psychologytoday.com', 'apa.org']
@@ -234,6 +248,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: false,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['consultant.ru', 'garant.ru']
@@ -253,6 +268,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.3,  // Выше порог для медицины
     maxResults: 8,
     preferredSites: ['pubmed.ncbi.nlm.nih.gov', 'medscape.com']
@@ -272,6 +288,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: false,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['metmuseum.org', 'artsy.net']
@@ -291,6 +308,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useArxiv: true,
     useBooks: true,
     useStackOverflow: false,
+    useGitHub: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: []
@@ -359,6 +377,13 @@ export function shouldUseBooks(domain: DomainType): boolean {
  */
 export function shouldUseStackOverflow(domain: DomainType): boolean {
   return getDomainSourceConfig(domain).useStackOverflow
+}
+
+/**
+ * Проверка, нужен ли GitHub для домена
+ */
+export function shouldUseGitHub(domain: DomainType): boolean {
+  return getDomainSourceConfig(domain).useGitHub
 }
 
 /**
