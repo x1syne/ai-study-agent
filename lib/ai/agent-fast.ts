@@ -7,6 +7,7 @@
  * 3. Мульти-провайдер с fallback
  * 4. Уменьшенные задержки
  * 5. RAG интеграция с персонализацией
+ * 6. Domain-specific prompts (13 доменов)
  */
 
 import { generateWithRouter } from '@/lib/ai-router'
@@ -16,11 +17,19 @@ import {
   getCachedAnalysis, setCachedAnalysis 
 } from '@/lib/ai-cache'
 import { getFullRAGContext } from '@/lib/rag'
+import { 
+  detectDomain, 
+  getConfigForTopic, 
+  DomainConfig, 
+  DomainType,
+  SectionTemplate 
+} from '@/lib/ai/domain-prompts'
 
 // Types
 export interface TopicAnalysis {
   topic: string
   courseName: string
+  domain: DomainType  // Добавлено: определённый домен
   nature: string[]
   complexity: { base: number; depth: number; prerequisites: string[] }
   learningMethods: string[]
@@ -50,6 +59,10 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
 
   console.log('[Fast Agent] Analyzing topic...')
   
+  // Определяем домен
+  const domain = detectDomain(topic, courseName)
+  console.log(`[Fast Agent] Detected domain: ${domain}`)
+  
   const prompt = `Проанализируй тему "${topic}" для курса "${courseName}".
 
 Верни JSON:
@@ -77,6 +90,7 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
     const analysis: TopicAnalysis = {
       topic,
       courseName,
+      domain,  // Добавлено
       nature: data.nature || ['conceptual'],
       complexity: data.complexity || { base: 5, depth: 5, prerequisites: [] },
       learningMethods: ['theory-practice-project'],
@@ -94,6 +108,7 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
     console.error('[Fast Agent] Analysis failed:', e)
     return {
       topic, courseName,
+      domain,  // Добавлено
       nature: ['conceptual'],
       complexity: { base: 5, depth: 5, prerequisites: [] },
       learningMethods: ['theory-practice-project'],
@@ -108,100 +123,78 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
 }
 
 
-// Определение типа темы
-function getTopicType(analysis: TopicAnalysis): 'programming' | 'science' | 'general' {
-  const topicLower = (analysis.topic + ' ' + analysis.courseName).toLowerCase()
-  
-  if (analysis.contentFormats.includes('code_examples') || 
-      /программ|python|javascript|java|react|sql|код|алгоритм|ооп|api|web/i.test(topicLower)) {
-    return 'programming'
-  }
-  
-  if (analysis.contentFormats.includes('text_formulas') &&
-      /физик|химик|математ|механик|геометр/i.test(topicLower)) {
-    return 'science'
-  }
-  
-  return 'general'
-}
-
-// Генерация одной секции
+// Генерация одной секции с domain-specific промптом
 async function generateSection(
-  title: string,
-  prompt: string,
-  systemPrompt: string
+  template: SectionTemplate,
+  domainConfig: DomainConfig,
+  analysis: TopicAnalysis,
+  ragContext: string = ''
 ): Promise<string> {
+  const baseContext = `Тема: "${analysis.topic}", Курс: "${analysis.courseName}"`
+  
+  // Добавляем RAG контекст
+  const ragInstruction = ragContext ? `
+
+ИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ДЛЯ ТОЧНОСТИ:
+${ragContext.slice(0, 2000)}
+
+Цитируй факты из контекста, упоминай источники.` : ''
+
+  // Формируем полный системный промпт с правилами домена
+  const fullSystemPrompt = `${domainConfig.systemPrompt}
+
+ПРАВИЛА ФОРМАТИРОВАНИЯ:
+${domainConfig.formatRules.map(r => `- ${r}`).join('\n')}
+
+ПРИМЕРЫ ОФОРМЛЕНИЯ:
+${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
+
+  // Формируем промпт для секции
+  const sectionPrompt = `${baseContext}
+
+Напиши раздел "${template.title}" (минимум ${template.minWords} слов).
+
+ЗАДАНИЕ: ${template.prompt}
+
+Ключевые термины для включения: ${analysis.keyTerms.join(', ')}
+
+НЕ повторяй заголовок секции. Сразу начинай с контента.
+Используй ### для подзаголовков, **жирный** для терминов, списки для структуры.`
+
   try {
-    const result = await generateWithRouter('heavy', systemPrompt, prompt, {
+    const result = await generateWithRouter('heavy', fullSystemPrompt, sectionPrompt, {
       temperature: 0.7,
-      maxTokens: 2000
+      maxTokens: 2500  // Увеличено для более детального контента
     })
     return result.content && result.content.length > 50 ? result.content : ''
   } catch (e) {
-    console.error(`[Fast Agent] Section "${title}" failed:`, e)
+    console.error(`[Fast Agent] Section "${template.title}" failed:`, e)
     return ''
   }
 }
 
-// ПАРАЛЛЕЛЬНАЯ генерация всех секций
+// ПАРАЛЛЕЛЬНАЯ генерация всех секций с domain-specific шаблонами
 async function generateAllSectionsParallel(
   analysis: TopicAnalysis,
   ragContext: string = ''
 ): Promise<string> {
   console.log('[Fast Agent] Generating sections in PARALLEL...')
+  console.log(`[Fast Agent] Domain: ${analysis.domain}`)
   if (ragContext) {
     console.log(`[Fast Agent] Using RAG context: ${ragContext.length} chars`)
   }
   
-  const topicType = getTopicType(analysis)
-  const baseContext = `Тема: "${analysis.topic}", Курс: "${analysis.courseName}"`
-  
-  // Добавляем RAG контекст в системный промпт
-  const ragInstruction = ragContext ? `
-
-ИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ДЛЯ ТОЧНОСТИ:
-${ragContext.slice(0, 3000)}
-
-Цитируй факты из контекста, упоминай источники.` : ''
-  
-  const systemPrompt = `Ты профессор. Пиши на русском, используй ### заголовки, **жирный** текст, списки.
-НЕ используй LaTeX. НЕ повторяй заголовок секции. Сразу начинай с контента.
-${topicType === 'programming' ? 'Используй примеры кода в блоках ```python```.' : ''}
-${topicType === 'science' ? 'Используй символы: ₀₁₂₃ × ÷ ± ≈ √ для формул.' : ''}${ragInstruction}`
-
-  // Определяем секции для генерации
-  const sections = [
-    {
-      title: 'Введение',
-      prompt: `${baseContext}\n\nНапиши введение (400+ слов):\n- Зачем это нужно?\n- Где применяется (3-4 примера)\n- Что узнаете`
-    },
-    {
-      title: 'Основные понятия',
-      prompt: `${baseContext}\n\nОбъясни основные понятия (600+ слов):\n${analysis.keyTerms.map(t => `- ${t}`).join('\n')}\n\nДля каждого: определение, пример, связь с другими.`
-    },
-    {
-      title: 'Как это работает',
-      prompt: `${baseContext}\n\nОбъясни механизм работы (500+ слов):\n- Принцип работы\n- Пошаговый разбор\n- Аналогия для понимания`
-    },
-    {
-      title: 'Практические примеры',
-      prompt: `${baseContext}\n\nПокажи 3-4 практических примера (600+ слов):\n${topicType === 'programming' ? '- С кодом и комментариями' : '- С пошаговым разбором'}`
-    },
-    {
-      title: 'Частые ошибки',
-      prompt: `${baseContext}\n\nРазбери 5 частых ошибок (400+ слов):\n- Неправильно: ...\n- Правильно: ...\n- Как избежать`
-    },
-    {
-      title: 'Итоги',
-      prompt: `${baseContext}\n\nПодведи итоги (300+ слов):\n- Ключевые выводы\n- Чек-лист навыков\n- Что изучать дальше`
-    }
-  ]
+  // Получаем конфигурацию домена
+  const domainConfig = getConfigForTopic(analysis.topic, analysis.courseName)
+  console.log(`[Fast Agent] Using ${domainConfig.name} config with ${domainConfig.sectionTemplates.length} sections`)
 
   // ПАРАЛЛЕЛЬНАЯ генерация всех секций
   const startTime = Date.now()
   
   const results = await Promise.allSettled(
-    sections.map(s => generateSection(s.title, s.prompt, systemPrompt))
+    domainConfig.sectionTemplates.map(template => 
+      generateSection(template, domainConfig, analysis, ragContext)
+    )
   )
   
   console.log(`[Fast Agent] Parallel generation took ${Date.now() - startTime}ms`)
@@ -211,12 +204,13 @@ ${topicType === 'science' ? 'Используй символы: ₀₁₂₃ × 
   
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
-    const section = sections[i]
+    const template = domainConfig.sectionTemplates[i]
     
     if (result.status === 'fulfilled' && result.value) {
-      contentParts.push(`## ${section.title}\n\n${result.value}`)
-    } else {
-      contentParts.push(`## ${section.title}\n\n*Раздел генерируется...*`)
+      contentParts.push(`## ${template.title}\n\n${result.value}`)
+    } else if (template.required) {
+      // Для обязательных секций добавляем placeholder
+      contentParts.push(`## ${template.title}\n\n*Раздел генерируется...*`)
     }
   }
 
@@ -224,7 +218,7 @@ ${topicType === 'science' ? 'Используй символы: ₀₁₂₃ × 
 }
 
 
-// Генерация практических заданий
+// Генерация практических заданий с domain-specific подходом
 async function generateTasksFast(analysis: TopicAnalysis): Promise<any[]> {
   // Проверяем кэш
   const cached = getCachedTasks(analysis.topic, analysis.courseName)
@@ -234,16 +228,35 @@ async function generateTasksFast(analysis: TopicAnalysis): Promise<any[]> {
   }
 
   console.log('[Fast Agent] Generating tasks...')
+  console.log(`[Fast Agent] Domain for tasks: ${analysis.domain}`)
   
-  const topicType = getTopicType(analysis)
+  // Получаем конфигурацию домена для специфичных заданий
+  const domainConfig = getConfigForTopic(analysis.topic, analysis.courseName)
   
-  const prompt = `Создай 10 заданий по теме "${analysis.topic}".
+  // Domain-specific инструкции для заданий
+  const domainTaskInstructions: Record<DomainType, string> = {
+    physics: 'Включи расчётные задачи с формулами, единицами СИ и проверкой размерности.',
+    math: 'Включи задачи на вычисления, доказательства и построение графиков.',
+    chemistry: 'Включи задачи на уравнения реакций, расчёт молярных масс и концентраций.',
+    programming: 'Включи задания с кодом: найди ошибку, допиши функцию, оптимизируй.',
+    biology: 'Включи задания на классификацию, процессы в клетке, экосистемы.',
+    history: 'Включи задания на даты, причинно-следственные связи, сравнение эпох.',
+    economics: 'Включи задачи на расчёт показателей, анализ графиков спроса/предложения.',
+    languages: 'Включи задания на грамматику, перевод, заполнение пропусков.',
+    psychology: 'Включи кейсы, анализ поведения, определение механизмов.',
+    law: 'Включи задачи на применение статей, анализ ситуаций, квалификацию.',
+    medicine: 'Включи задачи на симптомы, дифференциальную диагностику (учебные).',
+    art: 'Включи задания на анализ произведений, определение стилей, сравнение.',
+    general: 'Включи разнообразные типы заданий.'
+  }
+  
+  const prompt = `Создай 10 заданий по теме "${analysis.topic}" (${domainConfig.name}).
 
 Требования:
 - 4 лёгких, 4 средних, 2 сложных
 - Разные типы: single (выбор), multiple (несколько), text (ввод), number (число)
 - Реальные примеры из жизни
-${topicType === 'programming' ? '- Включи задания с кодом' : ''}
+- ${domainTaskInstructions[analysis.domain]}
 
 JSON формат:
 {
@@ -265,7 +278,7 @@ JSON формат:
   try {
     const result = await generateWithRouter(
       'heavy',
-      'Создатель заданий. Отвечай ТОЛЬКО JSON.',
+      `Создатель заданий по ${domainConfig.name}. Отвечай ТОЛЬКО JSON.`,
       prompt,
       { json: true, temperature: 0.6, maxTokens: 3000 }
     )
@@ -299,7 +312,7 @@ function getDefaultTasks(topic: string): any[] {
   ]
 }
 
-// ГЛАВНАЯ ФУНКЦИЯ - оптимизированная версия с RAG
+// ГЛАВНАЯ ФУНКЦИЯ - оптимизированная версия с RAG и Domain-Specific Prompts
 export async function runLessonAgentFast(
   topic: string,
   courseName: string,
@@ -307,6 +320,7 @@ export async function runLessonAgentFast(
 ): Promise<{ content: string; analysis: TopicAnalysis; plan: LessonPlan; metadata: any; tasks: any[] }> {
   console.log(`\n${'='.repeat(50)}`)
   console.log(`[Fast Agent] Starting: "${topic}"`)
+  console.log(`[Fast Agent] Course: "${courseName}"`)
   console.log(`[Fast Agent] User: ${userId || 'anonymous'}`)
   console.log(`${'='.repeat(50)}\n`)
   
@@ -323,7 +337,7 @@ export async function runLessonAgentFast(
       content: cachedLesson,
       analysis,
       plan: { title: topic, objectives: [], sections: [], practiceIdeas: [] },
-      metadata: { fromCache: true, generatedAt: new Date().toISOString() },
+      metadata: { fromCache: true, generatedAt: new Date().toISOString(), domain: analysis.domain },
       tasks
     }
   }
@@ -337,7 +351,12 @@ export async function runLessonAgentFast(
     })
   ])
   
-  console.log(`[Fast Agent] Analysis + RAG done in ${Date.now() - startTime}ms`)
+  // Получаем конфигурацию домена для метаданных
+  const domainConfig = getConfigForTopic(topic, courseName)
+  
+  console.log(`[Fast Agent] Analysis done in ${Date.now() - startTime}ms`)
+  console.log(`[Fast Agent] Domain: ${analysis.domain} (${domainConfig.name})`)
+  console.log(`[Fast Agent] Sections: ${domainConfig.sectionTemplates.length}`)
   if (ragContext) {
     console.log(`[Fast Agent] RAG context: ${ragContext.length} chars`)
   }
@@ -355,16 +374,18 @@ export async function runLessonAgentFast(
 
   const totalTime = Date.now() - startTime
   console.log(`\n[Fast Agent] DONE in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`)
+  console.log(`[Fast Agent] Domain: ${domainConfig.name}`)
   console.log(`[Fast Agent] Content: ${content.length} chars, Tasks: ${tasks.length}\n`)
 
   const plan: LessonPlan = {
     title: topic,
     objectives: [`Понять ${topic}`, 'Применить на практике'],
-    sections: [
-      { title: 'Введение', type: 'intro', keyPoints: [], estimatedMinutes: 5 },
-      { title: 'Основные понятия', type: 'theory', keyPoints: analysis.keyTerms, estimatedMinutes: 10 },
-      { title: 'Практика', type: 'practice', keyPoints: [], estimatedMinutes: 15 }
-    ],
+    sections: domainConfig.sectionTemplates.map((t, i) => ({
+      title: t.title,
+      type: i === 0 ? 'intro' : i === domainConfig.sectionTemplates.length - 1 ? 'summary' : 'theory',
+      keyPoints: analysis.keyTerms.slice(0, 3),
+      estimatedMinutes: Math.ceil(t.minWords / 100)
+    })),
     practiceIdeas: tasks.slice(0, 3).map(t => t.question)
   }
 
@@ -375,7 +396,9 @@ export async function runLessonAgentFast(
     metadata: {
       generatedAt: new Date().toISOString(),
       totalTimeMs: totalTime,
-      sectionsCount: 6,
+      domain: analysis.domain,
+      domainName: domainConfig.name,
+      sectionsCount: domainConfig.sectionTemplates.length,
       tasksCount: tasks.length,
       fromCache: false,
       ragContextLength: ragContext.length
