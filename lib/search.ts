@@ -17,6 +17,7 @@ import {
   shouldUseStackOverflow,
   shouldUseGitHub,
   shouldUseWikidata,
+  shouldUseMetMuseum,
   getMinRelevanceThreshold,
   getMaxResults,
   getSearchLanguages
@@ -25,6 +26,7 @@ import { DomainType } from '@/lib/ai/domain-prompts'
 import { getStackOverflowContext } from './stackoverflow'
 import { getGitHubContext } from './github'
 import { getWikidataContext } from './wikidata'
+import { getMetMuseumContext } from './metmuseum'
 
 interface SearchResult {
   title: string
@@ -448,9 +450,10 @@ export async function getDomainRAGContext(
     const useStackOverflow = shouldUseStackOverflow(domain)
     const useGitHub = shouldUseGitHub(domain)
     const useWikidata = shouldUseWikidata(domain)
+    const useMetMuseum = shouldUseMetMuseum(domain)
     const languages = getSearchLanguages(domain)
     
-    console.log(`[RAG] Domain: ${domain}, arXiv: ${useArxiv}, SO: ${useStackOverflow}, GH: ${useGitHub}, WD: ${useWikidata}`)
+    console.log(`[RAG] Domain: ${domain}, arXiv: ${useArxiv}, SO: ${useStackOverflow}, GH: ${useGitHub}, WD: ${useWikidata}, Met: ${useMetMuseum}`)
     
     // Параллельный поиск с таймаутом
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
@@ -491,6 +494,13 @@ export async function getDomainRAGContext(
       )
     }
     
+    // Met Museum для искусства
+    if (useMetMuseum) {
+      searchPromises.push(
+        Promise.race([getMetMuseumContext(topicName, { maxArtworks: 2 }), timeoutPromise]).catch(() => '')
+      )
+    }
+    
     const results = await Promise.all(searchPromises)
     
     const hybridResults = results[0] || []
@@ -504,6 +514,7 @@ export async function getDomainRAGContext(
     const stackOverflowContext = useStackOverflow ? results[resultIndex++] : ''
     const githubContext = useGitHub ? results[resultIndex++] : ''
     const wikidataContext = useWikidata ? results[resultIndex++] : ''
+    const metMuseumContext = useMetMuseum ? results[resultIndex++] : ''
 
     // Собираем все результаты
     const allResults: RankedResult[] = []
@@ -621,6 +632,7 @@ export async function getDomainRAGContext(
     const stackOverflowSection = stackOverflowContext ? `\n${stackOverflowContext}` : ''
     const githubSection = githubContext ? `\n${githubContext}` : ''
     const wikidataSection = wikidataContext ? `\n${wikidataContext}` : ''
+    const metMuseumSection = metMuseumContext ? `\n${metMuseumContext}` : ''
 
     const searchTimeMs = Date.now() - startTime
     const metrics = createRAGMetrics(
@@ -628,7 +640,7 @@ export async function getDomainRAGContext(
       rankedResults.map(r => ({ score: r.score, type: r.type })),
       searchTimeMs,
       false,
-      formattedContext.length + stackOverflowSection.length + githubSection.length + wikidataSection.length
+      formattedContext.length + stackOverflowSection.length + githubSection.length + wikidataSection.length + metMuseumSection.length
     )
     logRAGMetrics(metrics)
 
@@ -642,6 +654,7 @@ ${formattedContext}
 ${stackOverflowSection}
 ${githubSection}
 ${wikidataSection}
+${metMuseumSection}
 ═══════════════════════════════════════════════════════════════
 ИНСТРУКЦИЯ: Используй эту информацию для создания точного контента.
 Домен: ${domain} | Приоритет источников настроен под предметную область.

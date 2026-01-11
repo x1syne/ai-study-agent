@@ -42,6 +42,9 @@ export interface DomainSourceConfig {
   // Нужен ли Wikidata (структурированные данные)
   useWikidata: boolean
   
+  // Нужен ли Met Museum (для искусства)
+  useMetMuseum: boolean
+  
   // Минимальный порог релевантности
   minRelevanceThreshold: number
   
@@ -71,6 +74,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['physics.stackexchange.com', 'hyperphysics.phy-astr.gsu.edu']
@@ -92,6 +96,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['math.stackexchange.com', 'mathworld.wolfram.com']
@@ -113,6 +118,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['chemistry.stackexchange.com', 'chemguide.co.uk']
@@ -135,7 +141,8 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useBooks: false,
     useStackOverflow: true,  // ✅ Включён!
     useGitHub: true,         // ✅ Включён!
-    useWikidata: false,      // Не нужен для программирования
+    useWikidata: false,
+    useMetMuseum: false,      // Не нужен для программирования
     minRelevanceThreshold: 0.2,
     maxResults: 12,
     preferredSites: ['stackoverflow.com', 'developer.mozilla.org', 'docs.python.org', 'reactjs.org']
@@ -157,6 +164,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['biology.stackexchange.com', 'nature.com']
@@ -178,6 +186,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: true,  // ✅ Включён для истории!
+    useMetMuseum: false, // Не для истории
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['history.com', 'britannica.com']
@@ -199,6 +208,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['investopedia.com', 'economist.com']
@@ -220,6 +230,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['grammarly.com', 'cambridge.org']
@@ -241,6 +252,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['psychologytoday.com', 'apa.org']
@@ -262,6 +274,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['consultant.ru', 'garant.ru']
@@ -283,6 +296,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.3,  // Выше порог для медицины
     maxResults: 8,
     preferredSites: ['pubmed.ncbi.nlm.nih.gov', 'medscape.com']
@@ -303,7 +317,8 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useBooks: true,
     useStackOverflow: false,
     useGitHub: false,
-    useWikidata: true,  // ✅ Включён для искусства!
+    useWikidata: true,   // ✅ Включён для искусства!
+    useMetMuseum: true,  // ✅ Включён для искусства!
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['metmuseum.org', 'artsy.net']
@@ -325,6 +340,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     useStackOverflow: false,
     useGitHub: false,
     useWikidata: false,
+    useMetMuseum: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: []
@@ -407,6 +423,13 @@ export function shouldUseGitHub(domain: DomainType): boolean {
  */
 export function shouldUseWikidata(domain: DomainType): boolean {
   return getDomainSourceConfig(domain).useWikidata
+}
+
+/**
+ * Проверка, нужен ли Met Museum для домена
+ */
+export function shouldUseMetMuseum(domain: DomainType): boolean {
+  return getDomainSourceConfig(domain).useMetMuseum
 }
 
 /**
