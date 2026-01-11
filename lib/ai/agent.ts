@@ -10,7 +10,14 @@
  */
 
 import { generateWithRouter } from '@/lib/ai-router'
-import { getFullRAGContext } from '@/lib/rag'
+import { getFullRAGContext, getDomainRAGContext } from '@/lib/rag'
+import { 
+  detectDomain, 
+  getDomainConfig, 
+  DomainConfig, 
+  SectionTemplate,
+  DomainType
+} from './domain-prompts'
 
 // Обёртка для совместимости со старым кодом
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
@@ -961,13 +968,339 @@ ${formattingRules}
 }
 
 /**
+ * Строит секции на основе доменной конфигурации
+ * Использует sectionTemplates из DomainConfig для генерации структурированных секций
+ */
+export function buildDomainSections(
+  analysis: TopicAnalysis,
+  domainConfig: DomainConfig,
+  ragContext: string
+): { title: string; prompt: string; minWords: number }[] {
+  const sections: { title: string; prompt: string; minWords: number }[] = []
+  
+  // Формируем базовый контекст темы
+  const topicContext = `
+ТЕМА: "${analysis.topic}"
+КУРС: "${analysis.courseName}"
+ДОМЕН: ${domainConfig.name}
+СЛОЖНОСТЬ: ${analysis.complexity.base}/10
+КЛЮЧЕВЫЕ ТЕРМИНЫ: ${analysis.keyTerms.join(', ')}
+${ragContext ? `\nДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ:\n${ragContext.slice(0, 1000)}` : ''}
+`
+
+  // Используем sectionTemplates из конфига домена
+  for (const template of domainConfig.sectionTemplates) {
+    // Добавляем контекст темы к каждому промпту
+    const enrichedPrompt = `${topicContext}
+
+${template.prompt}
+
+ПРАВИЛА ФОРМАТИРОВАНИЯ:
+${domainConfig.formatRules.map((rule, i) => `${i + 1}. ${rule}`).join('\n')}
+
+Минимум ${template.minWords} слов.`
+
+    sections.push({
+      title: template.title,
+      prompt: enrichedPrompt,
+      minWords: template.minWords
+    })
+  }
+  
+  return sections
+}
+
+/**
+ * Применяет правила форматирования домена к базовому промпту
+ * Добавляет formatRules в конец промпта в виде нумерованного списка
+ */
+export function applyFormatRules(
+  basePrompt: string,
+  formatRules: string[]
+): string {
+  if (!formatRules || formatRules.length === 0) {
+    return basePrompt
+  }
+  
+  const rulesSection = `
+
+ПРАВИЛА ФОРМАТИРОВАНИЯ:
+${formatRules.map((rule, i) => `${i + 1}. ${rule}`).join('\n')}`
+  
+  return basePrompt + rulesSection
+}
+
+/**
+ * Проверяет наличие LaTeX синтаксиса в контенте
+ * Возвращает true если найден LaTeX ($...$ или \frac, \sqrt, \lim и т.д.)
+ * Requirements: 2.4
+ */
+export function containsLatex(content: string): boolean {
+  // Паттерны LaTeX для обнаружения
+  const latexPatterns = [
+    /\$[^$]+\$/,           // Inline math: $...$
+    /\$\$[^$]+\$\$/,       // Display math: $$...$$
+    /\\frac\{/,            // \frac{...}{...}
+    /\\sqrt\{/,            // \sqrt{...}
+    /\\lim/,               // \lim
+    /\\sum/,               // \sum
+    /\\int/,               // \int
+    /\\prod/,              // \prod
+    /\\infty/,             // \infty
+    /\\partial/,           // \partial
+    /\\alpha/,             // \alpha
+    /\\beta/,              // \beta
+    /\\gamma/,             // \gamma
+    /\\delta/,             // \delta
+    /\\theta/,             // \theta
+    /\\lambda/,            // \lambda
+    /\\pi/,                // \pi
+    /\\omega/,             // \omega
+    /\\cdot/,              // \cdot
+    /\\times/,             // \times
+    /\\div/,               // \div
+    /\\pm/,                // \pm
+    /\\leq/,               // \leq
+    /\\geq/,               // \geq
+    /\\neq/,               // \neq
+    /\\approx/,            // \approx
+    /\^\{[^}]+\}/,         // Superscript: ^{...}
+    /_\{[^}]+\}/,          // Subscript: _{...}
+  ]
+  
+  return latexPatterns.some(pattern => pattern.test(content))
+}
+
+/**
+ * Заменяет LaTeX синтаксис на Unicode символы
+ * Преобразует формулы в читаемый текст с Unicode
+ * Requirements: 2.4
+ */
+export function sanitizeLatex(content: string): string {
+  let result = content
+  
+  // Замена греческих букв
+  const greekLetters: Record<string, string> = {
+    '\\alpha': 'α',
+    '\\beta': 'β',
+    '\\gamma': 'γ',
+    '\\delta': 'δ',
+    '\\epsilon': 'ε',
+    '\\zeta': 'ζ',
+    '\\eta': 'η',
+    '\\theta': 'θ',
+    '\\iota': 'ι',
+    '\\kappa': 'κ',
+    '\\lambda': 'λ',
+    '\\mu': 'μ',
+    '\\nu': 'ν',
+    '\\xi': 'ξ',
+    '\\pi': 'π',
+    '\\rho': 'ρ',
+    '\\sigma': 'σ',
+    '\\tau': 'τ',
+    '\\upsilon': 'υ',
+    '\\phi': 'φ',
+    '\\chi': 'χ',
+    '\\psi': 'ψ',
+    '\\omega': 'ω',
+    '\\Alpha': 'Α',
+    '\\Beta': 'Β',
+    '\\Gamma': 'Γ',
+    '\\Delta': 'Δ',
+    '\\Theta': 'Θ',
+    '\\Lambda': 'Λ',
+    '\\Pi': 'Π',
+    '\\Sigma': 'Σ',
+    '\\Phi': 'Φ',
+    '\\Psi': 'Ψ',
+    '\\Omega': 'Ω',
+  }
+  
+  // Замена математических символов
+  const mathSymbols: Record<string, string> = {
+    '\\infty': '∞',
+    '\\partial': '∂',
+    '\\nabla': '∇',
+    '\\cdot': '·',
+    '\\times': '×',
+    '\\div': '÷',
+    '\\pm': '±',
+    '\\mp': '∓',
+    '\\leq': '≤',
+    '\\geq': '≥',
+    '\\neq': '≠',
+    '\\approx': '≈',
+    '\\equiv': '≡',
+    '\\sim': '∼',
+    '\\propto': '∝',
+    '\\rightarrow': '→',
+    '\\leftarrow': '←',
+    '\\Rightarrow': '⇒',
+    '\\Leftarrow': '⇐',
+    '\\leftrightarrow': '↔',
+    '\\sum': 'Σ',
+    '\\prod': 'Π',
+    '\\int': '∫',
+    '\\sqrt': '√',
+    '\\forall': '∀',
+    '\\exists': '∃',
+    '\\in': '∈',
+    '\\notin': '∉',
+    '\\subset': '⊂',
+    '\\supset': '⊃',
+    '\\cup': '∪',
+    '\\cap': '∩',
+    '\\emptyset': '∅',
+    '\\angle': '∠',
+    '\\degree': '°',
+    '\\circ': '°',
+  }
+  
+  // Замена греческих букв
+  for (const [latex, unicode] of Object.entries(greekLetters)) {
+    result = result.replace(new RegExp(latex.replace(/\\/g, '\\\\'), 'g'), unicode)
+  }
+  
+  // Замена \frac{a}{b} на (a)/(b) - ПЕРЕД заменой простых символов
+  result = result.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
+  
+  // Замена \sqrt{x} на √(x) - ПЕРЕД заменой простого \sqrt
+  result = result.replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
+  
+  // Замена \lim_{x \to a} на lim(x→a)
+  result = result.replace(/\\lim_?\{?([^}]*)\}?/g, 'lim($1)')
+  result = result.replace(/\\to/g, '→')
+  
+  // Замена математических символов (ПОСЛЕ обработки сложных паттернов)
+  for (const [latex, unicode] of Object.entries(mathSymbols)) {
+    result = result.replace(new RegExp(latex.replace(/\\/g, '\\\\'), 'g'), unicode)
+  }
+  
+  // Замена верхних индексов ^{n} на ⁿ (для простых случаев)
+  const superscripts: Record<string, string> = {
+    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+    'n': 'ⁿ', 'i': 'ⁱ',
+  }
+  
+  // Замена нижних индексов _{n} на ₙ (для простых случаев)
+  const subscripts: Record<string, string> = {
+    '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+    '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+    '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+    'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ',
+    'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ', 'n': 'ₙ', 'm': 'ₘ',
+  }
+  
+  // Замена ^{...} на суперскрипты
+  result = result.replace(/\^\{([^}]+)\}/g, (_, content) => {
+    return content.split('').map((c: string) => superscripts[c] || c).join('')
+  })
+  
+  // Замена _{...} на субскрипты
+  result = result.replace(/_\{([^}]+)\}/g, (_, content) => {
+    return content.split('').map((c: string) => subscripts[c] || c).join('')
+  })
+  
+  // Замена простых ^n и _n
+  result = result.replace(/\^(\d)/g, (_, d) => superscripts[d] || `^${d}`)
+  result = result.replace(/_(\d)/g, (_, d) => subscripts[d] || `_${d}`)
+  
+  // Удаление $...$ обёрток (inline math)
+  result = result.replace(/\$\$([^$]+)\$\$/g, '$1')
+  result = result.replace(/\$([^$]+)\$/g, '$1')
+  
+  // Удаление всех оставшихся $ символов (для malformed LaTeX)
+  result = result.replace(/\$/g, '')
+  
+  // Удаление оставшихся LaTeX команд
+  result = result.replace(/\\[a-zA-Z]+/g, '')
+  
+  // Очистка лишних пробелов
+  result = result.replace(/\s+/g, ' ')
+  
+  return result
+}
+
+/**
+ * Проверяет наличие псевдо-формул в контенте программирования
+ * Псевдо-формулы — это бессмысленные конструкции типа "Класс = (Атрибуты, Методы)"
+ * Возвращает true если найдены псевдо-формулы
+ * Requirements: 3.1
+ */
+export function containsPseudoFormulas(content: string): boolean {
+  // Паттерны псевдо-формул для программирования
+  const pseudoFormulaPatterns = [
+    // "Слово = (" — типичный паттерн псевдо-формулы
+    /[А-Яа-яA-Za-z]+\s*=\s*\(/,
+    // "Класс = (Атрибуты, Методы)" и подобные
+    /(?:Класс|Объект|Функция|Метод|Модуль|Компонент|Интерфейс|Паттерн)\s*=\s*\([^)]+\)/i,
+    // "Формула класса = ..."
+    /Формула\s+(?:класса|объекта|функции|метода)\s*=/i,
+    // Греческие буквы в контексте программирования (не математики)
+    /(?:класс|объект|функция|метод|переменная|параметр)\s*[αβγδθλπω]/i,
+  ]
+  
+  return pseudoFormulaPatterns.some(pattern => pattern.test(content))
+}
+
+/**
+ * Удаляет псевдо-формулы из контента программирования
+ * Заменяет их на более понятные текстовые описания
+ * Requirements: 3.1
+ */
+export function sanitizePseudoFormulas(content: string): string {
+  let result = content
+  
+  // Удаляем паттерны типа "Класс = (Атрибуты, Методы)"
+  result = result.replace(
+    /(?:Класс|Объект|Функция|Метод|Модуль|Компонент|Интерфейс|Паттерн)\s*=\s*\([^)]+\)/gi,
+    ''
+  )
+  
+  // Удаляем "Формула класса = ..." до конца строки
+  result = result.replace(
+    /Формула\s+(?:класса|объекта|функции|метода)\s*=\s*[^\n]+/gi,
+    ''
+  )
+  
+  // Очистка лишних пустых строк
+  result = result.replace(/\n{3,}/g, '\n\n')
+  
+  return result.trim()
+}
+
+/**
+ * Проверяет наличие блоков кода в контенте
+ * Возвращает true если контент содержит блоки кода (```)
+ * Requirements: 3.2
+ */
+export function containsCodeBlocks(content: string): boolean {
+  // Проверяем наличие блоков кода с указанием языка или без
+  const codeBlockPattern = /```[\s\S]*?```/
+  return codeBlockPattern.test(content)
+}
+
+/**
+ * Подсчитывает количество блоков кода в контенте
+ * Requirements: 3.2
+ */
+export function countCodeBlocks(content: string): number {
+  const matches = content.match(/```[\s\S]*?```/g)
+  return matches ? matches.length : 0
+}
+
+/**
  * Генерирует контент урока СЕКЦИЯ ЗА СЕКЦИЕЙ с задержками
  * Это обходит rate limiting Groq API
  */
 async function generateFullLessonContent(
   analysis: TopicAnalysis,
   structure: CourseStructure,
-  ragContext: string
+  ragContext: string,
+  domainConfig?: DomainConfig
 ): Promise<string> {
   console.log('[AI Architect] Generating lesson content SECTION BY SECTION...')
   
@@ -988,8 +1321,17 @@ async function generateFullLessonContent(
 Ключевые термины: ${analysis.keyTerms.join(', ')}
 ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
 
-  // Динамические секции — AI сам определяет контент на основе анализа
-  const sections = buildDynamicSections(analysis, baseContext)
+  // Выбираем секции: если передан domainConfig — используем buildDomainSections, иначе — fallback на buildDynamicSections
+  // Requirements: 1.4, 7.3
+  let sections: { title: string; prompt: string; minWords?: number }[]
+  
+  if (domainConfig) {
+    console.log(`[AI Architect] Using domain-specific sections for domain: ${domainConfig.type}`)
+    sections = buildDomainSections(analysis, domainConfig, ragContext)
+  } else {
+    // Fallback на buildDynamicSections для обратной совместимости
+    sections = buildDynamicSections(analysis, baseContext)
+  }
 
   const contentParts: string[] = []
   
@@ -1003,8 +1345,20 @@ ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
   
   console.log(`[generateFullLessonContent] isProgramming: ${isProgrammingTopic}, isExactScience: ${isExactScienceTopic}`)
   
-  // Адаптивный системный промпт
-  let systemPrompt = `Ты профессор ведущего университета. Пишешь увлекательные лекции на русском языке.
+  // Системный промпт: используем из domainConfig если передан, иначе — generic
+  // Requirements: 1.3
+  let systemPrompt: string
+  
+  if (domainConfig) {
+    // Используем systemPrompt из конфига домена
+    systemPrompt = domainConfig.systemPrompt
+    // Применяем formatRules к системному промпту
+    // Requirements: 1.5
+    systemPrompt = applyFormatRules(systemPrompt, domainConfig.formatRules)
+    console.log(`[AI Architect] Using domain systemPrompt for: ${domainConfig.name}`)
+  } else {
+    // Fallback на generic системный промпт
+    systemPrompt = `Ты профессор ведущего университета. Пишешь увлекательные лекции на русском языке.
 Используй живые примеры, аналогии. Тон: дружелюбный но экспертный.
 
 СТРОГИЕ ПРАВИЛА:
@@ -1030,9 +1384,9 @@ ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
 - Формулы уместны ТОЛЬКО в точных науках (физика, химия, математика)
 - Для остальных тем объясняй словами, примерами, аналогиями — БЕЗ формул`
 
-  // Добавляем инструкции по формулам ТОЛЬКО для точных наук (НЕ для программирования!)
-  if (isExactScienceTopic) {
-    systemPrompt += `
+    // Добавляем инструкции по формулам ТОЛЬКО для точных наук (НЕ для программирования!)
+    if (isExactScienceTopic) {
+      systemPrompt += `
 
 ФОРМАТИРОВАНИЕ ФОРМУЛ:
 Оформляй формулы в блоках цитат:
@@ -1045,11 +1399,11 @@ ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
 > - переменная — описание
 
 Используй символы: ₀₁₂₃₄₅₆₇₈₉ ⁰¹²³⁴⁵⁶⁷⁸⁹ α β γ δ θ λ π × ÷ ± ≈ ≠ ≤ ≥ √`
-  }
-  
-  // Добавляем инструкции по коду для программирования
-  if (isProgrammingTopic) {
-    systemPrompt += `
+    }
+    
+    // Добавляем инструкции по коду для программирования
+    if (isProgrammingTopic) {
+      systemPrompt += `
 
 ЭТО ТЕМА ПО ПРОГРАММИРОВАНИЮ!
 - НЕ придумывай математические формулы для программирования
@@ -1060,6 +1414,7 @@ ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
 код с комментариями
 \`\`\`
 - Показывай реальные примеры использования`
+    }
   }
 
   for (let i = 0; i < sections.length; i++) {
@@ -1102,7 +1457,14 @@ ${ragContext ? `\nДоп. контекст: ${ragContext.slice(0, 800)}` : ''}`
     return generateFallbackContent(analysis, structure)
   }
   
-  return fullContent
+  // Санитизация LaTeX: заменяем LaTeX синтаксис на Unicode
+  // Requirements: 2.4
+  const sanitizedContent = sanitizeLatex(fullContent)
+  if (containsLatex(fullContent)) {
+    console.log('[AI Architect] LaTeX detected and sanitized')
+  }
+  
+  return sanitizedContent
 }
 
 function generateFallbackContent(analysis: TopicAnalysis, structure: CourseStructure): string {
@@ -1796,6 +2158,17 @@ export async function runLessonAgent(
   })
   
   // ═══════════════════════════════════════════════════════════════
+  // ЭТАП 1.5: Определение домена и получение конфига
+  // Requirements: 1.1, 1.2
+  // ═══════════════════════════════════════════════════════════════
+  const domainType = detectDomain(topic, courseName)
+  const domainConfig = getDomainConfig(domainType)
+  console.log('[AI Architect] Domain detected:', {
+    domain: domainType,
+    configName: domainConfig.name
+  })
+  
+  // ═══════════════════════════════════════════════════════════════
   // ЭТАП 2: Построение структуры курса
   // ═══════════════════════════════════════════════════════════════
   const structure = buildCourseStructure(analysis)
@@ -1806,13 +2179,15 @@ export async function runLessonAgent(
   })
   
   // ═══════════════════════════════════════════════════════════════
-  // ЭТАП 3: Сбор контекста (RAG с персонализацией)
+  // ЭТАП 3: Сбор контекста (RAG с персонализацией по домену)
+  // Requirements: 6.1
   // ═══════════════════════════════════════════════════════════════
   let ragContext = ''
   try {
-    ragContext = await getFullRAGContext(topic, courseName)
+    // Используем getDomainRAGContext для получения контекста, оптимизированного под домен
+    ragContext = await getDomainRAGContext(topic, courseName, domainType)
     if (ragContext) {
-      console.log('[AI Architect] RAG context gathered:', ragContext.length, 'chars')
+      console.log('[AI Architect] Domain RAG context gathered:', ragContext.length, 'chars')
     }
   } catch (e) {
     console.log('[AI Architect] RAG unavailable, continuing without external context')
@@ -1820,8 +2195,9 @@ export async function runLessonAgent(
   
   // ═══════════════════════════════════════════════════════════════
   // ЭТАП 4: Генерация ВСЕГО контента ОДНИМ запросом
+  // Requirements: 1.3, 1.4
   // ═══════════════════════════════════════════════════════════════
-  const fullTheory = await generateFullLessonContent(analysis, structure, ragContext)
+  const fullTheory = await generateFullLessonContent(analysis, structure, ragContext, domainConfig)
   
   // ═══════════════════════════════════════════════════════════════
   // ЭТАП 5: Генерация практических заданий
@@ -1854,7 +2230,8 @@ export async function runLessonAgent(
     tasksCount: tasks.length,
     complexity: analysis.complexity.base,
     nature: analysis.nature,
-    tone: analysis.tone
+    tone: analysis.tone,
+    domain: domainType
   }
   
   return { content: fullTheory, analysis, plan, metadata, tasks }

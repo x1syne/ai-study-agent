@@ -39,7 +39,8 @@ export interface SectionTemplate {
 
 // ==================== ОПРЕДЕЛЕНИЕ ДОМЕНА ====================
 
-const DOMAIN_KEYWORDS: Record<DomainType, string[]> = {
+// Экспортируем для использования в тестах
+export const DOMAIN_KEYWORDS: Record<DomainType, string[]> = {
   physics: [
     'физик', 'механик', 'термодинамик', 'электричеств', 'магнит', 'оптик',
     'квант', 'атом', 'ядер', 'волн', 'колебан', 'гравитац', 'относительност',
