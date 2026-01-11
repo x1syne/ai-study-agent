@@ -8,15 +8,20 @@ import { Card, CardContent, CardHeader, CardTitle, Button, Progress, Badge } fro
 import { KnowledgeGraph } from '@/components/graph/KnowledgeGraph'
 import { TopicDetails } from '@/components/graph/TopicDetails'
 import { Certificate } from '@/components/gamification'
+import { ModuleList } from '@/components/course/ModuleList'
 import { useAppStore } from '@/lib/store'
-import { formatDate, formatMinutes, calculateProgress } from '@/lib/utils'
-import type { Goal, Topic } from '@/types'
+import { formatDate, formatMinutes, calculateOverallProgress } from '@/lib/utils'
+import type { Goal, Topic, Module } from '@/types'
+
+interface GoalWithModules extends Omit<Goal, 'topics'> {
+  modules: Module[]
+}
 
 export default function GoalPage() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAppStore()
-  const [goal, setGoal] = useState<Goal | null>(null)
+  const [goal, setGoal] = useState<GoalWithModules | null>(null)
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [showCertificate, setShowCertificate] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -41,11 +46,20 @@ export default function GoalPage() {
     }
   }
 
+  // Get all topics from all modules for the knowledge graph
+  const getAllTopics = useCallback((): Topic[] => {
+    if (!goal?.modules) return []
+    return goal.modules.flatMap(m => m.topics)
+  }, [goal])
+
   const handleTopicClick = useCallback((topicId: string) => {
-    if (!goal) return
-    const topic = goal.topics.find(t => t.id === topicId)
-    if (topic) {
-      setSelectedTopic(topic)
+    if (!goal?.modules) return
+    for (const module of goal.modules) {
+      const topic = module.topics.find(t => t.id === topicId)
+      if (topic) {
+        setSelectedTopic(topic)
+        return
+      }
     }
   }, [goal])
 
@@ -67,12 +81,19 @@ export default function GoalPage() {
     return null
   }
 
-  const completedTopics = goal.topics.filter(t => {
+  // Calculate progress using modules
+  const allTopics = getAllTopics()
+  const completedTopics = allTopics.filter(t => {
     const progress = Array.isArray(t.progress) ? t.progress[0] : t.progress
     return progress?.status === 'COMPLETED' || progress?.status === 'MASTERED'
   }).length
-  const progress = calculateProgress(completedTopics, goal.topics.length)
-  const totalTime = goal.topics.reduce((sum, t) => sum + t.estimatedMinutes, 0)
+  
+  // Use calculateOverallProgress for module-based progress
+  const progress = goal.modules?.length > 0 
+    ? calculateOverallProgress(goal.modules)
+    : 0
+    
+  const totalTime = allTopics.reduce((sum, t) => sum + t.estimatedMinutes, 0)
 
   return (
     <div className="space-y-6">
@@ -115,7 +136,7 @@ export default function GoalPage() {
             </div>
             <div>
               <div className="text-lg font-bold text-white">
-                {completedTopics}/{goal.topics.length}
+                {completedTopics}/{allTopics.length}
               </div>
               <div className="text-sm text-slate-400">Тем</div>
             </div>
@@ -155,7 +176,7 @@ export default function GoalPage() {
       <Card>
         <CardContent className="p-4">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-slate-400">Общий прогресс</span>
+            <span className="text-slate-400">Общий прогресс курса</span>
             <span className="text-white font-medium">{progress}%</span>
           </div>
           <Progress value={progress} size="lg" />
@@ -202,7 +223,7 @@ export default function GoalPage() {
             </CardHeader>
             <CardContent className="p-0">
               <KnowledgeGraph
-                topics={goal.topics}
+                topics={getAllTopics()}
                 onTopicClick={handleTopicClick}
                 selectedTopicId={selectedTopic?.id}
               />
@@ -222,7 +243,7 @@ export default function GoalPage() {
               <CardContent className="py-12 text-center">
                 <Target className="w-12 h-12 text-slate-600 mx-auto mb-3" />
                 <p className="text-slate-400">
-                  Кликни на тему в графе, чтобы увидеть детали
+                  Кликни на тему в графе или списке, чтобы увидеть детали
                 </p>
               </CardContent>
             </Card>
@@ -230,58 +251,29 @@ export default function GoalPage() {
         </div>
       </div>
 
-      {/* Topics list */}
+      {/* Modules with Topics - Requirements 3.1, 3.2, 4.4 */}
       <Card>
         <CardHeader>
-          <CardTitle>Все темы</CardTitle>
+          <CardTitle>Модули курса</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {goal.topics.map((topic) => {
-              const progress = Array.isArray(topic.progress) ? topic.progress[0] : topic.progress
-              const status = progress?.status || 'LOCKED'
-              const mastery = progress?.masteryLevel || 0
-
-              return (
-                <div
-                  key={topic.id}
-                  onClick={() => setSelectedTopic(topic)}
-                  className={`flex items-center gap-4 p-4 rounded-lg cursor-pointer transition-colors ${
-                    selectedTopic?.id === topic.id
-                      ? 'bg-primary-500/20 border border-primary-500/30'
-                      : 'bg-slate-800/50 hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="text-2xl">{topic.icon || '📚'}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-white">{topic.name}</div>
-                    <div className="text-sm text-slate-400">
-                      {formatMinutes(topic.estimatedMinutes)} • {topic.difficulty}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24">
-                      <Progress value={mastery} size="sm" />
-                    </div>
-                    <Badge
-                      variant={
-                        status === 'COMPLETED' || status === 'MASTERED'
-                          ? 'success'
-                          : status === 'IN_PROGRESS'
-                          ? 'warning'
-                          : status === 'AVAILABLE'
-                          ? 'info'
-                          : 'default'
-                      }
-                      size="sm"
-                    >
-                      {mastery}%
-                    </Badge>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          {goal.modules && goal.modules.length > 0 ? (
+            <ModuleList
+              modules={goal.modules.map(m => ({
+                ...m,
+                topics: m.topics.map(t => ({
+                  ...t,
+                  progress: Array.isArray(t.progress) ? t.progress[0] : t.progress,
+                })),
+              }))}
+              onTopicClick={handleTopicClick}
+              selectedTopicId={selectedTopic?.id}
+            />
+          ) : (
+            <div className="text-center py-8 text-slate-400">
+              Модули не найдены
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

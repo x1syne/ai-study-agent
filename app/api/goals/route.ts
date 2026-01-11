@@ -7,15 +7,39 @@ import { getFullRAGContext } from '@/lib/rag'
 
 export const dynamic = 'force-dynamic'
 
+// Типы для иерархической структуры курса
+interface GeneratedTopic {
+  slug: string
+  name: string
+  description?: string
+  icon?: string
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'EXPERT'
+  estimatedMinutes?: number
+  order?: number
+  prerequisites?: string[]
+}
+
+interface GeneratedModule {
+  name: string
+  description?: string
+  icon?: string
+  order: number
+  topics: GeneratedTopic[]
+}
+
+interface GeneratedCourse {
+  modules: GeneratedModule[]
+}
+
 // Простой кэш для структуры курсов (в памяти)
-const courseStructureCache = new Map<string, { data: any[]; timestamp: number }>()
+const courseStructureCache = new Map<string, { data: GeneratedModule[]; timestamp: number }>()
 const CACHE_TTL = 1000 * 60 * 60 * 24 // 24 часа
 
 function getCacheKey(title: string, level: string): string {
   return `${title.toLowerCase().trim()}:${level}`
 }
 
-function getCachedStructure(title: string, level: string): any[] | null {
+function getCachedStructure(title: string, level: string): GeneratedModule[] | null {
   const key = getCacheKey(title, level)
   const cached = courseStructureCache.get(key)
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -25,9 +49,89 @@ function getCachedStructure(title: string, level: string): any[] | null {
   return null
 }
 
-function setCachedStructure(title: string, level: string, data: any[]): void {
+function setCachedStructure(title: string, level: string, data: GeneratedModule[]): void {
   const key = getCacheKey(title, level)
   courseStructureCache.set(key, { data, timestamp: Date.now() })
+}
+
+// Fallback структура с модулями
+function getFallbackModules(): GeneratedModule[] {
+  return [
+    {
+      name: 'Введение',
+      description: 'Знакомство с темой и базовые понятия',
+      icon: '📚',
+      order: 1,
+      topics: [
+        { slug: 'intro', name: 'Введение', description: 'Знакомство с темой', icon: '📖', difficulty: 'EASY', estimatedMinutes: 15, order: 1, prerequisites: [] },
+        { slug: 'basics', name: 'Основы', description: 'Базовые концепции', icon: '🎯', difficulty: 'EASY', estimatedMinutes: 20, order: 2, prerequisites: ['intro'] },
+      ]
+    },
+    {
+      name: 'Практика',
+      description: 'Применение знаний на практике',
+      icon: '💻',
+      order: 2,
+      topics: [
+        { slug: 'practice', name: 'Практика', description: 'Применение знаний', icon: '💻', difficulty: 'MEDIUM', estimatedMinutes: 30, order: 1, prerequisites: ['basics'] },
+      ]
+    },
+    {
+      name: 'Продвинутый уровень',
+      description: 'Углублённое изучение темы',
+      icon: '🚀',
+      order: 3,
+      topics: [
+        { slug: 'advanced', name: 'Продвинутые темы', description: 'Углублённое изучение', icon: '🚀', difficulty: 'HARD', estimatedMinutes: 45, order: 1, prerequisites: ['practice'] },
+      ]
+    },
+  ]
+}
+
+// Валидация и нормализация структуры модулей
+function validateAndNormalizeModules(modules: any[]): GeneratedModule[] | null {
+  if (!Array.isArray(modules) || modules.length === 0) {
+    return null
+  }
+
+  // Проверяем что модули имеют правильную структуру
+  const validModules: GeneratedModule[] = []
+  
+  for (let i = 0; i < modules.length; i++) {
+    const mod = modules[i]
+    if (!mod.name || !Array.isArray(mod.topics) || mod.topics.length === 0) {
+      continue
+    }
+
+    const validTopics: GeneratedTopic[] = []
+    for (let j = 0; j < mod.topics.length; j++) {
+      const topic = mod.topics[j]
+      if (!topic.name) continue
+      
+      validTopics.push({
+        slug: topic.slug || `topic-${i + 1}-${j + 1}`,
+        name: topic.name,
+        description: topic.description || null,
+        icon: topic.icon || '📚',
+        difficulty: topic.difficulty || 'MEDIUM',
+        estimatedMinutes: topic.estimatedMinutes || 30,
+        order: topic.order || j + 1,
+        prerequisites: topic.prerequisites || [],
+      })
+    }
+
+    if (validTopics.length > 0) {
+      validModules.push({
+        name: mod.name,
+        description: mod.description || null,
+        icon: mod.icon || '📚',
+        order: mod.order || i + 1,
+        topics: validTopics,
+      })
+    }
+  }
+
+  return validModules.length > 0 ? validModules : null
 }
 
 // GET /api/goals - Get all goals for current user
@@ -42,10 +146,15 @@ export async function GET(request: NextRequest) {
     const goals = await prisma.goal.findMany({
       where: { userId: user.id },
       include: {
-        topics: {
+        modules: {
           include: {
-            progress: {
-              where: { userId: user.id },
+            topics: {
+              include: {
+                progress: {
+                  where: { userId: user.id },
+                },
+              },
+              orderBy: { order: 'asc' },
             },
           },
           orderBy: { order: 'asc' },
@@ -54,7 +163,19 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(goals)
+    // Transform to include progress directly on topics
+    const transformedGoals = goals.map(goal => ({
+      ...goal,
+      modules: goal.modules.map(mod => ({
+        ...mod,
+        topics: mod.topics.map(topic => ({
+          ...topic,
+          progress: topic.progress[0] || null,
+        })),
+      })),
+    }))
+
+    return NextResponse.json(transformedGoals)
   } catch (error) {
     console.error('Error fetching goals:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -78,9 +199,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Проверяем кэш структуры курса
-    let topicsData = getCachedStructure(title, level)
+    let modulesData = getCachedStructure(title, level)
     
-    if (!topicsData) {
+    if (!modulesData) {
       console.log('[Goals] Generating new course structure...')
       const startTime = Date.now()
       
@@ -100,55 +221,69 @@ export async function POST(request: NextRequest) {
       // Обрабатываем результат структуры
       if (baseStructureResult.status === 'fulfilled') {
         try {
-          const parsed = JSON.parse(baseStructureResult.value.content)
-          topicsData = parsed.topics || []
+          const parsed = JSON.parse(baseStructureResult.value.content) as GeneratedCourse
+          // Новый формат: modules[] с topics[] внутри
+          if (parsed.modules && Array.isArray(parsed.modules)) {
+            modulesData = validateAndNormalizeModules(parsed.modules)
+          }
           console.log(`[Goals] Structure generated via ${baseStructureResult.value.provider} in ${baseStructureResult.value.latencyMs}ms`)
         } catch {
-          topicsData = null
+          modulesData = null
         }
       }
 
-      // Если AI не справился - fallback
-      if (!topicsData || topicsData.length === 0) {
-        console.log('[Goals] Using fallback structure')
-        topicsData = [
-          { slug: 'intro', name: 'Введение', description: 'Знакомство с темой', icon: '📚', difficulty: 'EASY', estimatedMinutes: 20, prerequisites: [], order: 1 },
-          { slug: 'basics', name: 'Основы', description: 'Базовые концепции', icon: '🎯', difficulty: 'EASY', estimatedMinutes: 30, prerequisites: ['intro'], order: 2 },
-          { slug: 'practice', name: 'Практика', description: 'Применение знаний', icon: '💻', difficulty: 'MEDIUM', estimatedMinutes: 45, prerequisites: ['basics'], order: 3 },
-          { slug: 'advanced', name: 'Продвинутые темы', description: 'Углублённое изучение', icon: '🚀', difficulty: 'HARD', estimatedMinutes: 60, prerequisites: ['practice'], order: 4 },
-        ]
+      // Если AI не справился - fallback с модулями
+      if (!modulesData || modulesData.length === 0) {
+        console.log('[Goals] Using fallback structure with modules')
+        modulesData = getFallbackModules()
       } else {
         // Кэшируем успешную структуру
-        setCachedStructure(title, level, topicsData)
+        setCachedStructure(title, level, modulesData)
       }
       
       console.log(`[Goals] Total structure time: ${Date.now() - startTime}ms`)
     }
 
-    // Create goal with topics
+    // Create goal with modules and topics
     const goal = await prisma.goal.create({
       data: {
         userId: user.id,
         title,
         skill,
         targetDate: targetDate ? new Date(targetDate) : null,
-        topics: {
-          create: topicsData.map((topic: any, index: number) => ({
-            slug: topic.slug || `topic-${index}`,
-            name: topic.name,
-            description: topic.description || null,
-            icon: topic.icon || '📚',
-            difficulty: topic.difficulty || 'MEDIUM',
-            estimatedMinutes: topic.estimatedMinutes || 30,
-            order: topic.order || index + 1,
-            prerequisiteIds: topic.prerequisites || [],
+        modules: {
+          create: modulesData.map((mod: GeneratedModule) => ({
+            name: mod.name,
+            description: mod.description || null,
+            icon: mod.icon || '📚',
+            order: mod.order,
+            topics: {
+              create: mod.topics.map((topic: GeneratedTopic) => ({
+                slug: topic.slug || `topic-${mod.order}-${topic.order}`,
+                name: topic.name,
+                description: topic.description || null,
+                icon: topic.icon || '📚',
+                difficulty: topic.difficulty || 'MEDIUM',
+                estimatedMinutes: topic.estimatedMinutes || 30,
+                order: topic.order || 1,
+                prerequisiteIds: topic.prerequisites || [],
+              })),
+            },
           })),
         },
       },
       include: {
-        topics: true,
+        modules: {
+          include: {
+            topics: true,
+          },
+          orderBy: { order: 'asc' },
+        },
       },
     })
+
+    // Собираем все topics для создания прогресса и карточек
+    const allTopics = goal.modules.flatMap(mod => mod.topics)
 
     // ПАРАЛЛЕЛЬНО: создаём прогресс И генерируем карточки
     const cardsPrompt = `Создай 30 карточек для запоминания по теме "${title}".
@@ -157,7 +292,7 @@ export async function POST(request: NextRequest) {
     const [, cardsResult] = await Promise.allSettled([
       // Создание прогресса
       prisma.topicProgress.createMany({
-        data: goal.topics.map((topic: { id: string }) => ({
+        data: allTopics.map((topic: { id: string }) => ({
           userId: user.id,
           topicId: topic.id,
           status: 'AVAILABLE',
@@ -182,7 +317,7 @@ export async function POST(request: NextRequest) {
               userId: user.id,
               front: card.front,
               back: card.back,
-              topicSlug: goal.topics[0]?.slug || 'general',
+              topicSlug: allTopics[0]?.slug || 'general',
             })),
           })
           console.log(`[Goals] Generated ${cardsData.cards.length} cards via ${cardsResult.value.provider}`)

@@ -157,23 +157,28 @@ export async function POST(request: NextRequest) {
     // Получаем контекст из курса пользователя
     const userGoals = await prisma.goal.findMany({
       where: { userId: user.id },
-      include: { topics: true },
+      include: { 
+        modules: {
+          include: { topics: true },
+          orderBy: { order: 'asc' }
+        }
+      },
       take: 5,
     })
     
     if (userGoals.length > 0) {
       courseContext = '\n📚 Твои курсы:\n' + userGoals.map(g => 
-        `- ${g.title}: ${g.topics.map(t => t.name).join(', ')}`
+        `- ${g.title}: ${g.modules.flatMap(m => m.topics.map(t => t.name)).join(', ')}`
       ).join('\n')
     }
     
     if (topicSlug) {
       const topic = await prisma.topic.findFirst({
         where: { slug: topicSlug },
-        include: { goal: true },
+        include: { module: { include: { goal: true } } },
       })
       if (topic) {
-        context = `Изучение: ${topic.goal.title}, тема: ${topic.name}`
+        context = `Изучение: ${topic.module.goal.title}, тема: ${topic.name}`
       }
     }
 

@@ -129,10 +129,16 @@ export async function POST(
         const topic = await prisma.topic.findUnique({
           where: { id: params.id },
           include: {
-            goal: {
+            module: {
               include: {
-                topics: true,
-              },
+                goal: {
+                  include: {
+                    modules: {
+                      include: { topics: true }
+                    }
+                  }
+                }
+              }
             },
           },
         })
@@ -149,8 +155,8 @@ export async function POST(
             userId: user.id,
             topicId: topic.id,
             topicName: topic.name,
-            goalId: topic.goalId,
-            goalTitle: topic.goal.title,
+            goalId: topic.module.goalId,
+            goalTitle: topic.module.goal.title,
             masteryLevel: newMastery,
             practiceScore: bestScore,
             timeSpentMinutes: progress.timeSpentMinutes,
@@ -159,7 +165,7 @@ export async function POST(
           }).catch(err => console.error('[Automation] Failed to notify topic completed:', err))
 
           // Find topics that have this topic as prerequisite
-          const dependentTopics = topic.goal.topics.filter((t: { prerequisiteIds: string[] }) =>
+          const dependentTopics = topic.module.goal.modules.flatMap(m => m.topics).filter((t: { prerequisiteIds: string[] }) =>
             t.prerequisiteIds.includes(topic.id)
           )
 

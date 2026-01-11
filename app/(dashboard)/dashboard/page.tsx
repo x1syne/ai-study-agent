@@ -7,16 +7,17 @@ import {
   Flame, Zap, Brain, ArrowRight, Play, Star, Rocket, CheckCircle2
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui'
-import { formatMinutes, calculateProgress } from '@/lib/utils'
+import { formatMinutes, calculateOverallProgress } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
 import { SessionTimer } from '@/components/common/SessionTimer'
+import type { Module, Topic } from '@/types'
 
-interface Goal {
+interface GoalWithModules {
   id: string
   title: string
   skill: string
   status: string
-  topics: any[]
+  modules: Module[]
   createdAt: string
 }
 
@@ -32,7 +33,7 @@ interface Stats {
 
 export default function DashboardPage() {
   const { user } = useAppStore()
-  const [goals, setGoals] = useState<Goal[]>([])
+  const [goals, setGoals] = useState<GoalWithModules[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [greeting, setGreeting] = useState('')
@@ -63,18 +64,28 @@ export default function DashboardPage() {
     }
   }
 
-  const getGoalProgress = (goal: Goal) => {
-    const completed = goal.topics.filter(t => {
-      const progress = Array.isArray(t.progress) ? t.progress[0] : t.progress
-      return progress?.status === 'COMPLETED' || progress?.status === 'MASTERED'
-    }).length
-    return calculateProgress(completed, goal.topics.length)
+  // Calculate progress using modules - Requirements 3.1
+  const getGoalProgress = (goal: GoalWithModules) => {
+    if (!goal.modules || goal.modules.length === 0) return 0
+    return calculateOverallProgress(goal.modules)
+  }
+
+  // Get all topics from modules
+  const getAllTopics = (goal: GoalWithModules): Topic[] => {
+    if (!goal.modules) return []
+    return goal.modules.flatMap(m => m.topics)
+  }
+
+  // Get total topics count
+  const getTotalTopicsCount = (goal: GoalWithModules): number => {
+    return getAllTopics(goal).length
   }
 
   const getTodaysTasks = () => {
-    const tasks: any[] = []
+    const tasks: { goalId: string; goalTitle: string; topic: Topic }[] = []
     goals.forEach(goal => {
-      goal.topics.forEach(topic => {
+      const allTopics = getAllTopics(goal)
+      allTopics.forEach(topic => {
         const progress = Array.isArray(topic.progress) ? topic.progress[0] : topic.progress
         if (progress?.status === 'IN_PROGRESS' || progress?.status === 'AVAILABLE') {
           tasks.push({ goalId: goal.id, goalTitle: goal.title, topic: { ...topic, progress } })
@@ -196,7 +207,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* My Courses */}
+      {/* My Courses - Requirements 3.1 */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -212,6 +223,9 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {goals.slice(0, 3).map(goal => {
               const progress = getGoalProgress(goal)
+              const totalTopics = getTotalTopicsCount(goal)
+              const modulesCount = goal.modules?.length || 0
+              
               return (
                 <Link key={goal.id} href={`/goals/${goal.id}`}>
                   <div className="course-card group">
@@ -224,7 +238,9 @@ export default function DashboardPage() {
                     <h3 className="font-semibold text-white mb-1 group-hover:text-[var(--color-yellow)] transition-colors">
                       {goal.title}
                     </h3>
-                    <p className="text-sm text-[var(--color-text-secondary)] mb-4">{goal.topics.length} тем</p>
+                    <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+                      {modulesCount} модулей • {totalTopics} тем
+                    </p>
                     <div className="progress-practicum">
                       <div className="progress-practicum-fill" style={{ width: `${progress}%` }} />
                     </div>

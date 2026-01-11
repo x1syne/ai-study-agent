@@ -29,21 +29,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Goal ID is required' }, { status: 400 })
     }
 
-    // Get goal with topics
+    // Get goal with modules and topics
     const goal = await prisma.goal.findUnique({
       where: { id: goalId },
-      include: { topics: true },
+      include: { 
+        modules: {
+          include: { topics: true },
+          orderBy: { order: 'asc' }
+        }
+      },
     })
 
     if (!goal) {
       return NextResponse.json({ error: 'Goal not found' }, { status: 404 })
     }
 
+    // Flatten topics from all modules
+    const allTopics = goal.modules.flatMap(m => m.topics)
+
     // Получаем научный контекст для более точных вопросов
     const { arxivContext } = await enrichContextWithArxiv(goal.skill, { maxPapers: 1 })
     
     // Generate questions for each topic - ПАРАЛЛЕЛЬНО для ускорения
-    const topicsToProcess = goal.topics.slice(0, 5) // Limit to 5 topics
+    const topicsToProcess = allTopics.slice(0, 5) // Limit to 5 topics
     
     const questionPromises = topicsToProcess.map(async (topic) => {
       const basePrompt = getDiagnosisPrompt(goal.skill, topic.name, topic.difficulty)
@@ -90,6 +98,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
+
 // PATCH /api/diagnosis - Save diagnosis results
 export async function PATCH(request: NextRequest) {
   try {
@@ -106,19 +115,27 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Goal ID and results are required' }, { status: 400 })
     }
 
-    // Get goal with topics
+    // Get goal with modules and topics
     const goal = await prisma.goal.findUnique({
       where: { id: goalId },
-      include: { topics: true },
+      include: { 
+        modules: {
+          include: { topics: true },
+          orderBy: { order: 'asc' }
+        }
+      },
     })
 
     if (!goal) {
       return NextResponse.json({ error: 'Goal not found' }, { status: 404 })
     }
 
+    // Flatten topics from all modules
+    const allTopics = goal.modules.flatMap(m => m.topics)
+
     // Update topic progress based on diagnosis
     for (const result of results) {
-      const topic = goal.topics.find((t: { slug: string }) => t.slug === result.topicSlug)
+      const topic = allTopics.find((t: { slug: string }) => t.slug === result.topicSlug)
       if (!topic) continue
 
       const status = result.score >= 80 ? 'COMPLETED' : result.score >= 50 ? 'IN_PROGRESS' : 'AVAILABLE'

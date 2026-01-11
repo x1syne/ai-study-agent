@@ -24,6 +24,15 @@ export interface TopicProgress {
   timeSpentMinutes: number
 }
 
+export interface Module {
+  id: string
+  name: string
+  description: string | null
+  icon: string
+  order: number
+  topics: Topic[]
+}
+
 export interface Goal {
   id: string
   title: string
@@ -31,7 +40,8 @@ export interface Goal {
   description: string | null
   targetDate: string | null
   status: GoalStatus
-  topics: Topic[]
+  modules?: Module[]
+  topics: Topic[] // Keep for backward compatibility
   createdAt: string
 }
 

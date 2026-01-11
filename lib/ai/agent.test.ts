@@ -761,10 +761,10 @@ describe('No LaTeX in Output', () => {
     // Math symbols
     fc.tuple(safeStringArb, fc.constantFrom('\\infty', '\\partial', '\\cdot', '\\times', '\\div', '\\pm', '\\leq', '\\geq', '\\neq', '\\approx'), safeStringArb)
       .map(([before, symbol, after]) => `${before}${symbol}${after}`),
-    // Superscripts and subscripts
-    fc.tuple(safeStringArb, fc.string({ minLength: 1, maxLength: 5 }), safeStringArb)
+    // Superscripts and subscripts - filter out } to avoid malformed LaTeX
+    fc.tuple(safeStringArb, fc.string({ minLength: 1, maxLength: 5 }).map(s => s.replace(/[{}]/g, 'x')), safeStringArb)
       .map(([before, content, after]) => `${before}^{${content}}${after}`),
-    fc.tuple(safeStringArb, fc.string({ minLength: 1, maxLength: 5 }), safeStringArb)
+    fc.tuple(safeStringArb, fc.string({ minLength: 1, maxLength: 5 }).map(s => s.replace(/[{}]/g, 'x')), safeStringArb)
       .map(([before, content, after]) => `${before}_{${content}}${after}`),
     // \lim
     fc.tuple(safeStringArb, safeStringArb)

@@ -4,20 +4,21 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Plus, Target, Calendar, Trash2, MoreVertical, Play, Download } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui'
-import { formatDate, calculateProgress } from '@/lib/utils'
+import { formatDate, calculateOverallProgress } from '@/lib/utils'
+import type { Module, Topic } from '@/types'
 
-interface Goal {
+interface GoalWithModules {
   id: string
   title: string
   skill: string
   status: string
   targetDate: string | null
-  topics: any[]
+  modules: Module[]
   createdAt: string
 }
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>([])
+  const [goals, setGoals] = useState<GoalWithModules[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -45,13 +46,20 @@ export default function GoalsPage() {
     }
   }
 
-  const exportToICS = (goal: Goal) => {
+  // Get all topics from modules
+  const getAllTopics = (goal: GoalWithModules): Topic[] => {
+    if (!goal.modules) return []
+    return goal.modules.flatMap(m => m.topics)
+  }
+
+  const exportToICS = (goal: GoalWithModules) => {
     const formatICSDate = (date: Date) => {
       return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     }
 
     const now = new Date()
     const targetDate = goal.targetDate ? new Date(goal.targetDate) : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const allTopics = getAllTopics(goal)
     
     let icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -64,13 +72,13 @@ DTSTAMP:${formatICSDate(now)}
 DTSTART:${formatICSDate(now)}
 DTEND:${formatICSDate(targetDate)}
 SUMMARY:${goal.title}
-DESCRIPTION:Курс: ${goal.skill}\\nТем: ${goal.topics.length}
+DESCRIPTION:Курс: ${goal.skill}\\nМодулей: ${goal.modules?.length || 0}\\nТем: ${allTopics.length}
 STATUS:CONFIRMED
 END:VEVENT
 `
 
     // Add events for each topic
-    goal.topics.forEach((topic, index) => {
+    allTopics.forEach((topic, index) => {
       const topicStart = new Date(now.getTime() + index * 2 * 24 * 60 * 60 * 1000)
       const topicEnd = new Date(topicStart.getTime() + 2 * 60 * 60 * 1000)
       icsContent += `BEGIN:VEVENT
@@ -99,12 +107,10 @@ END:VEVENT
     URL.revokeObjectURL(url)
   }
 
-  const getGoalProgress = (goal: Goal) => {
-    const completed = goal.topics.filter(t => {
-      const progress = Array.isArray(t.progress) ? t.progress[0] : t.progress
-      return progress?.status === 'COMPLETED' || progress?.status === 'MASTERED'
-    }).length
-    return calculateProgress(completed, goal.topics.length)
+  // Calculate progress using modules - Requirements 3.1
+  const getGoalProgress = (goal: GoalWithModules) => {
+    if (!goal.modules || goal.modules.length === 0) return 0
+    return calculateOverallProgress(goal.modules)
   }
 
   if (isLoading) {
@@ -136,10 +142,12 @@ END:VEVENT
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {goals.map(goal => {
             const progress = getGoalProgress(goal)
-            const completedTopics = goal.topics.filter(t => {
+            const allTopics = getAllTopics(goal)
+            const completedTopics = allTopics.filter(t => {
               const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
               return p?.status === 'COMPLETED' || p?.status === 'MASTERED'
             }).length
+            const modulesCount = goal.modules?.length || 0
 
             return (
               <div key={goal.id} className="course-card group relative">
@@ -187,7 +195,8 @@ END:VEVENT
                   {/* Meta */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 text-sm text-[var(--color-text-secondary)]">
-                      <span>{completedTopics}/{goal.topics.length} тем</span>
+                      <span>{modulesCount} модулей</span>
+                      <span>{completedTopics}/{allTopics.length} тем</span>
                       {goal.targetDate && (
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
@@ -246,4 +255,3 @@ END:VEVENT
     </div>
   )
 }
-

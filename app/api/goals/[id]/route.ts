@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/goals/[id] - Get a specific goal with topics and progress
+// GET /api/goals/[id] - Get a specific goal with modules, topics and progress
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -22,12 +22,17 @@ export async function GET(
         userId: user.id,
       },
       include: {
-        topics: {
+        modules: {
           include: {
-            progress: {
-              where: { userId: user.id },
+            topics: {
+              include: {
+                progress: {
+                  where: { userId: user.id },
+                },
+                lessons: true,
+              },
+              orderBy: { order: 'asc' },
             },
-            lessons: true,
           },
           orderBy: { order: 'asc' },
         },
@@ -38,12 +43,15 @@ export async function GET(
       return NextResponse.json({ error: 'Goal not found' }, { status: 404 })
     }
 
-    // Transform topics to include progress directly
+    // Transform modules and topics to include progress directly
     const transformedGoal = {
       ...goal,
-      topics: goal.topics.map(topic => ({
-        ...topic,
-        progress: topic.progress[0] || null,
+      modules: goal.modules.map((mod: any) => ({
+        ...mod,
+        topics: mod.topics.map((topic: any) => ({
+          ...topic,
+          progress: topic.progress[0] || null,
+        })),
       })),
     }
 

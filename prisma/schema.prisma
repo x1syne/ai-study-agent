@@ -15,7 +15,7 @@ model User {
   name            String?
   avatar          String?
   googleId        String?   @unique
-  telegramId      String?   @unique  // Telegram ID для уведомлений через Pipedream
+  telegramId      String?   @unique
   
   preferredStyle  LearningStyle @default(BALANCED)
   dailyGoalMinutes Int       @default(30)
@@ -50,11 +50,9 @@ model UserStats {
   totalTasks      Int       @default(0)
   correctAnswers  Int       @default(0)
   
-  // XP System
   totalXP         Int       @default(0)
   level           Int       @default(1)
   
-  // Daily Challenge
   dailyChallengeCompleted Boolean @default(false)
   dailyChallengeDate      DateTime?
   
@@ -75,7 +73,7 @@ model Goal {
   targetDate      DateTime?
   status          GoalStatus @default(ACTIVE)
   
-  topics          Topic[]
+  modules         Module[]
   roadmap         Json?
   
   createdAt       DateTime  @default(now())
@@ -89,12 +87,32 @@ enum GoalStatus {
   ABANDONED
 }
 
+// ==================== МОДУЛИ ====================
+
+model Module {
+  id              String    @id @default(cuid())
+  goalId          String
+  goal            Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  icon            String    @default("📚")
+  order           Int       @default(0)
+  
+  topics          Topic[]
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([goalId, order])
+}
+
+
 // ==================== ГРАФ ЗНАНИЙ ====================
 
 model Topic {
   id              String    @id @default(cuid())
-  goalId          String
-  goal            Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  moduleId        String
+  module          Module    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   
   slug            String
   name            String
@@ -115,7 +133,7 @@ model Topic {
   
   createdAt       DateTime  @default(now())
   
-  @@unique([goalId, slug])
+  @@unique([moduleId, slug])
 }
 
 enum Difficulty {
@@ -222,6 +240,7 @@ model ReviewCard {
   
   createdAt       DateTime  @default(now())
 }
+
 
 // ==================== ЧАТ ====================
 

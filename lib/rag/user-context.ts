@@ -26,8 +26,12 @@ export async function getUserLearningContext(userId: string): Promise<UserLearni
           select: {
             name: true,
             difficulty: true,
-            goal: {
-              select: { title: true }
+            module: {
+              select: { 
+                goal: {
+                  select: { title: true }
+                }
+              }
             }
           }
         }
@@ -135,12 +139,20 @@ export async function getRelatedTopicsContext(
       include: {
         topic: {
           include: {
-            goal: {
+            module: {
               include: {
-                topics: {
-                  select: {
-                    name: true,
-                    description: true
+                goal: {
+                  include: {
+                    modules: {
+                      include: {
+                        topics: {
+                          select: {
+                            name: true,
+                            description: true
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -152,15 +164,16 @@ export async function getRelatedTopicsContext(
 
     if (!currentProgress) return ''
 
-    // Получаем другие темы из того же курса
-    const relatedTopics = currentProgress.topic.goal.topics
-      .filter(t => t.name !== currentTopicName)
+    // Получаем другие темы из того же курса (из всех модулей)
+    const allTopics = currentProgress.topic.module.goal.modules
+      .flatMap((m: any) => m.topics)
+      .filter((t: any) => t.name !== currentTopicName)
       .slice(0, 5)
 
-    if (relatedTopics.length === 0) return ''
+    if (allTopics.length === 0) return ''
 
-    const topicsList = relatedTopics
-      .map(t => `• ${t.name}${t.description ? `: ${t.description}` : ''}`)
+    const topicsList = allTopics
+      .map((t: any) => `• ${t.name}${t.description ? `: ${t.description}` : ''}`)
       .join('\n')
 
     return `

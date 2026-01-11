@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:migrate-modules": "tsx prisma/migrate-to-modules.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

@@ -49,7 +49,9 @@ export async function GET(
     const topic = await prisma.topic.findUnique({
       where: { id: params.id },
       include: {
-        goal: true,
+        module: {
+          include: { goal: true }
+        },
         lessons: { where: { type: lessonType.toUpperCase() as any }, orderBy: { order: 'asc' } },
         progress: { where: { userId: user.id } },
       },
@@ -57,7 +59,7 @@ export async function GET(
 
     console.log('[API] Topic found:', !!topic)
     if (topic) {
-      console.log('[API] Topic belongs to goal:', topic.goal.id, 'owned by:', topic.goal.userId)
+      console.log('[API] Topic belongs to goal:', topic.module.goal.id, 'owned by:', topic.module.goal.userId)
       console.log('[API] Current user:', user.id)
       console.log('[API] Progress records:', topic.progress.length)
     }
@@ -67,7 +69,7 @@ export async function GET(
     }
 
     // Проверяем доступ к цели
-    if (topic.goal.userId !== user.id) {
+    if (topic.module.goal.userId !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -80,9 +82,9 @@ export async function GET(
 
     // Если тема заблокирована, проверяем пререквизиты
     if (progress.status === 'LOCKED') {
-      // Получаем все темы цели с прогрессом
+      // Получаем все темы модуля с прогрессом
       const allTopics = await prisma.topic.findMany({
-        where: { goalId: topic.goalId },
+        where: { moduleId: topic.moduleId },
         include: { progress: { where: { userId: user.id } } }
       })
 
@@ -131,7 +133,7 @@ export async function GET(
       try {
         if (USE_AGENT) {
           // Оптимизированный агент с параллельной генерацией и RAG
-          const agentResult = await runLessonAgent(topic.name, topic.goal.title, user.id)
+          const agentResult = await runLessonAgent(topic.name, topic.module.goal.title, user.id)
           content = { 
             markdown: agentResult.content,
             analysis: agentResult.analysis,
@@ -140,25 +142,25 @@ export async function GET(
           }
         } else {
           // Fallback: используем getFullRAGContext
-          const allContext = await getFullRAGContext(topic.name, topic.goal.title, user.id)
-          const prompt = getTheoryPrompt(topic.name, topic.goal.title, allContext)
+          const allContext = await getFullRAGContext(topic.name, topic.module.goal.title, user.id)
+          const prompt = getTheoryPrompt(topic.name, topic.module.goal.title, allContext)
           const response = await generateCompletion(SYSTEM_PROMPTS.theory, prompt, { temperature: 0.7, maxTokens: 16000 })
           content = { markdown: response }
         }
       } catch (e) {
         console.error('AI generation failed:', e)
-        content = { markdown: getFallbackTheory(topic.name, topic.description, topic.goal.title) }
+        content = { markdown: getFallbackTheory(topic.name, topic.description, topic.module.goal.title) }
       }
     } else if (lessonType === 'practice') {
       const theoryLesson = await prisma.lesson.findFirst({ where: { topicId: topic.id, type: 'THEORY' } })
       if (theoryLesson?.content) {
         const theoryContent = (theoryLesson.content as any).markdown || ''
-        content = await generatePracticeFromTheory(topic.name, topic.goal.title, theoryContent)
+        content = await generatePracticeFromTheory(topic.name, topic.module.goal.title, theoryContent)
       } else {
-        content = await generatePracticeTasks(topic.name, topic.goal.title)
+        content = await generatePracticeTasks(topic.name, topic.module.goal.title)
       }
     } else {
-      content = await generateOtherTask(topic.name, topic.goal.title)
+      content = await generateOtherTask(topic.name, topic.module.goal.title)
     }
 
     const lesson = await prisma.lesson.create({
