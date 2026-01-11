@@ -10,6 +10,15 @@ import { rerankResults, formatRankedResultsForPrompt, RankedResult } from './rag
 import { assessContentQuality, cleanContent } from './rag/content-filter'
 import { smartSearch } from './rag/hybrid-search'
 import { logRAGMetrics, createRAGMetrics } from './rag/metrics'
+import { 
+  getDomainBoostFactors, 
+  optimizeSearchQuery, 
+  shouldUseArxiv,
+  getMinRelevanceThreshold,
+  getMaxResults,
+  getSearchLanguages
+} from './rag/domain-sources'
+import { DomainType } from '@/lib/ai/domain-prompts'
 
 interface SearchResult {
   title: string
@@ -405,4 +414,195 @@ export async function analyzeTopicWithAI(
       keyTerms: [topicName]
     }
   }
+}
+
+/**
+ * Domain-specific RAG контекст
+ * Оптимизирует источники и параметры поиска под конкретный домен
+ */
+export async function getDomainRAGContext(
+  topicName: string,
+  courseName: string,
+  domain: DomainType
+): Promise<string> {
+  const key = cacheKey('rag-domain', topicName, courseName, domain)
+  const startTime = Date.now()
+  
+  return withCache(key, async () => {
+    // Оптимизируем запрос под домен
+    const baseQuery = `${topicName} ${courseName}`
+    const searchQuery = optimizeSearchQuery(baseQuery, domain)
+    const fullQuery = `${searchQuery} обучение tutorial`
+    
+    // Получаем параметры для домена
+    const boostFactors = getDomainBoostFactors(domain)
+    const minThreshold = getMinRelevanceThreshold(domain)
+    const maxResults = getMaxResults(domain)
+    const useArxiv = shouldUseArxiv(domain)
+    const languages = getSearchLanguages(domain)
+    
+    console.log(`[RAG] Domain: ${domain}, useArxiv: ${useArxiv}, threshold: ${minThreshold}`)
+    
+    // Параллельный поиск с таймаутом
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000))
+    
+    // Формируем список промисов в зависимости от домена
+    const searchPromises: Promise<any>[] = [
+      Promise.race([smartSearch(searchQuery, { limit: maxResults, threshold: minThreshold }), timeoutPromise]).catch(() => []),
+      Promise.race([searchWikipedia(topicName, languages[0] || 'ru'), timeoutPromise]).catch(() => null),
+      Promise.race([searchDuckDuckGo(topicName), timeoutPromise]).catch(() => []),
+      Promise.race([searchSerper(fullQuery, 3), timeoutPromise]).catch(() => [])
+    ]
+    
+    // arXiv только для научных доменов
+    if (useArxiv) {
+      searchPromises.push(
+        Promise.race([searchArxiv(topicName, 3), timeoutPromise]).catch(() => ({ papers: [], totalResults: 0, query: topicName }))
+      )
+    }
+    
+    const results = await Promise.all(searchPromises)
+    
+    const hybridResults = results[0] || []
+    const wikiResult = results[1]
+    const ddgResults = results[2] || []
+    const serperResults = results[3] || []
+    const arxivResult = useArxiv ? results[4] : null
+
+    // Собираем все результаты
+    const allResults: RankedResult[] = []
+
+    const isQualityContent = (content: string, minLength: number = 50): boolean => {
+      const quality = assessContentQuality(content, { minLength, minScore: 0.25 })
+      return quality.isValid
+    }
+
+    // 1. Hybrid Search
+    if (hybridResults && Array.isArray(hybridResults)) {
+      for (const doc of hybridResults) {
+        if (doc.content && isQualityContent(doc.content, 50)) {
+          allResults.push({
+            content: cleanContent(doc.content),
+            source: doc.metadata?.source || 'vector',
+            type: 'vector',
+            url: doc.metadata?.url,
+            score: doc.score || 0.5
+          })
+        }
+      }
+    }
+
+    // 2. Wikipedia
+    if (wikiResult && isQualityContent(wikiResult.extract, 100)) {
+      allResults.push({
+        content: cleanContent(wikiResult.extract),
+        source: 'wikipedia',
+        type: 'wikipedia',
+        url: `https://${languages[0] || 'ru'}.wikipedia.org/wiki/${encodeURIComponent(wikiResult.title)}`,
+        score: 0.8
+      })
+      
+      indexRAGContent(wikiResult.extract, {
+        source: 'wikipedia',
+        topic: topicName,
+        type: 'wikipedia',
+        url: `https://${languages[0] || 'ru'}.wikipedia.org/wiki/${encodeURIComponent(wikiResult.title)}`
+      }).catch(() => {})
+    }
+
+    // 3. arXiv (если включён для домена)
+    if (arxivResult && arxivResult.papers && arxivResult.papers.length > 0) {
+      for (const paper of arxivResult.papers) {
+        const paperContent = `${paper.title}\n\n${paper.summary}`
+        if (paper.summary && isQualityContent(paperContent, 100)) {
+          allResults.push({
+            content: cleanContent(paperContent),
+            source: 'arxiv',
+            type: 'arxiv',
+            url: paper.link,
+            score: 0.7
+          })
+          
+          indexRAGContent(paper.summary, {
+            source: 'arxiv',
+            topic: topicName,
+            type: 'arxiv',
+            url: paper.link
+          }).catch(() => {})
+        }
+      }
+    }
+
+    // 4. Web Search
+    const webResults = [...(serperResults || []), ...(ddgResults || [])]
+    for (const result of webResults) {
+      const webContent = `${result.title}\n\n${result.snippet}`
+      if (result.snippet && isQualityContent(webContent, 50)) {
+        allResults.push({
+          content: cleanContent(webContent),
+          source: result.link || 'web',
+          type: 'web',
+          url: result.link,
+          score: 0.5
+        })
+        
+        if (result.snippet.length > 100) {
+          indexRAGContent(result.snippet, {
+            source: result.link || 'web',
+            topic: topicName,
+            type: 'web',
+            url: result.link
+          }).catch(() => {})
+        }
+      }
+    }
+
+    if (allResults.length === 0) {
+      const searchTimeMs = Date.now() - startTime
+      const metrics = createRAGMetrics(searchQuery, [], searchTimeMs, false, 0)
+      logRAGMetrics(metrics)
+      return ''
+    }
+
+    // RERANKING с domain-specific boost factors
+    const rankedResults = rerankResults(allResults, {
+      query: searchQuery,
+      topK: maxResults,
+      minScore: minThreshold,
+      boostFactors
+    })
+
+    if (rankedResults.length === 0) {
+      const searchTimeMs = Date.now() - startTime
+      const metrics = createRAGMetrics(searchQuery, [], searchTimeMs, false, 0)
+      logRAGMetrics(metrics)
+      return ''
+    }
+
+    const formattedContext = formatRankedResultsForPrompt(rankedResults, 4000)
+
+    const searchTimeMs = Date.now() - startTime
+    const metrics = createRAGMetrics(
+      searchQuery,
+      rankedResults.map(r => ({ score: r.score, type: r.type })),
+      searchTimeMs,
+      false,
+      formattedContext.length
+    )
+    logRAGMetrics(metrics)
+
+    return `
+═══════════════════════════════════════════════════════════════
+              RAG КОНТЕКСТ [${domain.toUpperCase()}]
+              Найдено ${rankedResults.length} релевантных источников
+═══════════════════════════════════════════════════════════════
+
+${formattedContext}
+
+═══════════════════════════════════════════════════════════════
+ИНСТРУКЦИЯ: Используй эту информацию для создания точного контента.
+Домен: ${domain} | Приоритет источников настроен под предметную область.
+═══════════════════════════════════════════════════════════════
+`
+  }, { ttl: CACHE_TTL.RAG_CONTEXT })
 }
