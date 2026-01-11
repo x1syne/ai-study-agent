@@ -17,6 +17,7 @@ export interface DomainSourceConfig {
     arxiv: number
     book: number
     web: number
+    stackoverflow?: number  // Для программирования
   }
   
   // Дополнительные ключевые слова для поиска
@@ -30,6 +31,9 @@ export interface DomainSourceConfig {
   
   // Нужны ли книги для этого домена
   useBooks: boolean
+  
+  // Нужен ли StackOverflow
+  useStackOverflow: boolean
   
   // Минимальный порог релевантности
   minRelevanceThreshold: number
@@ -57,6 +61,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['physics.stackexchange.com', 'hyperphysics.phy-astr.gsu.edu']
@@ -75,6 +80,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['math.stackexchange.com', 'mathworld.wolfram.com']
@@ -93,6 +99,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['chemistry.stackexchange.com', 'chemguide.co.uk']
@@ -101,16 +108,18 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
   programming: {
     domain: 'programming',
     sourceBoosts: {
-      vector: 1.4,  // Код из базы очень ценен
+      vector: 1.4,       // Код из базы очень ценен
       wikipedia: 0.8,
       arxiv: 0.9,
       book: 0.9,
-      web: 1.3     // Документация и туториалы важны
+      web: 1.2,
+      stackoverflow: 1.5  // StackOverflow — главный источник!
     },
     searchKeywords: ['programming', 'tutorial', 'documentation', 'example', 'code'],
     searchLanguages: ['en', 'ru'],
-    useArxiv: false,  // Для программирования arXiv менее полезен
+    useArxiv: false,      // Для программирования arXiv менее полезен
     useBooks: false,
+    useStackOverflow: true,  // ✅ Включён!
     minRelevanceThreshold: 0.2,
     maxResults: 12,
     preferredSites: ['stackoverflow.com', 'developer.mozilla.org', 'docs.python.org', 'reactjs.org']
@@ -129,6 +138,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['biology.stackexchange.com', 'nature.com']
@@ -147,6 +157,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: false,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['history.com', 'britannica.com']
@@ -165,6 +176,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['investopedia.com', 'economist.com']
@@ -183,6 +195,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: false,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['grammarly.com', 'cambridge.org']
@@ -201,6 +214,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['psychologytoday.com', 'apa.org']
@@ -219,6 +233,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru'],  // Право обычно национальное
     useArxiv: false,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.25,
     maxResults: 10,
     preferredSites: ['consultant.ru', 'garant.ru']
@@ -237,6 +252,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.3,  // Выше порог для медицины
     maxResults: 8,
     preferredSites: ['pubmed.ncbi.nlm.nih.gov', 'medscape.com']
@@ -255,6 +271,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: false,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: ['metmuseum.org', 'artsy.net']
@@ -273,6 +290,7 @@ const DOMAIN_SOURCE_CONFIGS: Record<DomainType, DomainSourceConfig> = {
     searchLanguages: ['ru', 'en'],
     useArxiv: true,
     useBooks: true,
+    useStackOverflow: false,
     minRelevanceThreshold: 0.2,
     maxResults: 10,
     preferredSites: []
@@ -334,6 +352,13 @@ export function shouldUseArxiv(domain: DomainType): boolean {
  */
 export function shouldUseBooks(domain: DomainType): boolean {
   return getDomainSourceConfig(domain).useBooks
+}
+
+/**
+ * Проверка, нужен ли StackOverflow для домена
+ */
+export function shouldUseStackOverflow(domain: DomainType): boolean {
+  return getDomainSourceConfig(domain).useStackOverflow
 }
 
 /**

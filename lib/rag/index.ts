@@ -79,6 +79,7 @@ export { getRAGContext, getDomainRAGContext, searchWikipedia, searchSerper, sear
 export { getVectorContext, searchSimilar, indexRAGContent, generateEmbedding } from '../embeddings'
 export { searchArxiv, getScientificContext, enrichContextWithArxiv } from '../arxiv'
 export { searchOpenLibrary, getBookContext } from '../openlibrary'
+export { searchStackOverflow, getStackOverflowContext, shouldUseStackOverflow } from '../stackoverflow'
 
 import { getDomainRAGContext } from '../search'
 import { getUserLearningContext, formatUserContextForPrompt, getRelatedTopicsContext } from './user-context'
