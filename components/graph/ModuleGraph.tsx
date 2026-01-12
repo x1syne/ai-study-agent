@@ -214,39 +214,47 @@ export function ModuleGraph({
     return 'AVAILABLE'
   }, [modules])
 
-  // Создаём узлы в горизонтальной раскладке
+  // Создаём узлы в круговой раскладке (как в KnowledgeGraph)
+  // Requirement 6: Circular layout for modules
   const initialNodes: Node[] = useMemo(() => {
     if (modules.length === 0) return []
 
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const nodes: Node[] = []
     
-    const startX = 100
-    const startY = 200
-    const gapX = 250
+    const centerX = 400
+    const centerY = 250
+    const radius = 200 // Радиус круга
+    const angleStep = (2 * Math.PI) / Math.max(sortedModules.length, 1)
+    const startAngle = -Math.PI / 2 // Начинаем сверху
 
     sortedModules.forEach((module, index) => {
       const status = getModuleStatus(module)
       const topicsCount = module.topics?.length || 0
       
       // Вычисляем прогресс
-      let progress = 0
+      let moduleProgress = 0
       if (topicsCount > 0) {
         const completedTopics = module.topics?.filter(t => {
           const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
           return p?.status === 'COMPLETED' || p?.status === 'MASTERED'
         }).length || 0
-        progress = Math.round((completedTopics / topicsCount) * 100)
+        moduleProgress = Math.round((completedTopics / topicsCount) * 100)
       }
+
+      // Круговое расположение
+      const angle = startAngle + index * angleStep
+      const x = centerX + radius * Math.cos(angle) - 80 // -80 для центрирования узла
+      const y = centerY + radius * Math.sin(angle) - 80
 
       nodes.push({
         id: module.id,
         type: 'module',
-        position: { x: startX + index * gapX, y: startY },
+        position: { x, y },
         data: {
           label: module.name,
           icon: module.icon || '📚',
-          progress,
+          progress: moduleProgress,
           status,
           isSelected: module.id === selectedModuleId,
           topicsCount,
@@ -259,7 +267,7 @@ export function ModuleGraph({
     return nodes
   }, [modules, selectedModuleId, getModuleStatus, isLoadingTopics])
 
-  // Создаём связи между модулями
+  // Создаём связи между модулями (для круговой раскладки)
   const initialEdges: Edge[] = useMemo(() => {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const edges: Edge[] = []
@@ -277,7 +285,7 @@ export function ModuleGraph({
         id: `${current.id}-${next.id}`,
         source: current.id,
         target: next.id,
-        type: 'smoothstep',
+        type: 'default', // Используем default для круговой раскладки
         animated: isActive,
         style: { 
           stroke: styles.border,

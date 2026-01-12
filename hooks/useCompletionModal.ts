@@ -69,18 +69,15 @@ export function useCompletionModal({
   }, [pendingTopicId, onMarkComplete, onNavigate])
 
   /**
-   * Handle cancel action - navigate without marking complete
-   * Requirements: 2.6
+   * Handle cancel action - close modal WITHOUT navigating
+   * Requirements: 2.6, Requirement 3 (Bug fix)
+   * User clicked X, Escape, or "Нет, просто продолжай" - stay on current topic
    */
   const handleCancel = useCallback(() => {
-    if (pendingTopicId) {
-      // Navigate without marking complete
-      onNavigate(pendingTopicId)
-    }
-    // Close modal and reset state
+    // Just close modal and reset state - DO NOT navigate
     setIsOpen(false)
     setPendingTopicId(null)
-  }, [pendingTopicId, onNavigate])
+  }, [])
 
   return {
     isOpen,

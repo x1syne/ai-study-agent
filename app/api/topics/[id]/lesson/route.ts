@@ -7,6 +7,7 @@ import { getFullRAGContext } from '@/lib/rag'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
 import type { Domain } from '@/lib/ai/domain-prompts'
+import { getDomainPracticePrompt } from '@/lib/ai/domain-prompts'
 
 // Обёртка для совместимости со старым API
 async function generateCompletion(
@@ -156,11 +157,13 @@ export async function GET(
       }
     } else if (lessonType === 'practice') {
       const theoryLesson = await prisma.lesson.findFirst({ where: { topicId: topic.id, type: 'THEORY' } })
+      // Requirement 1: Pass domain for domain-specific practice generation
+      const goalDomain = topic.module.goal.domain as Domain
       if (theoryLesson?.content) {
         const theoryContent = (theoryLesson.content as any).markdown || ''
-        content = await generatePracticeFromTheory(topic.name, topic.module.goal.title, theoryContent)
+        content = await generatePracticeFromTheory(topic.name, topic.module.goal.title, theoryContent, goalDomain)
       } else {
-        content = await generatePracticeTasks(topic.name, topic.module.goal.title)
+        content = await generatePracticeTasks(topic.name, topic.module.goal.title, goalDomain)
       }
     } else {
       content = await generateOtherTask(topic.name, topic.module.goal.title)
@@ -235,20 +238,23 @@ function getFallbackTheory(name: string, description: string | null, courseTitle
   return '# ' + name + '\n\n## Введение\n' + (description || 'Добро пожаловать в изучение темы!') + '\n\nЭта тема является частью курса "' + courseTitle + '".\n\n## Основные понятия\nВ рамках данной темы вы изучите ключевые концепции.\n\n---\n*Полная версия генерируется AI.*'
 }
 
-async function generatePracticeFromTheory(topicName: string, courseTitle: string, theoryContent: string) {
+async function generatePracticeFromTheory(topicName: string, courseTitle: string, theoryContent: string, domain: Domain = 'GENERAL') {
   try {
     const theoryExcerpt = theoryContent.slice(0, 8000)
     
-    // Определяем тип темы для правильной практики
+    // Requirement 1: Get domain-specific practice prompt
+    const domainPractice = getDomainPracticePrompt(domain)
+    
+    // Определяем тип темы для правильной практики (fallback если domain не определён)
     const topicLower = (topicName + courseTitle).toLowerCase()
-    const isProgramming = /программирование|python|javascript|c\+\+|java|react|sql|код|функци|алгоритм|массив|указател|переменн|struct|class|oop|ооп/i.test(topicLower)
-    const isPhysics = /физик|механик|термодинамик|электричеств|магнит|оптик|квант|кинематик|динамик|энерги|импульс|волн|колебан|сила|скорость|ускорен|давлен|мощност/i.test(topicLower)
-    const isChemistry = /хими|реакци|молекул|атом|элемент|вещество|раствор|кислот|основан|соль|окислен|восстановлен|моль|концентрац/i.test(topicLower)
-    const isMath = /математик|алгебр|геометр|уравнен|формул|вычисл|интеграл|производн|предел|вероятност|статистик|егэ|огэ|тригонометр|логарифм|функци|матриц|вектор|комплексн/i.test(topicLower)
-    const isEconomics = /экономик|финанс|бухгалтер|процент|кредит|инвестиц|прибыл|убыт|баланс|актив|пассив|налог/i.test(topicLower)
+    const isProgramming = domain === 'PROGRAMMING' || /программирование|python|javascript|c\+\+|java|react|sql|код|функци|алгоритм|массив|указател|переменн|struct|class|oop|ооп/i.test(topicLower)
+    const isPhysics = domain === 'PHYSICS' || domain === 'ENGINEERING' || /физик|механик|термодинамик|электричеств|магнит|оптик|квант|кинематик|динамик|энерги|импульс|волн|колебан|сила|скорость|ускорен|давлен|мощност/i.test(topicLower)
+    const isChemistry = domain === 'CHEMISTRY' || /хими|реакци|молекул|атом|элемент|вещество|раствор|кислот|основан|соль|окислен|восстановлен|моль|концентрац/i.test(topicLower)
+    const isMath = domain === 'MATHEMATICS' || /математик|алгебр|геометр|уравнен|формул|вычисл|интеграл|производн|предел|вероятност|статистик|егэ|огэ|тригонометр|логарифм|функци|матриц|вектор|комплексн/i.test(topicLower)
+    const isEconomics = domain === 'ECONOMICS' || /экономик|финанс|бухгалтер|процент|кредит|инвестиц|прибыл|убыт|баланс|актив|пассив|налог/i.test(topicLower)
     const isEngineering = /инженер|электроник|схем|сопромат|строител|архитектур|черчен|autocad|solidworks/i.test(topicLower)
     const isDataScience = /data science|машинн|обучен|нейрон|статистик|анализ данн|big data|ml|ai|искусствен|интеллект/i.test(topicLower)
-    const isLanguage = /английск|немецк|французск|испанск|язык|грамматик|слов|перевод|english|german|литератур|сочинен/i.test(topicLower)
+    const isLanguage = domain === 'LANGUAGES' || /английск|немецк|французск|испанск|язык|грамматик|слов|перевод|english|german|литератур|сочинен/i.test(topicLower)
     
     let practiceInstructions = ''
     
@@ -662,48 +668,31 @@ ${practiceInstructions}
   }
 }
 
-async function generatePracticeTasks(topicName: string, courseTitle: string) {
+async function generatePracticeTasks(topicName: string, courseTitle: string, domain: Domain = 'GENERAL') {
   try {
+    // Requirement 1: Use domain-specific practice prompt
+    const domainPractice = getDomainPracticePrompt(domain)
+    const taskTypesStr = domainPractice.taskTypes.join(', ')
+    
     const prompt = `Создай 10 практических заданий СТРОГО по теме: "${topicName}"
 Курс: "${courseTitle}"
+Домен: ${domain}
 
 КРИТИЧЕСКИ ВАЖНО:
 - Задания должны быть ТОЛЬКО по теме "${topicName}"
 - НЕ добавляй другие темы (если тема "Задание 12 ЕГЭ" - только про это задание)
 - Изучи что входит в эту тему и создай задания по этому материалу
+- Предпочтительные типы заданий для этого домена: ${taskTypesStr}
 
 СТРУКТУРА:
 - 3 задания easy (базовое понимание)
 - 4 задания medium (применение)
 - 3 задания hard (сложные случаи)
 
-ТИПЫ:
-- 5 типа "single" (один правильный)
-- 2 типа "multiple" (несколько правильных)
-- 2 типа "number" (числовой ответ, tolerance: 0.01)
-- 1 типа "text" (короткий текстовый ответ)
+${domainPractice.systemPrompt}
 
-ФОРМАТЫ:
-Для single:
-{
-  "type": "single",
-  "difficulty": "easy",
-  "question": "Вопрос по теме ${topicName}",
-  "options": ["A", "B", "C", "D"],
-  "correctAnswer": 0,
-  "hint": "Подсказка",
-  "explanation": "Объяснение"
-}
-
-Для text (ВАЖНО - correctAnswers это МАССИВ строк!):
-{
-  "type": "text",
-  "difficulty": "medium",
-  "question": "Вопрос требующий текстового ответа",
-  "correctAnswers": ["правильный ответ", "альтернативный вариант"],
-  "hint": "Подсказка",
-  "explanation": "Объяснение"
-}
+ПРИМЕР ЗАДАНИЯ:
+${domainPractice.exampleTasks}
 
 Верни JSON: { "tasks": [...] }`
 

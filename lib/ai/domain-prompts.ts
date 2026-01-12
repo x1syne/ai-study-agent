@@ -1779,3 +1779,387 @@ export function getDomainPromptFromType(domainType: DomainType): DomainPrompt {
   const domain = TYPE_TO_DOMAIN[domainType] || 'GENERAL'
   return getDomainPrompt(domain)
 }
+
+
+// ==================== DOMAIN PRACTICE PROMPTS ====================
+// Requirements: 1.1-1.9, 2.1-2.4
+
+/**
+ * Task types for practice generation
+ */
+export type TaskType = 'single' | 'multiple' | 'number' | 'text' | 'code' | 'matching'
+
+/**
+ * Domain Practice Prompt interface
+ * Defines how practice tasks should be generated for each domain
+ */
+export interface DomainPracticePrompt {
+  domain: Domain
+  taskTypes: TaskType[]           // Preferred task types for domain
+  systemPrompt: string            // Instructions for AI
+  exampleTasks: string            // Example tasks format
+  validationRules: string[]       // Rules for task validation
+}
+
+// ==================== PHYSICS PRACTICE ====================
+
+const PHYSICS_PRACTICE: DomainPracticePrompt = {
+  domain: 'PHYSICS',
+  taskTypes: ['number', 'single'],
+  systemPrompt: `Ты создаёшь практические задания по ФИЗИКЕ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Задачи с ЧИСЛОВЫМ ответом (type: "number") - основной тип
+2. Каждая задача должна содержать:
+   - Конкретные числовые данные
+   - Единицы измерения СИ
+   - Формулу для решения
+   - Пошаговое решение в explanation
+3. Используй tolerance для погрешности (обычно 0.01-0.1)
+4. Задачи должны быть РАЗНООБРАЗНЫМИ - разные формулы, ситуации
+5. Включай реальные примеры: автомобили, ракеты, природные явления
+
+ЗАПРЕЩЕНО:
+- Однотипные задачи с разными числами
+- Задачи без единиц измерения
+- Абстрактные задачи без контекста`,
+  exampleTasks: `{
+  "type": "number",
+  "difficulty": "medium",
+  "question": "Автомобиль массой 1500 кг разгоняется с ускорением 2 м/с². Найдите силу тяги двигателя (в Н).",
+  "correctAnswer": 3000,
+  "tolerance": 1,
+  "hint": "Используйте второй закон Ньютона: F = m × a",
+  "explanation": "Дано: m = 1500 кг, a = 2 м/с²\\nНайти: F = ?\\nРешение: F = m × a = 1500 × 2 = 3000 Н\\nОтвет: 3000 Н"
+}`,
+  validationRules: [
+    'correctAnswer must be a number',
+    'tolerance must be defined (0.01-1)',
+    'question must contain units',
+    'explanation must show step-by-step solution'
+  ]
+}
+
+// ==================== MATHEMATICS PRACTICE ====================
+
+const MATHEMATICS_PRACTICE: DomainPracticePrompt = {
+  domain: 'MATHEMATICS',
+  taskTypes: ['number', 'single'],
+  systemPrompt: `Ты создаёшь практические задания по МАТЕМАТИКЕ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Задачи с ЧИСЛОВЫМ ответом (type: "number") - основной тип
+2. Каждая задача должна содержать:
+   - Чёткую математическую формулировку
+   - Пошаговое решение в explanation
+   - Проверку ответа где возможно
+3. Используй tolerance для дробных ответов
+4. Задачи должны быть РАЗНООБРАЗНЫМИ по методам решения
+5. Прогрессия сложности: easy → medium → hard
+
+ТИПЫ ЗАДАЧ:
+- Вычисления (производные, интегралы, пределы)
+- Уравнения и неравенства
+- Геометрические задачи
+- Задачи на доказательство (type: "single" с вариантами)`,
+  exampleTasks: `{
+  "type": "number",
+  "difficulty": "medium",
+  "question": "Найдите производную функции f(x) = x³ - 2x² + 5x в точке x = 2",
+  "correctAnswer": 9,
+  "tolerance": 0.01,
+  "hint": "Сначала найдите f'(x), затем подставьте x = 2",
+  "explanation": "f(x) = x³ - 2x² + 5x\\nf'(x) = 3x² - 4x + 5\\nf'(2) = 3(4) - 4(2) + 5 = 12 - 8 + 5 = 9"
+}`,
+  validationRules: [
+    'correctAnswer must be a number',
+    'explanation must show derivation steps',
+    'question must be mathematically precise'
+  ]
+}
+
+// ==================== PROGRAMMING PRACTICE ====================
+
+const PROGRAMMING_PRACTICE: DomainPracticePrompt = {
+  domain: 'PROGRAMMING',
+  taskTypes: ['code', 'single'],
+  systemPrompt: `Ты создаёшь практические задания по ПРОГРАММИРОВАНИЮ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Задачи с КОДОМ (type: "code") - основной тип (минимум 70%)
+2. Каждая code-задача должна содержать:
+   - language: язык программирования
+   - starterCode: начальный код с комментариями
+   - testCases: массив тестов [{input, expected}]
+   - solution: полное рабочее решение
+3. Теоретические вопросы (type: "single") - с кодом в вопросе!
+4. Если спрашиваешь "что выведет код" - КОД ДОЛЖЕН БЫТЬ В ВОПРОСЕ
+
+ЗАПРЕЩЕНО:
+- Вопросы про код без самого кода
+- Задачи без solution
+- Нерабочий код в примерах`,
+  exampleTasks: `{
+  "type": "code",
+  "difficulty": "medium",
+  "question": "Напишите функцию, которая находит сумму всех чётных чисел в массиве",
+  "language": "python",
+  "starterCode": "def sum_even(arr):\\n    # Ваш код здесь\\n    pass",
+  "testCases": [
+    {"input": "[1, 2, 3, 4, 5, 6]", "expected": "12"},
+    {"input": "[1, 3, 5]", "expected": "0"},
+    {"input": "[2, 4, 6, 8]", "expected": "20"}
+  ],
+  "hint": "Используйте цикл и проверку на чётность (% 2 == 0)",
+  "explanation": "Проходим по массиву, проверяем каждый элемент на чётность",
+  "solution": "def sum_even(arr):\\n    return sum(x for x in arr if x % 2 == 0)"
+}`,
+  validationRules: [
+    'code tasks must have solution',
+    'code tasks must have testCases array',
+    'code tasks must have language',
+    'single tasks about code must include code in question'
+  ]
+}
+
+// ==================== CHEMISTRY PRACTICE ====================
+
+const CHEMISTRY_PRACTICE: DomainPracticePrompt = {
+  domain: 'CHEMISTRY',
+  taskTypes: ['number', 'single'],
+  systemPrompt: `Ты создаёшь практические задания по ХИМИИ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Расчётные задачи (type: "number") - основной тип
+2. Каждая задача должна содержать:
+   - Уравнение реакции (если применимо)
+   - Молярные массы веществ
+   - Пошаговый расчёт в explanation
+3. Используй правильные химические формулы: H₂O, CO₂, NaCl
+4. Единицы: моль, г, мл, М (молярность)
+
+ТИПЫ ЗАДАЧ:
+- Расчёт по уравнению реакции
+- Концентрация растворов
+- Количество вещества
+- Массовая доля`,
+  exampleTasks: `{
+  "type": "number",
+  "difficulty": "medium",
+  "question": "Сколько граммов NaCl образуется при взаимодействии 40 г NaOH с избытком HCl? M(NaCl) = 58.5 г/моль, M(NaOH) = 40 г/моль",
+  "correctAnswer": 58.5,
+  "tolerance": 0.1,
+  "hint": "Напишите уравнение реакции и найдите количество вещества NaOH",
+  "explanation": "NaOH + HCl → NaCl + H₂O\\nn(NaOH) = m/M = 40/40 = 1 моль\\nПо уравнению n(NaCl) = n(NaOH) = 1 моль\\nm(NaCl) = n × M = 1 × 58.5 = 58.5 г"
+}`,
+  validationRules: [
+    'correctAnswer must be a number',
+    'explanation must include equation if applicable',
+    'question must specify molar masses'
+  ]
+}
+
+// ==================== LANGUAGES PRACTICE ====================
+
+const LANGUAGES_PRACTICE: DomainPracticePrompt = {
+  domain: 'LANGUAGES',
+  taskTypes: ['text', 'single', 'multiple'],
+  systemPrompt: `Ты создаёшь практические задания по ИНОСТРАННЫМ ЯЗЫКАМ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Задания на перевод (type: "text") - основной тип
+2. correctAnswers - МАССИВ допустимых вариантов перевода
+3. Грамматические задания (type: "single") - выбор правильной формы
+4. Включай транскрипцию для сложных слов
+
+ТИПЫ ЗАДАЧ:
+- Перевод фраз/предложений
+- Выбор правильной грамматической формы
+- Заполнение пропусков
+- Исправление ошибок`,
+  exampleTasks: `{
+  "type": "text",
+  "difficulty": "medium",
+  "question": "Переведите на английский: 'Я изучаю программирование уже два года'",
+  "correctAnswers": [
+    "I have been studying programming for two years",
+    "I've been studying programming for two years",
+    "I have been learning programming for two years"
+  ],
+  "hint": "Используйте Present Perfect Continuous для действия, начавшегося в прошлом и продолжающегося",
+  "explanation": "Present Perfect Continuous: have/has been + V-ing. 'For two years' указывает на длительность."
+}`,
+  validationRules: [
+    'text tasks must have correctAnswers array',
+    'correctAnswers must include multiple valid translations',
+    'explanation must explain grammar rule'
+  ]
+}
+
+// ==================== HISTORY PRACTICE ====================
+
+const HISTORY_PRACTICE: DomainPracticePrompt = {
+  domain: 'HISTORY',
+  taskTypes: ['single', 'multiple'],
+  systemPrompt: `Ты создаёшь практические задания по ИСТОРИИ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Вопросы с выбором ответа (type: "single") - основной тип
+2. Каждый вопрос должен содержать:
+   - Конкретные даты или периоды
+   - Исторические личности
+   - Причинно-следственные связи
+3. Варианты ответов должны быть правдоподобными
+4. Explanation должен давать исторический контекст
+
+ТИПЫ ЗАДАЧ:
+- Даты событий
+- Причины и последствия
+- Исторические личности
+- Хронология событий`,
+  exampleTasks: `{
+  "type": "single",
+  "difficulty": "medium",
+  "question": "В каком году началась Первая мировая война?",
+  "options": ["1912", "1914", "1916", "1918"],
+  "correctAnswer": 1,
+  "hint": "Война началась после убийства эрцгерцога Франца Фердинанда",
+  "explanation": "Первая мировая война началась 28 июля 1914 года после убийства эрцгерцога Франца Фердинанда в Сараево (28 июня 1914)."
+}`,
+  validationRules: [
+    'options must be plausible alternatives',
+    'explanation must provide historical context',
+    'questions should test understanding, not just memorization'
+  ]
+}
+
+// ==================== BIOLOGY PRACTICE ====================
+
+const BIOLOGY_PRACTICE: DomainPracticePrompt = {
+  domain: 'BIOLOGY',
+  taskTypes: ['single', 'multiple', 'matching'],
+  systemPrompt: `Ты создаёшь практические задания по БИОЛОГИИ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Вопросы с выбором (type: "single", "multiple") - основной тип
+2. Задания на соответствие (type: "matching") для классификаций
+3. Используй латинские названия в скобках
+4. Включай схемы процессов в explanation
+
+ТИПЫ ЗАДАЧ:
+- Классификация организмов
+- Функции органов/органелл
+- Этапы процессов (митоз, фотосинтез)
+- Генетические задачи`,
+  exampleTasks: `{
+  "type": "single",
+  "difficulty": "medium",
+  "question": "Какая органелла клетки отвечает за синтез АТФ?",
+  "options": ["Рибосома", "Митохондрия", "Лизосома", "Аппарат Гольджи"],
+  "correctAnswer": 1,
+  "hint": "Эту органеллу называют 'энергетической станцией' клетки",
+  "explanation": "Митохондрия — органелла, в которой происходит клеточное дыхание и синтез АТФ (аденозинтрифосфата) — основного источника энергии клетки."
+}`,
+  validationRules: [
+    'use Latin names where appropriate',
+    'explanation must be scientifically accurate',
+    'matching tasks must have equal left and right items'
+  ]
+}
+
+// ==================== ECONOMICS PRACTICE ====================
+
+const ECONOMICS_PRACTICE: DomainPracticePrompt = {
+  domain: 'ECONOMICS',
+  taskTypes: ['number', 'single'],
+  systemPrompt: `Ты создаёшь практические задания по ЭКОНОМИКЕ.
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. Расчётные задачи (type: "number") - основной тип
+2. Каждая задача должна содержать:
+   - Конкретные числовые данные
+   - Формулу расчёта
+   - Единицы измерения (%, руб., $)
+3. Используй реальные экономические показатели
+
+ТИПЫ ЗАДАЧ:
+- Расчёт прибыли/убытка
+- Инфляция и процентные ставки
+- Спрос и предложение
+- Эластичность`,
+  exampleTasks: `{
+  "type": "number",
+  "difficulty": "medium",
+  "question": "Цена товара выросла с 100 до 120 рублей. Найдите темп инфляции в процентах.",
+  "correctAnswer": 20,
+  "tolerance": 0.1,
+  "hint": "Темп инфляции = (новая цена - старая цена) / старая цена × 100%",
+  "explanation": "Темп инфляции = (120 - 100) / 100 × 100% = 20%"
+}`,
+  validationRules: [
+    'correctAnswer must be a number',
+    'use realistic economic data',
+    'explanation must show calculation formula'
+  ]
+}
+
+// ==================== GENERAL PRACTICE ====================
+
+const GENERAL_PRACTICE: DomainPracticePrompt = {
+  domain: 'GENERAL',
+  taskTypes: ['single', 'multiple', 'text'],
+  systemPrompt: `Ты создаёшь практические задания общего типа.
+
+ПРАВИЛА:
+1. Определи лучший тип задания для темы
+2. Используй разнообразные форматы
+3. Задания должны проверять понимание, не запоминание
+4. Включай практические примеры`,
+  exampleTasks: `{
+  "type": "single",
+  "difficulty": "medium",
+  "question": "Какой из перечисленных методов наиболее эффективен для X?",
+  "options": ["Метод A", "Метод B", "Метод C", "Метод D"],
+  "correctAnswer": 1,
+  "hint": "Подумайте о преимуществах каждого метода",
+  "explanation": "Метод B наиболее эффективен потому что..."
+}`,
+  validationRules: [
+    'questions must be clear and unambiguous',
+    'all options must be plausible',
+    'explanation must justify the correct answer'
+  ]
+}
+
+// ==================== DOMAIN PRACTICE PROMPTS REGISTRY ====================
+
+const DOMAIN_PRACTICE_PROMPTS: Record<Domain, DomainPracticePrompt> = {
+  PHYSICS: PHYSICS_PRACTICE,
+  MATHEMATICS: MATHEMATICS_PRACTICE,
+  PROGRAMMING: PROGRAMMING_PRACTICE,
+  CHEMISTRY: CHEMISTRY_PRACTICE,
+  BIOLOGY: BIOLOGY_PRACTICE,
+  HISTORY: HISTORY_PRACTICE,
+  LANGUAGES: LANGUAGES_PRACTICE,
+  ECONOMICS: ECONOMICS_PRACTICE,
+  ARTS: GENERAL_PRACTICE, // Uses general for arts
+  MEDICINE: BIOLOGY_PRACTICE, // Uses biology-like format
+  LAW: HISTORY_PRACTICE, // Uses history-like format (dates, cases)
+  ENGINEERING: PHYSICS_PRACTICE, // Uses physics-like format
+  GENERAL: GENERAL_PRACTICE
+}
+
+/**
+ * Get domain practice prompt by domain
+ * Returns GENERAL prompt as fallback
+ */
+export function getDomainPracticePrompt(domain: Domain): DomainPracticePrompt {
+  return DOMAIN_PRACTICE_PROMPTS[domain] || DOMAIN_PRACTICE_PROMPTS.GENERAL
+}
+
+/**
+ * Get all domain practice prompts
+ */
+export function getAllDomainPracticePrompts(): DomainPracticePrompt[] {
+  return Object.values(DOMAIN_PRACTICE_PROMPTS)
+}

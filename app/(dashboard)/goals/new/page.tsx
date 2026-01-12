@@ -165,7 +165,8 @@ export default function NewGoalPage() {
 
       if (res.ok) {
         const goal = await res.json()
-        router.push(`/goals/${goal.id}`)
+        // Requirement 5: Redirect to /graph after course creation
+        router.push('/graph')
       } else {
         const data = await res.json()
         setError(data.error || 'Ошибка создания курса')

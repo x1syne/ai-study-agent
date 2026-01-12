@@ -240,8 +240,39 @@ export default function GraphPage() {
       {goals.length > 0 ? (
         <>
           {/* Goal selector + View mode toggle */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-between">
-            {/* Goal selector */}
+          {/* Requirement 7: Toggle positioned above graph card, not overlapping course list */}
+          <div className="flex flex-col gap-4">
+            {/* View mode toggle - positioned first/above */}
+            <div className="flex justify-end">
+              <div className="flex gap-2 bg-[var(--color-bg-secondary)] p-1 rounded-xl border border-[var(--color-border)]">
+                <button
+                  onClick={() => setViewMode('modules')}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    viewMode === 'modules'
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'text-[var(--color-text-secondary)] hover:text-white'
+                  )}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  Модули
+                </button>
+                <button
+                  onClick={() => setViewMode('topics')}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    viewMode === 'topics'
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'text-[var(--color-text-secondary)] hover:text-white'
+                  )}
+                >
+                  <GitBranch className="w-4 h-4" />
+                  Все темы
+                </button>
+              </div>
+            </div>
+
+            {/* Goal selector - positioned below toggle */}
             {goals.length > 1 && (
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {goals.map(goal => {
@@ -266,34 +297,6 @@ export default function GraphPage() {
                 })}
               </div>
             )}
-
-            {/* View mode toggle */}
-            <div className="flex gap-2 bg-[var(--color-bg-secondary)] p-1 rounded-xl border border-[var(--color-border)]">
-              <button
-                onClick={() => setViewMode('modules')}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  viewMode === 'modules'
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'text-[var(--color-text-secondary)] hover:text-white'
-                )}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                Модули
-              </button>
-              <button
-                onClick={() => setViewMode('topics')}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  viewMode === 'topics'
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'text-[var(--color-text-secondary)] hover:text-white'
-                )}
-              >
-                <GitBranch className="w-4 h-4" />
-                Все темы
-              </button>
-            </div>
           </div>
 
           {/* Graph and details */}
