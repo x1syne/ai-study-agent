@@ -165,17 +165,25 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    // Transform to include progress directly on topics
-    const transformedGoals = goals.map(goal => ({
-      ...goal,
-      modules: goal.modules.map(mod => ({
+    // Transform to include progress directly on topics and add flat topics array for backward compatibility
+    const transformedGoals = goals.map((goal: any) => {
+      const modules = goal.modules.map((mod: any) => ({
         ...mod,
-        topics: mod.topics.map(topic => ({
+        topics: mod.topics.map((topic: any) => ({
           ...topic,
           progress: topic.progress[0] || null,
         })),
-      })),
-    }))
+      }))
+      
+      // Flatten topics for backward compatibility with graph and other components
+      const flatTopics = modules.flatMap((mod: any) => mod.topics)
+      
+      return {
+        ...goal,
+        modules,
+        topics: flatTopics, // For backward compatibility
+      }
+    })
 
     return NextResponse.json(transformedGoals)
   } catch (error) {
@@ -314,50 +322,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Goals] Created goal with domain: ${courseDomain}`)
 
-    // Собираем все topics для создания прогресса и карточек
+    // Собираем все topics для создания прогресса
     const allTopics = goal.modules.flatMap(mod => mod.topics)
 
-    // ПАРАЛЛЕЛЬНО: создаём прогресс И генерируем карточки
-    const cardsPrompt = `Создай 30 карточек для запоминания по теме "${title}".
-Формат JSON: {"cards": [{"front": "Вопрос", "back": "Ответ"}]}`
-
-    const [, cardsResult] = await Promise.allSettled([
-      // Создание прогресса
-      prisma.topicProgress.createMany({
-        data: allTopics.map((topic: { id: string }) => ({
-          userId: user.id,
-          topicId: topic.id,
-          status: 'AVAILABLE',
-        })),
-      }),
-      // Генерация карточек (через heavy - дешевле)
-      generateWithRouter(
-        'heavy',
-        'Создаёшь карточки для запоминания. Отвечай ТОЛЬКО JSON.',
-        cardsPrompt,
-        { json: true, temperature: 0.7, maxTokens: 3000 }
-      )
-    ])
-
-    // Сохраняем карточки если получилось
-    if (cardsResult.status === 'fulfilled') {
-      try {
-        const cardsData = JSON.parse(cardsResult.value.content)
-        if (cardsData.cards?.length > 0) {
-          await prisma.reviewCard.createMany({
-            data: cardsData.cards.slice(0, 30).map((card: { front: string; back: string }) => ({
-              userId: user.id,
-              front: card.front,
-              back: card.back,
-              topicSlug: allTopics[0]?.slug || 'general',
-            })),
-          })
-          console.log(`[Goals] Generated ${cardsData.cards.length} cards via ${cardsResult.value.provider}`)
-        }
-      } catch (cardError) {
-        console.warn('[Goals] Card generation failed (non-critical):', cardError)
-      }
-    }
+    // Создание прогресса для всех тем
+    await prisma.topicProgress.createMany({
+      data: allTopics.map((topic) => ({
+        userId: user.id,
+        topicId: topic.id,
+        status: 'AVAILABLE',
+      })),
+    })
 
     return NextResponse.json(goal, { status: 201 })
   } catch (error) {

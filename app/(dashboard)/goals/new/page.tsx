@@ -186,7 +186,7 @@ export default function NewGoalPage() {
           <CardContent className="py-16 text-center">
             <Loader2 className="w-16 h-16 text-primary-400 animate-spin mx-auto mb-6" />
             <h2 className="text-2xl font-bold text-white mb-2">Создаём курс...</h2>
-            <p className="text-slate-400">AI генерирует учебный план, теорию и карточки для повторения</p>
+            <p className="text-slate-400">AI генерирует учебный план и структуру курса</p>
             <p className="text-slate-500 text-sm mt-4">Это может занять 30-60 секунд</p>
           </CardContent>
         </Card>
@@ -397,7 +397,7 @@ export default function NewGoalPage() {
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-white mb-4">Что хочешь изучить?</h2>
               <p className="text-slate-400 mb-6">
-                Введи любую тему — AI создаст персональный курс с теорией, практикой и карточками для повторения
+                Введи любую тему — AI создаст персональный курс с теорией и практикой
               </p>
               <div className="space-y-4">
                 <input

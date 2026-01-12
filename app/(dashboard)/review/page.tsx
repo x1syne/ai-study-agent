@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   Brain, Layers, ListChecks, Sparkles, Loader2, Play, Clock, 
-  Plus, Flame, Star, BookOpen, Trophy, ChevronRight, ArrowLeft
+  Plus, Flame, Star, BookOpen, Trophy, ChevronRight, ArrowLeft, ChevronDown
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { ReviewCard as ReviewCardComponent } from '@/components/review/ReviewCard'
@@ -57,6 +57,9 @@ export default function ReviewPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [dailyStreak, setDailyStreak] = useState(0)
   const [todayReviewed, setTodayReviewed] = useState(0)
+  const [isCardsExpanded, setIsCardsExpanded] = useState(false)
+  
+  const CARDS_LIMIT = 15
 
   useEffect(() => {
     Promise.all([fetchCards(), fetchGoals(), loadQuizSets()]).finally(() => setIsLoading(false))
@@ -327,18 +330,41 @@ export default function ReviewPage() {
         <section>
           <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2"><BookOpen className="w-5 h-5 text-[var(--color-primary)]" /> Мои карточки</h2>
           <div className="space-y-3">
-            {Object.entries(cardsByTopic).map(([name, { cards: topicCards, slug }]) => {
-              const dueCount = topicCards.filter(c => !c.nextReviewDate || new Date(c.nextReviewDate) <= new Date()).length
+            {(() => {
+              const entries = Object.entries(cardsByTopic)
+              const visibleEntries = isCardsExpanded ? entries : entries.slice(0, CARDS_LIMIT)
+              const hasMore = entries.length > CARDS_LIMIT
+              
               return (
-                <button key={slug} onClick={() => startTopicStudy(slug, topicCards)} className="w-full practicum-card p-4 flex items-center justify-between group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center"><Layers className="w-6 h-6 text-[var(--color-primary)]" /></div>
-                    <div className="text-left"><p className="font-semibold text-white group-hover:text-[var(--color-primary)] transition-colors">{name}</p><p className="text-sm text-[var(--color-text-secondary)]">{topicCards.length} карточек {dueCount > 0 && <span className="text-orange-500">• {dueCount} к повторению</span>}</p></div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-[var(--color-text-secondary)] group-hover:text-[var(--color-primary)] group-hover:translate-x-1 transition-all" />
-                </button>
+                <>
+                  {visibleEntries.map(([name, { cards: topicCards, slug }]) => {
+                    const dueCount = topicCards.filter(c => !c.nextReviewDate || new Date(c.nextReviewDate) <= new Date()).length
+                    return (
+                      <button key={slug} onClick={() => startTopicStudy(slug, topicCards)} className="w-full practicum-card p-4 flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center"><Layers className="w-6 h-6 text-[var(--color-primary)]" /></div>
+                          <div className="text-left"><p className="font-semibold text-white group-hover:text-[var(--color-primary)] transition-colors">{name}</p><p className="text-sm text-[var(--color-text-secondary)]">{topicCards.length} карточек {dueCount > 0 && <span className="text-orange-500">• {dueCount} к повторению</span>}</p></div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-[var(--color-text-secondary)] group-hover:text-[var(--color-primary)] group-hover:translate-x-1 transition-all" />
+                      </button>
+                    )
+                  })}
+                  
+                  {/* Show more/less button */}
+                  {hasMore && (
+                    <button 
+                      onClick={() => setIsCardsExpanded(!isCardsExpanded)}
+                      className="w-full py-3 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors rounded-xl hover:bg-white/5"
+                    >
+                      <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${isCardsExpanded ? 'rotate-180' : ''}`} />
+                      <span className="text-sm font-medium">
+                        {isCardsExpanded ? 'Свернуть' : `Показать ещё ${entries.length - CARDS_LIMIT} тем`}
+                      </span>
+                    </button>
+                  )}
+                </>
               )
-            })}
+            })()}
           </div>
         </section>
       )}

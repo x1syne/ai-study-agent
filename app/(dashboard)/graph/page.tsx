@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Network, Target, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { KnowledgeGraph } from '@/components/graph/KnowledgeGraph'
 import { TopicDetails } from '@/components/graph/TopicDetails'
-import type { Goal, Topic } from '@/types'
+import type { Goal, Topic, Module } from '@/types'
 
 export default function GraphPage() {
   const router = useRouter()
@@ -29,9 +29,22 @@ export default function GraphPage() {
     finally { setIsLoading(false) }
   }
 
+  // Flatten topics from modules for the graph
+  const allTopics = useMemo(() => {
+    if (!selectedGoal) return []
+    
+    // If goal has modules, flatten topics from all modules
+    if (selectedGoal.modules && selectedGoal.modules.length > 0) {
+      return selectedGoal.modules.flatMap((mod: Module) => mod.topics || [])
+    }
+    
+    // Fallback to direct topics for backward compatibility
+    return selectedGoal.topics || []
+  }, [selectedGoal])
+
   const handleTopicClick = (topicId: string) => {
     if (!selectedGoal) return
-    const topic = selectedGoal.topics.find(t => t.id === topicId)
+    const topic = allTopics.find((t: Topic) => t.id === topicId)
     if (topic) {
       setSelectedTopic(topic)
       // Проверяем статус темы
@@ -48,16 +61,21 @@ export default function GraphPage() {
   }
 
   const getGoalStats = (goal: Goal) => {
-    const total = goal.topics.length
-    const completed = goal.topics.filter(t => {
+    // Get topics from modules or direct topics
+    const topics = goal.modules && goal.modules.length > 0
+      ? goal.modules.flatMap((mod: Module) => mod.topics || [])
+      : goal.topics || []
+    
+    const total = topics.length
+    const completed = topics.filter((t: Topic) => {
       const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
       return p?.status === 'COMPLETED' || p?.status === 'MASTERED'
     }).length
-    const inProgress = goal.topics.filter(t => {
+    const inProgress = topics.filter((t: Topic) => {
       const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
       return p?.status === 'IN_PROGRESS'
     }).length
-    return { total, completed, inProgress, percent: Math.round((completed / total) * 100) || 0 }
+    return { total, completed, inProgress, percent: total > 0 ? Math.round((completed / total) * 100) : 0 }
   }
 
   if (isLoading) {
@@ -152,12 +170,20 @@ export default function GraphPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  {selectedGoal && (
+                  {selectedGoal && allTopics.length > 0 && (
                     <KnowledgeGraph
-                      topics={selectedGoal.topics}
+                      topics={allTopics}
                       onTopicClick={handleTopicClick}
                       selectedTopicId={selectedTopic?.id}
                     />
+                  )}
+                  {selectedGoal && allTopics.length === 0 && (
+                    <div className="h-[400px] flex items-center justify-center">
+                      <div className="text-center">
+                        <Network className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+                        <p className="text-slate-400">Темы ещё не созданы</p>
+                      </div>
+                    </div>
                   )}
                 </CardContent>
               </Card>
