@@ -4,8 +4,43 @@ import { useState, useCallback, useMemo } from 'react'
 import { Check, X, Lightbulb, ChevronRight, ChevronLeft, RotateCcw, MessageCircle, Loader2, GripVertical } from 'lucide-react'
 import { Button, Badge } from '@/components/ui'
 import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+
+// Компонент для рендеринга текста с LaTeX
+function MathText({ children, className = '' }: { children: string; className?: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[[rehypeKatex, { throwOnError: false, output: 'htmlAndMathml' }]]}
+      components={{
+        p: ({ children }) => <span className={className}>{children}</span>,
+        code({ className: codeClassName, children, ...props }) {
+          const match = /language-(\w+)/.exec(codeClassName || '')
+          const isInline = !match && !String(children).includes('\n')
+          return isInline ? (
+            <code className="bg-slate-700 px-1.5 py-0.5 rounded text-primary-400 text-sm" {...props}>
+              {children}
+            </code>
+          ) : (
+            <SyntaxHighlighter
+              style={oneDark}
+              language={match ? match[1] : 'text'}
+              PreTag="div"
+              className="rounded-lg my-2 text-sm"
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          )
+        }
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  )
+}
 
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = []
@@ -577,10 +612,12 @@ export function StepikTask({
         </div>
       )}
 
-      {/* Question */}
+      {/* Question with LaTeX support */}
       <div className="p-4 sm:p-6">
         <div className="text-white text-lg mb-6 leading-relaxed prose prose-invert max-w-none">
           <ReactMarkdown
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, output: 'htmlAndMathml' }]]}
             components={{
               code({ node, className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '')
@@ -609,7 +646,7 @@ export function StepikTask({
           </ReactMarkdown>
         </div>
 
-        {/* Single choice */}
+        {/* Single choice with LaTeX */}
         {task.type === 'single' && (task as SingleTask).options && (
           <div className="space-y-3">
             {(task as SingleTask).options.map((option, idx) => {
@@ -623,7 +660,7 @@ export function StepikTask({
                       : selectedSingle === idx ? 'border-primary-500 bg-primary-500/10' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'
                   }`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                       isSubmitted ? idx === correctIdx ? 'border-green-500 bg-green-500' 
                         : idx === selectedSingle ? 'border-red-500 bg-red-500' : 'border-slate-600'
                         : selectedSingle === idx ? 'border-primary-500 bg-primary-500' : 'border-slate-600'
@@ -631,7 +668,9 @@ export function StepikTask({
                       {isSubmitted && idx === correctIdx && <Check className="w-4 h-4 text-white" />}
                       {isSubmitted && idx === selectedSingle && idx !== correctIdx && <X className="w-4 h-4 text-white" />}
                     </div>
-                    <span className="text-slate-200">{option}</span>
+                    <div className="text-slate-200 flex-1">
+                      <MathText>{option}</MathText>
+                    </div>
                   </div>
                 </button>
               )
@@ -639,7 +678,7 @@ export function StepikTask({
           </div>
         )}
 
-        {/* Multiple choice */}
+        {/* Multiple choice with LaTeX */}
         {task.type === 'multiple' && (task as MultipleTask).options && (
           <div className="space-y-3">
             <p className="text-sm text-slate-400 mb-2">Выберите все правильные варианты</p>
@@ -647,7 +686,6 @@ export function StepikTask({
               const correctArr = ((task as MultipleTask).correctAnswers || []).map(v => typeof v === 'string' ? parseInt(v as any, 10) : v)
               const isCorrectByKey = correctArr.includes(idx)
               const isSel = selectedMultiple.includes(idx)
-              // Если AI засчитал ответ как правильный - все выбранные варианты показываем зелёными
               const showAsCorrect = isSubmitted && isCorrect && isSel
               const showAsWrong = isSubmitted && !isCorrect && isSel && !isCorrectByKey
               const showAsCorrectByKey = isSubmitted && !isCorrect && isCorrectByKey
@@ -663,7 +701,7 @@ export function StepikTask({
                       : isSel ? 'border-primary-500 bg-primary-500/10' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'
                   }`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                       isSubmitted 
                         ? showAsCorrect ? 'border-green-500 bg-green-500'
                         : showAsCorrectByKey ? 'border-green-500 bg-green-500'
@@ -674,7 +712,9 @@ export function StepikTask({
                     }`}>
                       {(isSubmitted ? (showAsCorrect || showAsCorrectByKey || isSel) : isSel) && <Check className="w-4 h-4 text-white" />}
                     </div>
-                    <span className="text-slate-200">{option}</span>
+                    <div className="text-slate-200 flex-1">
+                      <MathText>{option}</MathText>
+                    </div>
                   </div>
                 </button>
               )
@@ -749,7 +789,7 @@ export function StepikTask({
         )}
 
 
-        {/* Matching with Drag & Drop */}
+        {/* Matching with Drag & Drop and LaTeX */}
         {task.type === 'matching' && (task as MatchingTask).leftItems && (
           <div className="space-y-4">
             <p className="text-sm text-slate-400">Перетащите или кликните для соединения</p>
@@ -762,9 +802,9 @@ export function StepikTask({
                       selectedLeft === idx ? 'border-primary-500 bg-primary-500/10' 
                         : matchingPairs.has(idx) ? 'border-green-500/50 bg-green-500/5' : 'border-slate-700 hover:border-slate-600'
                     }`}>
-                    <GripVertical className="w-4 h-4 text-slate-500" />
-                    <span className="text-slate-200 flex-1">{item}</span>
-                    {matchingPairs.has(idx) && <span className="text-xs text-green-400">→ {(task as MatchingTask).rightItems[matchingPairs.get(idx)!]}</span>}
+                    <GripVertical className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                    <div className="text-slate-200 flex-1"><MathText>{item}</MathText></div>
+                    {matchingPairs.has(idx) && <span className="text-xs text-green-400 flex-shrink-0">→</span>}
                   </div>
                 ))}
               </div>
@@ -775,7 +815,7 @@ export function StepikTask({
                     className={`p-3 rounded-lg border-2 transition-all ${
                       selectedLeft !== null ? 'border-primary-500/50 bg-primary-500/5 cursor-pointer' : 'border-slate-700'
                     }`}>
-                    <span className="text-slate-200">{item}</span>
+                    <div className="text-slate-200"><MathText>{item}</MathText></div>
                   </div>
                 ))}
               </div>
@@ -829,14 +869,21 @@ export function StepikTask({
         )}
       </div>
 
-      {/* Result & Explanation */}
+      {/* Result & Explanation with LaTeX */}
       {isSubmitted && (
         <div className={`mx-4 sm:mx-6 mb-4 p-4 rounded-xl ${isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
           <div className="flex items-center gap-2 mb-2">
             {isCorrect ? <Check className="w-5 h-5 text-green-400" /> : <X className="w-5 h-5 text-red-400" />}
             <span className={`font-semibold ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>{isCorrect ? 'Правильно!' : 'Неправильно'}</span>
           </div>
-          <p className="text-slate-300 text-sm">{task.explanation}</p>
+          <div className="text-slate-300 text-sm prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, output: 'htmlAndMathml' }]]}
+            >
+              {task.explanation}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
 

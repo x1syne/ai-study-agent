@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { X, Play, Lock, CheckCircle, Clock, ChevronRight, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -67,14 +67,19 @@ const STATUS_CONFIG: Record<TopicStatus, {
 /**
  * Компонент для отображения подтем модуля
  * Загружает темы лениво при открытии модуля
+ * Использует кеширование для предотвращения повторных запросов
  */
+
+// Простой кеш для тем модулей (предотвращает повторную генерацию)
+const topicsCache = new Map<string, { topics: TopicWithProgress[], timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 минут
+
 export function ModuleTopics({
   moduleId,
   moduleName,
   moduleIcon,
   onClose,
 }: ModuleTopicsProps) {
-  const router = useRouter()
   const [topics, setTopics] = useState<TopicWithProgress[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +87,14 @@ export function ModuleTopics({
 
   // Загружаем или генерируем темы при монтировании
   useEffect(() => {
+    // Проверяем кеш
+    const cached = topicsCache.get(moduleId)
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setTopics(cached.topics)
+      setIsLoading(false)
+      return
+    }
+    
     fetchTopics()
   }, [moduleId])
 
@@ -97,7 +110,12 @@ export function ModuleTopics({
       }
 
       const data = await res.json()
-      setTopics(data.topics || [])
+      const fetchedTopics = data.topics || []
+      
+      // Сохраняем в кеш
+      topicsCache.set(moduleId, { topics: fetchedTopics, timestamp: Date.now() })
+      
+      setTopics(fetchedTopics)
       setIsGenerating(data.generated === true)
       
       // Если темы были сгенерированы, показываем уведомление
@@ -115,8 +133,7 @@ export function ModuleTopics({
   const handleTopicClick = (topic: TopicWithProgress) => {
     const status = topic.progress?.status || 'AVAILABLE'
     if (status === 'LOCKED') return
-    
-    router.push(`/learn/${topic.id}`)
+    // Navigation handled by Link component
   }
 
   const getTopicStatus = (topic: TopicWithProgress): TopicStatus => {
@@ -218,20 +235,8 @@ export function ModuleTopics({
               const config = STATUS_CONFIG[status]
               const isLocked = status === 'LOCKED'
 
-              return (
-                <button
-                  key={topic.id}
-                  onClick={() => handleTopicClick(topic)}
-                  disabled={isLocked}
-                  className={cn(
-                    'w-full flex items-center gap-3 p-3 rounded-xl text-left',
-                    'transition-all duration-200',
-                    isLocked 
-                      ? 'opacity-50 cursor-not-allowed' 
-                      : 'hover:bg-white/5 hover:translate-x-1 cursor-pointer',
-                    'group'
-                  )}
-                >
+              const content = (
+                <>
                   {/* Номер */}
                   <div className={cn(
                     'w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium',
@@ -276,7 +281,39 @@ export function ModuleTopics({
                       'group-hover:translate-x-1 group-hover:text-[var(--color-primary)]'
                     )} />
                   )}
-                </button>
+                </>
+              )
+
+              // Use Link for client-side navigation (no page reload)
+              if (isLocked) {
+                return (
+                  <div
+                    key={topic.id}
+                    className={cn(
+                      'w-full flex items-center gap-3 p-3 rounded-xl text-left',
+                      'opacity-50 cursor-not-allowed',
+                      'group'
+                    )}
+                  >
+                    {content}
+                  </div>
+                )
+              }
+
+              return (
+                <Link
+                  key={topic.id}
+                  href={`/learn/${topic.id}`}
+                  prefetch={true}
+                  className={cn(
+                    'w-full flex items-center gap-3 p-3 rounded-xl text-left',
+                    'transition-all duration-200',
+                    'hover:bg-white/5 hover:translate-x-1 cursor-pointer',
+                    'group'
+                  )}
+                >
+                  {content}
+                </Link>
               )
             })}
 
