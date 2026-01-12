@@ -1,10 +1,46 @@
 /**
  * Domain-Specific Prompts & Templates
  * Специализированные промпты для разных предметных областей
+ * 
+ * Requirements: 4.1, 4.2, 4.3, 4.7, 4.8, 4.9, 4.10
  */
 
 // ==================== ТИПЫ ====================
 
+/**
+ * Domain type matching Prisma enum (uppercase)
+ * 13 доменов покрывающих все сферы жизни
+ * Requirements: 4.1
+ */
+export type Domain = 
+  | 'PHYSICS'      // Физика, механика, термодинамика
+  | 'MATHEMATICS'  // Алгебра, геометрия, анализ
+  | 'PROGRAMMING'  // Все языки, алгоритмы, веб
+  | 'CHEMISTRY'    // Органика, неорганика, биохимия
+  | 'BIOLOGY'      // Анатомия, генетика, экология
+  | 'HISTORY'      // История, политология, социология
+  | 'LANGUAGES'    // Иностранные языки, лингвистика
+  | 'ECONOMICS'    // Экономика, финансы, бизнес
+  | 'ARTS'         // Музыка, живопись, дизайн
+  | 'MEDICINE'     // Медицина, психология, здоровье
+  | 'LAW'          // Право, юриспруденция
+  | 'ENGINEERING'  // Инженерия, электроника
+  | 'GENERAL'      // Всё остальное
+
+/**
+ * DomainPrompt interface as specified in design document
+ * Requirements: 4.2, 4.3
+ */
+export interface DomainPrompt {
+  domain: Domain
+  systemPrompt: string      // Инструкции для AI
+  exampleContent: string    // Пример эталонного контента
+  ragSources: string[]      // Приоритетные источники RAG
+}
+
+/**
+ * Legacy DomainType for backward compatibility (lowercase)
+ */
 export type DomainType = 
   | 'physics'      // Физика
   | 'math'         // Математика
@@ -35,6 +71,82 @@ export interface SectionTemplate {
   prompt: string
   minWords: number
   required: boolean
+}
+
+// ==================== МАППИНГ ДОМЕНОВ ====================
+
+/**
+ * Mapping from Prisma Domain enum to legacy DomainType
+ */
+export const DOMAIN_TO_TYPE: Record<Domain, DomainType> = {
+  'PHYSICS': 'physics',
+  'MATHEMATICS': 'math',
+  'PROGRAMMING': 'programming',
+  'CHEMISTRY': 'chemistry',
+  'BIOLOGY': 'biology',
+  'HISTORY': 'history',
+  'LANGUAGES': 'languages',
+  'ECONOMICS': 'economics',
+  'ARTS': 'art',
+  'MEDICINE': 'medicine',
+  'LAW': 'law',
+  'ENGINEERING': 'physics', // Engineering uses physics config
+  'GENERAL': 'general'
+}
+
+/**
+ * Mapping from legacy DomainType to Prisma Domain enum
+ */
+export const TYPE_TO_DOMAIN: Record<DomainType, Domain> = {
+  'physics': 'PHYSICS',
+  'math': 'MATHEMATICS',
+  'programming': 'PROGRAMMING',
+  'chemistry': 'CHEMISTRY',
+  'biology': 'BIOLOGY',
+  'history': 'HISTORY',
+  'languages': 'LANGUAGES',
+  'economics': 'ECONOMICS',
+  'art': 'ARTS',
+  'medicine': 'MEDICINE',
+  'law': 'LAW',
+  'psychology': 'MEDICINE', // Psychology maps to Medicine
+  'general': 'GENERAL'
+}
+
+/**
+ * List of all valid domains
+ */
+export const VALID_DOMAINS: Domain[] = [
+  'PHYSICS',
+  'MATHEMATICS',
+  'PROGRAMMING',
+  'CHEMISTRY',
+  'BIOLOGY',
+  'HISTORY',
+  'LANGUAGES',
+  'ECONOMICS',
+  'ARTS',
+  'MEDICINE',
+  'LAW',
+  'ENGINEERING',
+  'GENERAL'
+]
+
+/**
+ * Check if a string is a valid Domain
+ */
+export function isValidDomain(domain: string): domain is Domain {
+  return VALID_DOMAINS.includes(domain as Domain)
+}
+
+/**
+ * Normalize domain with fallback to GENERAL
+ */
+export function normalizeDomain(domain: string | undefined | null): Domain {
+  if (!domain || !isValidDomain(domain)) {
+    return 'GENERAL'
+  }
+  return domain
 }
 
 // ==================== ОПРЕДЕЛЕНИЕ ДОМЕНА ====================
@@ -1203,7 +1315,7 @@ const DOMAIN_CONFIGS: Record<DomainType, DomainConfig> = {
 }
 
 /**
- * Получение конфигурации домена
+ * Получение конфигурации домена (legacy)
  */
 export function getDomainConfig(domain: DomainType): DomainConfig {
   return DOMAIN_CONFIGS[domain] || GENERAL_CONFIG
@@ -1218,8 +1330,452 @@ export function getConfigForTopic(topic: string, courseName: string): DomainConf
 }
 
 /**
- * Список всех доменов
+ * Список всех доменов (legacy)
  */
 export function getAllDomains(): DomainType[] {
   return Object.keys(DOMAIN_CONFIGS) as DomainType[]
+}
+
+// ==================== DOMAIN PROMPTS (NEW API) ====================
+// Requirements: 4.2, 4.3, 4.7, 4.8, 4.9, 4.10
+
+/**
+ * PHYSICS Domain Prompt
+ * Requirements: 4.2, 4.3, 4.7
+ */
+const PHYSICS_PROMPT: DomainPrompt = {
+  domain: 'PHYSICS',
+  systemPrompt: `Ты — лучший преподаватель физики. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Формулы в LaTeX ($inline$ и $$block$$)
+2. Пошаговые вычисления с подстановкой значений
+3. Единицы измерения СИ везде
+4. Примеры из реальной жизни (двигатели, турбины, природа)
+5. Упражнения с ответами
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+
+  exampleContent: `
+## Адиабатический процесс
+
+### Определение
+Адиабатический процесс — термодинамический процесс без теплообмена с окружающей средой ($Q = 0$).
+
+### Основные формулы
+$$PV^\\gamma = const$$
+$$TV^{\\gamma-1} = const$$
+
+где $\\gamma = \\frac{C_p}{C_v}$ — показатель адиабаты.
+
+### Пошаговые вычисления
+
+**Задача:** Газ сжимается адиабатически. $P_1 = 5 \\times 10^6$ Па, $V_1 = 50 \\times 10^{-6}$ м³, $V_2 = 150 \\times 10^{-6}$ м³, $\\gamma = 1.4$. Найти $P_2$.
+
+1. **Запишем уравнение адиабаты:**
+   $$P_1 V_1^\\gamma = P_2 V_2^\\gamma$$
+
+2. **Выразим $P_2$:**
+   $$P_2 = P_1 \\left(\\frac{V_1}{V_2}\\right)^\\gamma$$
+
+3. **Подставим значения:**
+   $$P_2 = 5 \\times 10^6 \\text{ Па} \\times \\left(\\frac{50 \\times 10^{-6}}{150 \\times 10^{-6}}\\right)^{1.4}$$
+
+4. **Вычислим:**
+   $$P_2 = 5 \\times 10^6 \\times (1/3)^{1.4} \\approx 5 \\times 10^6 \\times 0.298 \\approx \\mathbf{1.49 \\text{ МПа}}$$
+
+### Реальные приложения
+1. **Газовые турбины** — сжатие воздуха компрессором
+2. **Дизельные двигатели** — воспламенение от сжатия
+3. **Атмосфера** — подъём воздушных масс
+`,
+  ragSources: ['wikipedia', 'arxiv']
+}
+
+/**
+ * MATHEMATICS Domain Prompt
+ * Requirements: 4.2, 4.3, 4.7
+ */
+const MATHEMATICS_PROMPT: DomainPrompt = {
+  domain: 'MATHEMATICS',
+  systemPrompt: `Ты — лучший преподаватель математики. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Строгие определения и теоремы
+2. Доказательства с пояснениями каждого шага
+3. Формулы в LaTeX ($inline$ и $$block$$)
+4. Пошаговые решения задач
+5. Геометрические интерпретации где возможно
+6. Задачи разной сложности с решениями
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+
+  exampleContent: `
+## Производная функции
+
+### Определение
+Производная функции $f(x)$ в точке $x_0$:
+$$f'(x_0) = \\lim_{\\Delta x \\to 0} \\frac{f(x_0 + \\Delta x) - f(x_0)}{\\Delta x}$$
+
+### Основные правила
+| Функция | Производная |
+|---------|-------------|
+| $x^n$ | $nx^{n-1}$ |
+| $e^x$ | $e^x$ |
+| $\\ln x$ | $\\frac{1}{x}$ |
+| $\\sin x$ | $\\cos x$ |
+
+### Пошаговое решение
+
+**Найти производную:** $f(x) = x^3 - 2x^2 + 5x - 3$
+
+1. Применяем правило суммы: $(f + g)' = f' + g'$
+2. Для $x^3$: $(x^3)' = 3x^2$
+3. Для $-2x^2$: $(-2x^2)' = -4x$
+4. Для $5x$: $(5x)' = 5$
+5. Для $-3$: $(-3)' = 0$
+
+**Ответ:** $f'(x) = 3x^2 - 4x + 5$
+`,
+  ragSources: ['wikipedia', 'arxiv']
+}
+
+/**
+ * PROGRAMMING Domain Prompt
+ * Requirements: 4.2, 4.3, 4.8
+ */
+const PROGRAMMING_PROMPT: DomainPrompt = {
+  domain: 'PROGRAMMING',
+  systemPrompt: `Ты — senior разработчик и преподаватель. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Рабочие примеры кода с комментариями
+2. Объяснение "почему", а не только "как"
+3. Анализ сложности (Big O) где применимо
+4. Best practices и типичные ошибки
+5. Практические задачи с тестами
+
+Используй RAG контекст (StackOverflow, GitHub). Структурируй сам.
+Минимум 2500 слов подробного контента.`,
+
+  exampleContent: `
+## Бинарный поиск
+
+### Концепция
+Бинарный поиск — алгоритм поиска в **отсортированном** массиве за $O(\\log n)$.
+
+### Реализация
+\`\`\`python
+def binary_search(arr: list, target: int) -> int:
+    """Возвращает индекс элемента или -1 если не найден."""
+    left, right = 0, len(arr) - 1
+    
+    while left <= right:
+        mid = (left + right) // 2
+        
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+    
+    return -1
+\`\`\`
+
+### Сложность
+| Операция | Время | Память |
+|----------|-------|--------|
+| Поиск | $O(\\log n)$ | $O(1)$ |
+
+### Типичные ошибки
+❌ Забыть что массив должен быть отсортирован
+❌ Неправильно вычислять mid (переполнение)
+✅ Использовать \`mid = left + (right - left) // 2\`
+`,
+  ragSources: ['stackoverflow', 'github', 'wikipedia']
+}
+
+/**
+ * CHEMISTRY Domain Prompt
+ * Requirements: 4.2, 4.3, 4.7
+ */
+const CHEMISTRY_PROMPT: DomainPrompt = {
+  domain: 'CHEMISTRY',
+  systemPrompt: `Ты — лучший преподаватель химии. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Сбалансированные уравнения реакций
+2. Расчёты с молярными массами
+3. Структурные формулы где нужно
+4. Механизмы реакций
+5. Применение в жизни и промышленности
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+
+  exampleContent: `
+## Реакции нейтрализации
+
+### Определение
+Нейтрализация — реакция между кислотой и основанием с образованием соли и воды.
+
+### Общее уравнение
+$$\\text{Кислота} + \\text{Основание} \\rightarrow \\text{Соль} + \\text{Вода}$$
+
+### Пример расчёта
+
+**Задача:** Сколько NaOH нужно для нейтрализации 100 мл 0.5 М HCl?
+
+1. **Уравнение реакции:**
+   $$\\ce{NaOH + HCl -> NaCl + H2O}$$
+
+2. **Количество HCl:**
+   $$n(HCl) = C \\cdot V = 0.5 \\text{ моль/л} \\times 0.1 \\text{ л} = 0.05 \\text{ моль}$$
+
+3. **По уравнению:** $n(NaOH) = n(HCl) = 0.05$ моль
+
+4. **Масса NaOH:**
+   $$m = n \\cdot M = 0.05 \\text{ моль} \\times 40 \\text{ г/моль} = \\mathbf{2 \\text{ г}}$$
+`,
+  ragSources: ['wikipedia', 'arxiv']
+}
+
+/**
+ * BIOLOGY Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const BIOLOGY_PROMPT: DomainPrompt = {
+  domain: 'BIOLOGY',
+  systemPrompt: `Ты — преподаватель биологии. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Схемы процессов и классификации
+2. Латинские названия организмов
+3. Связь с медициной и экологией
+4. Примеры из природы
+5. Современные исследования
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'arxiv']
+}
+
+/**
+ * HISTORY Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const HISTORY_PROMPT: DomainPrompt = {
+  domain: 'HISTORY',
+  systemPrompt: `Ты — преподаватель истории. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Даты, события, причинно-следственные связи
+2. Исторические личности с биографиями
+3. Первоисточники и цитаты
+4. Разные точки зрения историков
+5. Связь с современностью
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'wikidata']
+}
+
+/**
+ * LANGUAGES Domain Prompt
+ * Requirements: 4.1, 4.10
+ */
+const LANGUAGES_PROMPT: DomainPrompt = {
+  domain: 'LANGUAGES',
+  systemPrompt: `Ты — преподаватель языков. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Грамматика с примерами
+2. Упражнения на перевод
+3. Произношение и транскрипция
+4. Идиомы и культурный контекст
+5. Диалоги для практики
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia']
+}
+
+/**
+ * ECONOMICS Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const ECONOMICS_PROMPT: DomainPrompt = {
+  domain: 'ECONOMICS',
+  systemPrompt: `Ты — преподаватель экономики. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Графики спроса/предложения
+2. Формулы и расчёты
+3. Реальные кейсы компаний
+4. Финансовые расчёты
+5. Актуальные данные и статистика
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'web']
+}
+
+/**
+ * ARTS Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const ARTS_PROMPT: DomainPrompt = {
+  domain: 'ARTS',
+  systemPrompt: `Ты — преподаватель искусства. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Техники и стили
+2. Известные работы и авторы
+3. Практические упражнения
+4. Исторический контекст
+5. Анализ произведений
+
+Используй RAG контекст (Met Museum). Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'metmuseum', 'wikidata']
+}
+
+/**
+ * MEDICINE Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const MEDICINE_PROMPT: DomainPrompt = {
+  domain: 'MEDICINE',
+  systemPrompt: `Ты — преподаватель медицины. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Анатомия и физиология
+2. Симптомы и диагностика
+3. Научная точность
+4. Ссылки на исследования
+5. Профилактика и здоровый образ жизни
+
+ДИСКЛЕЙМЕР: Информация носит образовательный характер и не заменяет консультацию специалиста.
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'arxiv']
+}
+
+/**
+ * LAW Domain Prompt
+ * Requirements: 4.1, 4.9
+ */
+const LAW_PROMPT: DomainPrompt = {
+  domain: 'LAW',
+  systemPrompt: `Ты — преподаватель права. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Статьи законов и кодексов
+2. Прецеденты и судебная практика
+3. Юридические термины
+4. Практические кейсы
+5. Алгоритмы действий
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'web']
+}
+
+/**
+ * ENGINEERING Domain Prompt
+ * Requirements: 4.1, 4.7
+ */
+const ENGINEERING_PROMPT: DomainPrompt = {
+  domain: 'ENGINEERING',
+  systemPrompt: `Ты — преподаватель инженерии. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Схемы и чертежи
+2. Расчёты и формулы в LaTeX ($inline$ и $$block$$)
+3. Стандарты и нормативы
+4. Практические примеры
+5. Современные технологии
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'arxiv', 'stackoverflow']
+}
+
+/**
+ * GENERAL Domain Prompt (fallback)
+ * Requirements: 4.1
+ */
+const GENERAL_PROMPT: DomainPrompt = {
+  domain: 'GENERAL',
+  systemPrompt: `Ты — универсальный преподаватель. Создай образовательный материал.
+
+ОБЯЗАТЕЛЬНО:
+1. Определи лучший формат для темы
+2. Примеры из жизни
+3. Упражнения для закрепления
+4. Структурированная подача
+5. Связь теории с практикой
+
+Используй RAG контекст. Структурируй сам до наилучшей версии.
+Минимум 2500 слов подробного контента.`,
+  exampleContent: '',
+  ragSources: ['wikipedia', 'web']
+}
+
+// ==================== DOMAIN PROMPTS REGISTRY ====================
+
+/**
+ * Registry of all domain prompts
+ * Requirements: 4.1
+ */
+const DOMAIN_PROMPTS: Record<Domain, DomainPrompt> = {
+  PHYSICS: PHYSICS_PROMPT,
+  MATHEMATICS: MATHEMATICS_PROMPT,
+  PROGRAMMING: PROGRAMMING_PROMPT,
+  CHEMISTRY: CHEMISTRY_PROMPT,
+  BIOLOGY: BIOLOGY_PROMPT,
+  HISTORY: HISTORY_PROMPT,
+  LANGUAGES: LANGUAGES_PROMPT,
+  ECONOMICS: ECONOMICS_PROMPT,
+  ARTS: ARTS_PROMPT,
+  MEDICINE: MEDICINE_PROMPT,
+  LAW: LAW_PROMPT,
+  ENGINEERING: ENGINEERING_PROMPT,
+  GENERAL: GENERAL_PROMPT
+}
+
+/**
+ * Get domain prompt by domain
+ * Returns GENERAL prompt as fallback
+ * Requirements: 4.2
+ */
+export function getDomainPrompt(domain: Domain): DomainPrompt {
+  return DOMAIN_PROMPTS[domain] || DOMAIN_PROMPTS.GENERAL
+}
+
+/**
+ * Get all domain prompts
+ */
+export function getAllDomainPrompts(): DomainPrompt[] {
+  return Object.values(DOMAIN_PROMPTS)
+}
+
+/**
+ * Convert legacy DomainType to new Domain and get prompt
+ */
+export function getDomainPromptFromType(domainType: DomainType): DomainPrompt {
+  const domain = TYPE_TO_DOMAIN[domainType] || 'GENERAL'
+  return getDomainPrompt(domain)
 }

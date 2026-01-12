@@ -16,20 +16,27 @@ import {
   getCachedTasks, setCachedTasks,
   getCachedAnalysis, setCachedAnalysis 
 } from '@/lib/ai-cache'
-import { getFullRAGContext } from '@/lib/rag'
+import { getFullRAGContext, getDomainRAGContext } from '@/lib/rag'
 import { 
   detectDomain, 
-  getConfigForTopic, 
+  getConfigForTopic,
+  getDomainConfig,
+  getDomainPrompt,
+  normalizeDomain,
+  Domain,
+  DomainPrompt,
   DomainConfig, 
   DomainType,
-  SectionTemplate 
+  SectionTemplate,
+  DOMAIN_TO_TYPE
 } from '@/lib/ai/domain-prompts'
 
 // Types
 export interface TopicAnalysis {
   topic: string
   courseName: string
-  domain: DomainType  // Добавлено: определённый домен
+  domain: DomainType  // Определённый домен (legacy type)
+  domainEnum?: Domain // Домен из базы данных (Prisma enum)
   nature: string[]
   complexity: { base: number; depth: number; prerequisites: string[] }
   learningMethods: string[]
@@ -49,19 +56,40 @@ export interface LessonPlan {
 }
 
 // Быстрый анализ темы (с кэшем)
-async function analyzeTopicFast(topic: string, courseName: string): Promise<TopicAnalysis> {
+// Requirements: 4.2, 4.4 - получать домен курса из базы данных
+async function analyzeTopicFast(
+  topic: string, 
+  courseName: string,
+  dbDomain?: Domain  // Домен из базы данных (если передан)
+): Promise<TopicAnalysis> {
   // Проверяем кэш
   const cached = getCachedAnalysis(topic, courseName)
   if (cached) {
     console.log('[Fast Agent] Using cached analysis')
+    // Если передан домен из БД, обновляем его в кэшированном анализе
+    if (dbDomain) {
+      cached.domainEnum = dbDomain
+      cached.domain = DOMAIN_TO_TYPE[dbDomain] || 'general'
+    }
     return cached
   }
 
   console.log('[Fast Agent] Analyzing topic...')
   
-  // Определяем домен
-  const domain = detectDomain(topic, courseName)
-  console.log(`[Fast Agent] Detected domain: ${domain}`)
+  // Используем домен из БД если передан, иначе определяем автоматически
+  // Requirements: 4.2 - использовать getDomainPrompt для выбора промпта
+  let domain: DomainType
+  let domainEnum: Domain
+  
+  if (dbDomain) {
+    domainEnum = normalizeDomain(dbDomain)
+    domain = DOMAIN_TO_TYPE[domainEnum] || 'general'
+    console.log(`[Fast Agent] Using domain from database: ${domainEnum} -> ${domain}`)
+  } else {
+    domain = detectDomain(topic, courseName)
+    domainEnum = Object.entries(DOMAIN_TO_TYPE).find(([_, v]) => v === domain)?.[0] as Domain || 'GENERAL'
+    console.log(`[Fast Agent] Detected domain: ${domain} -> ${domainEnum}`)
+  }
   
   const prompt = `Проанализируй тему "${topic}" для курса "${courseName}".
 
@@ -99,7 +127,8 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
       keyTerms: data.keyTerms || [topic],
       tone: data.tone || 'conversational',
       audience: 'Студенты',
-      estimatedTime: data.estimatedTime || 20
+      estimatedTime: data.estimatedTime || 20,
+      domainEnum  // Домен из БД (Prisma enum)
     }
     
     setCachedAnalysis(topic, courseName, analysis)
@@ -108,7 +137,8 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
     console.error('[Fast Agent] Analysis failed:', e)
     return {
       topic, courseName,
-      domain,  // Добавлено
+      domain,
+      domainEnum,  // Домен из БД (Prisma enum)
       nature: ['conceptual'],
       complexity: { base: 5, depth: 5, prerequisites: [] },
       learningMethods: ['theory-practice-project'],
@@ -124,15 +154,19 @@ async function analyzeTopicFast(topic: string, courseName: string): Promise<Topi
 
 
 // Генерация одной секции с domain-specific промптом
+// Requirements: 4.2 - использовать getDomainPrompt для выбора промпта
+// Requirements: 4.5 - AI сам структурирует контент до наилучшей версии
 async function generateSection(
   template: SectionTemplate,
   domainConfig: DomainConfig,
   analysis: TopicAnalysis,
-  ragContext: string = ''
+  ragContext: string = '',
+  domainPrompt?: DomainPrompt  // Промпт из getDomainPrompt (если есть домен из БД)
 ): Promise<string> {
   const baseContext = `Тема: "${analysis.topic}", Курс: "${analysis.courseName}"`
   
   // Добавляем RAG контекст
+  // Requirements: 4.4, 4.5 - интегрировать RAG контекст
   const ragInstruction = ragContext ? `
 
 ИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ДЛЯ ТОЧНОСТИ:
@@ -140,16 +174,37 @@ ${ragContext.slice(0, 2000)}
 
 Цитируй факты из контекста, упоминай источники.` : ''
 
-  // Формируем полный системный промпт с правилами домена
-  const fullSystemPrompt = `${domainConfig.systemPrompt}
+  // Формируем полный системный промпт
+  // Requirements: 4.5, 4.6 - включить systemPrompt домена и пример эталонного контента
+  let fullSystemPrompt: string
+  
+  if (domainPrompt) {
+    // Используем промпт из getDomainPrompt (новый API)
+    fullSystemPrompt = `${domainPrompt.systemPrompt}
+
+${domainPrompt.exampleContent ? `ПРИМЕР ЭТАЛОННОГО КОНТЕНТА:
+${domainPrompt.exampleContent}
+
+Создавай контент в таком же стиле и качестве.` : ''}
 
 ПРАВИЛА ФОРМАТИРОВАНИЯ:
 ${domainConfig.formatRules.map(r => `- ${r}`).join('\n')}
 
 ПРИМЕРЫ ОФОРМЛЕНИЯ:
 ${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
+  } else {
+    // Fallback на старый формат
+    fullSystemPrompt = `${domainConfig.systemPrompt}
+
+ПРАВИЛА ФОРМАТИРОВАНИЯ:
+${domainConfig.formatRules.map(r => `- ${r}`).join('\n')}
+
+ПРИМЕРЫ ОФОРМЛЕНИЯ:
+${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
+  }
 
   // Формируем промпт для секции
+  // Requirements: 4.6 - указать минимум 2500 слов
   const sectionPrompt = `${baseContext}
 
 Напиши раздел "${template.title}" (минимум ${template.minWords} слов).
@@ -174,26 +229,36 @@ ${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
 }
 
 // ПАРАЛЛЕЛЬНАЯ генерация всех секций с domain-specific шаблонами
+// Requirements: 4.2 - использовать getDomainPrompt для выбора промпта
 async function generateAllSectionsParallel(
   analysis: TopicAnalysis,
   ragContext: string = ''
 ): Promise<string> {
   console.log('[Fast Agent] Generating sections in PARALLEL...')
   console.log(`[Fast Agent] Domain: ${analysis.domain}`)
+  console.log(`[Fast Agent] Domain Enum: ${analysis.domainEnum || 'not set'}`)
   if (ragContext) {
     console.log(`[Fast Agent] Using RAG context: ${ragContext.length} chars`)
   }
   
-  // Получаем конфигурацию домена
+  // Получаем конфигурацию домена (legacy)
   const domainConfig = getConfigForTopic(analysis.topic, analysis.courseName)
   console.log(`[Fast Agent] Using ${domainConfig.name} config with ${domainConfig.sectionTemplates.length} sections`)
+  
+  // Получаем промпт домена из getDomainPrompt если есть domainEnum
+  // Requirements: 4.2 - использовать getDomainPrompt для выбора промпта
+  let domainPrompt: DomainPrompt | undefined
+  if (analysis.domainEnum) {
+    domainPrompt = getDomainPrompt(analysis.domainEnum)
+    console.log(`[Fast Agent] Using domain prompt for: ${analysis.domainEnum}`)
+  }
 
   // ПАРАЛЛЕЛЬНАЯ генерация всех секций
   const startTime = Date.now()
   
   const results = await Promise.allSettled(
     domainConfig.sectionTemplates.map(template => 
-      generateSection(template, domainConfig, analysis, ragContext)
+      generateSection(template, domainConfig, analysis, ragContext, domainPrompt)
     )
   )
   
@@ -313,15 +378,18 @@ function getDefaultTasks(topic: string): any[] {
 }
 
 // ГЛАВНАЯ ФУНКЦИЯ - оптимизированная версия с RAG и Domain-Specific Prompts
+// Requirements: 4.2, 4.4 - получать домен курса из базы данных, использовать getDomainPrompt
 export async function runLessonAgentFast(
   topic: string,
   courseName: string,
-  userId?: string
+  userId?: string,
+  dbDomain?: Domain  // Домен из базы данных (Goal.domain)
 ): Promise<{ content: string; analysis: TopicAnalysis; plan: LessonPlan; metadata: any; tasks: any[] }> {
   console.log(`\n${'='.repeat(50)}`)
   console.log(`[Fast Agent] Starting: "${topic}"`)
   console.log(`[Fast Agent] Course: "${courseName}"`)
   console.log(`[Fast Agent] User: ${userId || 'anonymous'}`)
+  console.log(`[Fast Agent] DB Domain: ${dbDomain || 'not provided'}`)
   console.log(`${'='.repeat(50)}\n`)
   
   const startTime = Date.now()
@@ -330,22 +398,31 @@ export async function runLessonAgentFast(
   const cachedLesson = getCachedLesson(topic, courseName)
   if (cachedLesson) {
     console.log('[Fast Agent] Using CACHED lesson!')
-    const analysis = getCachedAnalysis(topic, courseName) || await analyzeTopicFast(topic, courseName)
+    const analysis = getCachedAnalysis(topic, courseName) || await analyzeTopicFast(topic, courseName, dbDomain)
     const tasks = getCachedTasks(topic, courseName) || await generateTasksFast(analysis)
     
     return {
       content: cachedLesson,
       analysis,
       plan: { title: topic, objectives: [], sections: [], practiceIdeas: [] },
-      metadata: { fromCache: true, generatedAt: new Date().toISOString(), domain: analysis.domain },
+      metadata: { fromCache: true, generatedAt: new Date().toISOString(), domain: analysis.domain, domainEnum: analysis.domainEnum },
       tasks
     }
   }
 
+  // Нормализуем домен из БД
+  const normalizedDomain = dbDomain ? normalizeDomain(dbDomain) : undefined
+  const domainType = normalizedDomain ? DOMAIN_TO_TYPE[normalizedDomain] : undefined
+  
   // 1. Параллельно: анализ темы + RAG контекст
+  // Requirements: 4.4, 4.5 - интегрировать RAG контекст с приоритизацией по домену
   const [analysis, ragContext] = await Promise.all([
-    analyzeTopicFast(topic, courseName),
-    getFullRAGContext(topic, courseName, userId).catch(e => {
+    analyzeTopicFast(topic, courseName, normalizedDomain),
+    // Используем getDomainRAGContext если есть домен, иначе getFullRAGContext
+    (domainType 
+      ? getDomainRAGContext(topic, courseName, domainType)
+      : getFullRAGContext(topic, courseName, userId)
+    ).catch(e => {
       console.warn('[Fast Agent] RAG context failed:', e)
       return ''
     })
@@ -397,6 +474,7 @@ export async function runLessonAgentFast(
       generatedAt: new Date().toISOString(),
       totalTimeMs: totalTime,
       domain: analysis.domain,
+      domainEnum: analysis.domainEnum,
       domainName: domainConfig.name,
       sectionsCount: domainConfig.sectionTemplates.length,
       tasksCount: tasks.length,

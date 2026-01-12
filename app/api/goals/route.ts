@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS, getGraphGenerationPrompt } from '@/lib/ai/prompts'
 import { getFullRAGContext } from '@/lib/rag'
+import { isValidDomain, Domain } from '@/lib/ai/domain-prompts'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,30 +29,31 @@ interface GeneratedModule {
 }
 
 interface GeneratedCourse {
+  domain?: string
   modules: GeneratedModule[]
 }
 
 // Простой кэш для структуры курсов (в памяти)
-const courseStructureCache = new Map<string, { data: GeneratedModule[]; timestamp: number }>()
+const courseStructureCache = new Map<string, { data: GeneratedModule[]; domain: Domain; timestamp: number }>()
 const CACHE_TTL = 1000 * 60 * 60 * 24 // 24 часа
 
 function getCacheKey(title: string, level: string): string {
   return `${title.toLowerCase().trim()}:${level}`
 }
 
-function getCachedStructure(title: string, level: string): GeneratedModule[] | null {
+function getCachedStructure(title: string, level: string): { modules: GeneratedModule[]; domain: Domain } | null {
   const key = getCacheKey(title, level)
   const cached = courseStructureCache.get(key)
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     console.log('[Goals] Using cached course structure')
-    return cached.data
+    return { modules: cached.data, domain: cached.domain }
   }
   return null
 }
 
-function setCachedStructure(title: string, level: string, data: GeneratedModule[]): void {
+function setCachedStructure(title: string, level: string, data: GeneratedModule[], domain: Domain): void {
   const key = getCacheKey(title, level)
-  courseStructureCache.set(key, { data, timestamp: Date.now() })
+  courseStructureCache.set(key, { data, domain, timestamp: Date.now() })
 }
 
 // Fallback структура с модулями
@@ -199,7 +201,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Проверяем кэш структуры курса
-    let modulesData = getCachedStructure(title, level)
+    let modulesData: GeneratedModule[] | null = null
+    let courseDomain: Domain = 'GENERAL'
+    
+    const cachedData = getCachedStructure(title, level)
+    if (cachedData) {
+      modulesData = cachedData.modules
+      courseDomain = cachedData.domain
+    }
     
     if (!modulesData) {
       console.log('[Goals] Generating new course structure...')
@@ -222,6 +231,23 @@ export async function POST(request: NextRequest) {
       if (baseStructureResult.status === 'fulfilled') {
         try {
           const parsed = JSON.parse(baseStructureResult.value.content) as GeneratedCourse
+          
+          // Извлекаем и валидируем домен из ответа AI
+          // Requirements: 3.2, 3.4
+          if (parsed.domain) {
+            const domainUpper = parsed.domain.toUpperCase()
+            if (isValidDomain(domainUpper)) {
+              courseDomain = domainUpper as Domain
+              console.log(`[Goals] AI detected domain: ${courseDomain}`)
+            } else {
+              console.log(`[Goals] Invalid domain from AI: ${parsed.domain}, using GENERAL`)
+              courseDomain = 'GENERAL'
+            }
+          } else {
+            console.log('[Goals] No domain in AI response, using GENERAL')
+            courseDomain = 'GENERAL'
+          }
+          
           // Новый формат: modules[] с topics[] внутри
           if (parsed.modules && Array.isArray(parsed.modules)) {
             modulesData = validateAndNormalizeModules(parsed.modules)
@@ -229,6 +255,7 @@ export async function POST(request: NextRequest) {
           console.log(`[Goals] Structure generated via ${baseStructureResult.value.provider} in ${baseStructureResult.value.latencyMs}ms`)
         } catch {
           modulesData = null
+          courseDomain = 'GENERAL'
         }
       }
 
@@ -236,21 +263,24 @@ export async function POST(request: NextRequest) {
       if (!modulesData || modulesData.length === 0) {
         console.log('[Goals] Using fallback structure with modules')
         modulesData = getFallbackModules()
+        courseDomain = 'GENERAL'
       } else {
-        // Кэшируем успешную структуру
-        setCachedStructure(title, level, modulesData)
+        // Кэшируем успешную структуру с доменом
+        setCachedStructure(title, level, modulesData, courseDomain)
       }
       
       console.log(`[Goals] Total structure time: ${Date.now() - startTime}ms`)
     }
 
     // Create goal with modules and topics
+    // Requirements: 3.3 - сохраняем домен в базу данных
     const goal = await prisma.goal.create({
       data: {
         userId: user.id,
         title,
         skill,
         targetDate: targetDate ? new Date(targetDate) : null,
+        domain: courseDomain,
         modules: {
           create: modulesData.map((mod: GeneratedModule) => ({
             name: mod.name,
@@ -281,6 +311,8 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    console.log(`[Goals] Created goal with domain: ${courseDomain}`)
 
     // Собираем все topics для создания прогресса и карточек
     const allTopics = goal.modules.flatMap(mod => mod.topics)

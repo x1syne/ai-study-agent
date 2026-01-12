@@ -72,6 +72,7 @@ model Goal {
   description     String?
   targetDate      DateTime?
   status          GoalStatus @default(ACTIVE)
+  domain          Domain     @default(GENERAL)
   
   modules         Module[]
   roadmap         Json?
@@ -85,6 +86,22 @@ enum GoalStatus {
   COMPLETED
   PAUSED
   ABANDONED
+}
+
+enum Domain {
+  PHYSICS
+  MATHEMATICS
+  PROGRAMMING
+  CHEMISTRY
+  BIOLOGY
+  HISTORY
+  LANGUAGES
+  ECONOMICS
+  ARTS
+  MEDICINE
+  LAW
+  ENGINEERING
+  GENERAL
 }
 
 // ==================== МОДУЛИ ====================

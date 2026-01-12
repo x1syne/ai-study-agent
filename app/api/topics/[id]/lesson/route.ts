@@ -6,6 +6,7 @@ import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
 import { getFullRAGContext } from '@/lib/rag'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
+import type { Domain } from '@/lib/ai/domain-prompts'
 
 // Обёртка для совместимости со старым API
 async function generateCompletion(
@@ -133,7 +134,9 @@ export async function GET(
       try {
         if (USE_AGENT) {
           // Оптимизированный агент с параллельной генерацией и RAG
-          const agentResult = await runLessonAgent(topic.name, topic.module.goal.title, user.id)
+          // Requirements: 4.2, 4.4 - передаём домен из базы данных
+          const goalDomain = topic.module.goal.domain as Domain
+          const agentResult = await runLessonAgent(topic.name, topic.module.goal.title, user.id, goalDomain)
           content = { 
             markdown: agentResult.content,
             analysis: agentResult.analysis,

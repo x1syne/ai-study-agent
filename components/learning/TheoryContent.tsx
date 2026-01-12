@@ -1,6 +1,8 @@
 'use client'
 
 import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Copy, Check, Lightbulb, AlertTriangle, CheckCircle, XCircle, Play } from 'lucide-react'
@@ -229,6 +231,14 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
         return (
           <ReactMarkdown
             key={index}
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[
+              [rehypeKatex, { 
+                throwOnError: false,
+                errorColor: '#cc0000',
+                output: 'htmlAndMathml'
+              }]
+            ]}
             components={{
               h1: ({ children }) => (
                 <h1 className="text-3xl font-bold text-white mb-6 pb-4 border-b border-slate-700">
