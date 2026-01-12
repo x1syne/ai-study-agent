@@ -334,21 +334,31 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
               ),
               hr: () => <hr className="border-slate-700 my-8" />,
               table: ({ children }) => (
-                <div className="overflow-x-auto my-6 rounded-xl border border-slate-700">
-                  <table className="w-full border-collapse">
+                <div className="overflow-x-auto my-6 rounded-2xl border border-slate-700/50 bg-slate-900/30 shadow-lg">
+                  <table className="w-full border-collapse min-w-[400px]">
                     {children}
                   </table>
                 </div>
               ),
+              thead: ({ children }) => (
+                <thead className="bg-gradient-to-r from-slate-800/80 to-slate-800/50">
+                  {children}
+                </thead>
+              ),
               th: ({ children }) => (
-                <th className="border-b border-slate-700 bg-slate-800/50 px-4 py-3 text-left text-white font-medium">
+                <th className="border-b-2 border-slate-600 px-4 py-3 text-left text-white font-semibold text-sm uppercase tracking-wide">
                   {children}
                 </th>
               ),
               td: ({ children }) => (
-                <td className="border-b border-slate-700/50 px-4 py-3 text-slate-300">
+                <td className="border-b border-slate-700/30 px-4 py-3 text-slate-200 [&:first-child]:font-medium [&:first-child]:text-white">
                   {children}
                 </td>
+              ),
+              tr: ({ children }) => (
+                <tr className="hover:bg-slate-800/30 transition-colors">
+                  {children}
+                </tr>
               ),
             }}
           >
