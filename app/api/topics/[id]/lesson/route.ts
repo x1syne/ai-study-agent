@@ -7,7 +7,11 @@ import { getFullRAGContext } from '@/lib/rag'
 // Используем оптимизированный агент с параллельной генерацией
 import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
 import type { Domain } from '@/lib/ai/domain-prompts'
-import { getDomainPracticePrompt } from '@/lib/ai/domain-prompts'
+import { 
+  getDomainPracticePrompt, 
+  buildUnifiedPracticePrompt, 
+  validateDifficultyDistribution 
+} from '@/lib/ai/domain-prompts'
 
 // Обёртка для совместимости со старым API
 async function generateCompletion(
@@ -242,418 +246,28 @@ async function generatePracticeFromTheory(topicName: string, courseTitle: string
   try {
     const theoryExcerpt = theoryContent.slice(0, 8000)
     
-    // Requirement 1: Get domain-specific practice prompt
-    const domainPractice = getDomainPracticePrompt(domain)
+    // Unified practice prompt - single source of truth from domain-prompts.ts
+    const prompt = buildUnifiedPracticePrompt(domain, topicName, courseTitle, theoryExcerpt)
     
-    // Определяем тип темы для правильной практики (fallback если domain не определён)
-    const topicLower = (topicName + courseTitle).toLowerCase()
-    const isProgramming = domain === 'PROGRAMMING' || /программирование|python|javascript|c\+\+|java|react|sql|код|функци|алгоритм|массив|указател|переменн|struct|class|oop|ооп/i.test(topicLower)
-    const isPhysics = domain === 'PHYSICS' || domain === 'ENGINEERING' || /физик|механик|термодинамик|электричеств|магнит|оптик|квант|кинематик|динамик|энерги|импульс|волн|колебан|сила|скорость|ускорен|давлен|мощност/i.test(topicLower)
-    const isChemistry = domain === 'CHEMISTRY' || /хими|реакци|молекул|атом|элемент|вещество|раствор|кислот|основан|соль|окислен|восстановлен|моль|концентрац/i.test(topicLower)
-    const isMath = domain === 'MATHEMATICS' || /математик|алгебр|геометр|уравнен|формул|вычисл|интеграл|производн|предел|вероятност|статистик|егэ|огэ|тригонометр|логарифм|функци|матриц|вектор|комплексн/i.test(topicLower)
-    const isEconomics = domain === 'ECONOMICS' || /экономик|финанс|бухгалтер|процент|кредит|инвестиц|прибыл|убыт|баланс|актив|пассив|налог/i.test(topicLower)
-    const isEngineering = /инженер|электроник|схем|сопромат|строител|архитектур|черчен|autocad|solidworks/i.test(topicLower)
-    const isDataScience = /data science|машинн|обучен|нейрон|статистик|анализ данн|big data|ml|ai|искусствен|интеллект/i.test(topicLower)
-    const isLanguage = domain === 'LANGUAGES' || /английск|немецк|французск|испанск|язык|грамматик|слов|перевод|english|german|литератур|сочинен/i.test(topicLower)
-    
-    let practiceInstructions = ''
-    
-    if (isProgramming) {
-      // Определяем язык программирования
-      const langMatch = (topicName + courseTitle).toLowerCase()
-      let progLang = 'cpp'
-      if (/python/i.test(langMatch)) progLang = 'python'
-      else if (/javascript|js|react|node/i.test(langMatch)) progLang = 'javascript'
-      else if (/java(?!script)/i.test(langMatch)) progLang = 'java'
-      else if (/c\+\+|cpp|указател|массив/i.test(langMatch)) progLang = 'cpp'
-      
-      practiceInstructions = `
-ЭТО ТЕМА ПО ПРОГРАММИРОВАНИЮ! Создай МИНИМУМ 18 заданий:
-
-БЛОК 1 - ТЕОРИЯ (3 задания, type: "single"):
-КРИТИЧЕСКИ ВАЖНО для вопросов про код:
-- Если спрашиваешь "что выведет код" - КОД ДОЛЖЕН БЫТЬ В ВОПРОСЕ!
-- Используй markdown блоки для кода в вопросе
-
-ПРИМЕР ПРАВИЛЬНОГО ВОПРОСА:
-{
-  "type": "single",
-  "question": "Что выведет следующий код?\\n\\n\`\`\`${progLang}\\nint x = 5;\\nint y = x * 2;\\ncout << y;\\n\`\`\`",
-  "options": ["5", "10", "15", "Ошибка компиляции"],
-  "correctAnswer": 1,
-  "explanation": "Переменная y = 5 * 2 = 10"
-}
-
-ПРИМЕР НЕПРАВИЛЬНОГО ВОПРОСА (НЕ ДЕЛАЙ ТАК!):
-{
-  "question": "Какой результат выведет этот код?",  // ГДЕ КОД???
-  "options": ["0", "5", "10", "Hello"]
-}
-
-БЛОК 2 - ПРАКТИКА КОДА (15 заданий, type: "code"):
-Задания где пользователь САМ ПИШЕТ КОД!
-
-Язык программирования: ${progLang}
-
-Формат КАЖДОГО code задания:
-{
-  "type": "code",
-  "difficulty": "easy" | "medium" | "hard",
-  "question": "Напишите функцию/программу которая...",
-  "language": "${progLang}",
-  "starterCode": "// Начните писать код здесь\\n",
-  "testCases": [
-    {"input": "5", "expected": "25"},
-    {"input": "3", "expected": "9"}
-  ],
-  "hint": "Подсказка по алгоритму",
-  "explanation": "Объяснение решения",
-  "solution": "полный код решения"
-}
-
-РАСПРЕДЕЛЕНИЕ ПО СЛОЖНОСТИ:
-- 5 заданий easy: простые функции, базовые операции
-- 6 заданий medium: циклы, условия, работа с данными
-- 4 задания hard: сложные алгоритмы, оптимизация
-
-ПРИМЕРЫ ЗАДАНИЙ (адаптируй под тему "${topicName}"):
-
-Easy:
-- "Напишите функцию, которая возвращает квадрат числа"
-- "Напишите функцию, которая проверяет чётность числа"
-- "Напишите функцию, которая находит максимум из двух чисел"
-
-Medium:
-- "Напишите функцию, которая находит сумму элементов массива"
-- "Напишите функцию, которая переворачивает строку"
-- "Напишите функцию сортировки пузырьком"
-
-Hard:
-- "Напишите функцию бинарного поиска"
-- "Реализуйте связный список с методами add/remove"
-- "Напишите функцию для решения задачи рекурсивно"
-
-ВАЖНО: Каждое задание должно иметь solution с ПОЛНЫМ рабочим кодом!`
-    } else if (isPhysics) {
-      practiceInstructions = `
-ЭТО ТЕМА ПО ФИЗИКЕ! Создай МИНИМУМ 18 РАЗНООБРАЗНЫХ заданий:
-
-БЛОК 1 - ТЕОРИЯ (3 задания, type: "single"):
-- Проверка понимания законов и формул
-
-БЛОК 2 - РАСЧЁТНЫЕ ЗАДАЧИ (15 заданий, type: "number"):
-
-КРИТИЧЕСКИ ВАЖНО - РАЗНООБРАЗИЕ ЗАДАЧ:
-НЕ ДЕЛАЙ одинаковые задачи с разными числами!
-Каждая задача должна быть УНИКАЛЬНОЙ по:
-- Типу физического явления
-- Применяемым формулам
-- Контексту (разные ситуации из жизни)
-- Способу решения
-
-ПРИМЕРЫ РАЗНООБРАЗНЫХ ЗАДАЧ по кинематике:
-1. Найти скорость по пути и времени
-2. Найти время падения с высоты
-3. Задача на встречное движение двух тел
-4. Найти ускорение по графику v(t)
-5. Задача на движение под углом к горизонту
-6. Найти тормозной путь автомобиля
-7. Задача на относительную скорость
-8. Найти максимальную высоту подъёма
-9. Задача на обгон (когда догонит)
-10. Найти среднюю скорость при неравномерном движении
-11. Задача на свободное падение с начальной скоростью
-12. Найти перемещение по уравнению движения
-13. Задача на движение по окружности
-14. Найти время до остановки при торможении
-15. Комбинированная задача (несколько этапов движения)
-
-Формат:
-{
-  "type": "number",
-  "difficulty": "easy" | "medium" | "hard",
-  "question": "УНИКАЛЬНОЕ условие задачи...",
-  "correctAnswer": число,
-  "tolerance": 0.1,
-  "hint": "Подсказка",
-  "explanation": "Пошаговое решение"
-}
-
-РАСПРЕДЕЛЕНИЕ: 5 easy, 6 medium, 4 hard`
-    } else if (isChemistry) {
-      practiceInstructions = `
-ЭТО ТЕМА ПО ХИМИИ! Создай МИНИМУМ 18 РАЗНООБРАЗНЫХ заданий:
-
-БЛОК 1 - ТЕОРИЯ (3 задания, type: "single")
-
-БЛОК 2 - РАСЧЁТНЫЕ ЗАДАЧИ (15 заданий, type: "number"):
-
-КРИТИЧЕСКИ ВАЖНО - РАЗНООБРАЗИЕ:
-НЕ ДЕЛАЙ одинаковые задачи с разными числами!
-Каждая задача должна быть УНИКАЛЬНОЙ!
-
-ПРИМЕРЫ РАЗНООБРАЗНЫХ ЗАДАЧ:
-1. Найти массу вещества по количеству моль
-2. Найти объём газа при н.у.
-3. Рассчитать массовую долю элемента
-4. Найти количество вещества по массе
-5. Задача на растворы (концентрация)
-6. Расчёт по уравнению реакции
-7. Найти массу осадка
-8. Задача на избыток-недостаток
-9. Найти объём газа по реакции
-10. Задача на смеси веществ
-11. Расчёт теплового эффекта
-12. Найти выход продукта реакции
-13. Задача на электролиз
-14. Расчёт pH раствора
-15. Комбинированная задача
-
-Формат:
-{
-  "type": "number",
-  "difficulty": "easy" | "medium" | "hard",
-  "question": "УНИКАЛЬНОЕ условие...",
-  "correctAnswer": число,
-  "tolerance": 0.01,
-  "hint": "Подсказка",
-  "explanation": "Пошаговое решение"
-}
-
-РАСПРЕДЕЛЕНИЕ: 5 easy, 6 medium, 4 hard`
-    } else if (isEconomics || isEngineering || isDataScience) {
-      practiceInstructions = `
-ЭТО ТЕМА С ВЫЧИСЛЕНИЯМИ! Создай МИНИМУМ 18 РАЗНООБРАЗНЫХ заданий:
-
-БЛОК 1 - ТЕОРИЯ (3 задания, type: "single")
-
-БЛОК 2 - РАСЧЁТНЫЕ ЗАДАЧИ (15 заданий, type: "number"):
-
-КРИТИЧЕСКИ ВАЖНО - РАЗНООБРАЗИЕ:
-НЕ ДЕЛАЙ одинаковые задачи с разными числами!
-Каждая задача должна проверять РАЗНЫЙ навык или применять РАЗНУЮ формулу!
-
-Формат:
-{
-  "type": "number",
-  "difficulty": "easy" | "medium" | "hard",
-  "question": "УНИКАЛЬНОЕ условие задачи...",
-  "correctAnswer": число,
-  "tolerance": 0.01,
-  "hint": "Подсказка",
-  "explanation": "Пошаговое решение"
-}
-
-РАСПРЕДЕЛЕНИЕ: 5 easy, 6 medium, 4 hard`
-    } else if (isMath) {
-      practiceInstructions = `
-ЭТО МАТЕМАТИЧЕСКАЯ ТЕМА! Создай МИНИМУМ 18 заданий:
-
-БЛОК 1 - ТЕОРИЯ (3 задания, type: "single"):
-- Проверка понимания определений и теорем
-
-БЛОК 2 - ЗАДАЧИ (15 заданий, type: "number"):
-Задачи где пользователь РЕШАЕТ и ВЫЧИСЛЯЕТ!
-
-Формат:
-{
-  "type": "number",
-  "difficulty": "easy" | "medium" | "hard",
-  "question": "Решите уравнение: 2x + 5 = 15",
-  "correctAnswer": 5,
-  "tolerance": 0.01,
-  "hint": "Перенесите 5 в правую часть",
-  "explanation": "2x + 5 = 15\\n2x = 15 - 5\\n2x = 10\\nx = 5"
-}
-
-РАСПРЕДЕЛЕНИЕ ПО СЛОЖНОСТИ:
-- 5 easy: простые вычисления, подстановка в формулу
-- 6 medium: задачи в 2-3 шага, преобразования
-- 4 hard: сложные задачи, нестандартные методы
-
-ВАЖНО: Каждая задача должна иметь ЧИСЛОВОЙ ответ!`
-    } else if (isLanguage) {
-      practiceInstructions = `
-ЭТО ЯЗЫКОВАЯ ТЕМА! Создай 20 заданий:
-
-БЛОК 1 - ТЕОРИЯ (5 заданий, type: "single"):
-- Правила грамматики, выбор правильной формы
-
-БЛОК 2 - ПРАКТИКА (15 заданий):
-- type: "text" - перевод фраз, вставить слово
-- type: "single" - выбрать правильный перевод
-- type: "multiple" - выбрать все правильные варианты
-
-Формат для text:
-{
-  "type": "text",
-  "question": "Переведите: 'Я изучаю программирование'",
-  "correctAnswers": ["I am studying programming", "I'm studying programming"],
-  "hint": "Present Continuous",
-  "explanation": "Используем Present Continuous для действия в процессе"
-}`
-    } else {
-      practiceInstructions = `
-Создай 15 заданий разных типов:
-
-БЛОК 1 - ТЕОРИЯ (5 заданий, type: "single"):
-- Проверка понимания ключевых концепций
-
-БЛОК 2 - ПРИМЕНЕНИЕ (10 заданий):
-- type: "single" - анализ ситуаций
-- type: "text" - развёрнутые ответы
-- type: "multiple" - выбор нескольких правильных
-
-Формат для multiple:
-{
-  "type": "multiple",
-  "question": "Какие из перечисленных являются X?",
-  "options": ["Вариант A", "Вариант B", "Вариант C", "Вариант D", "Вариант E"],
-  "correctAnswers": [0, 1, 3],
-  "hint": "Подсказка",
-  "explanation": "A, B и D правильные потому что..."
-}
-ВАЖНО: correctAnswers - массив ИНДЕКСОВ (0, 1, 2...) правильных вариантов!`
-    }
-
-    const prompt = `СТРОГО по материалу теории создай практические задания!
-
-ТЕМА: "${topicName}"
-КУРС: "${courseTitle}"
-
-ТЕОРИЯ (используй ТОЛЬКО этот материал):
-${theoryExcerpt}
-
-ИНСТРУКЦИИ:
-${practiceInstructions}
-
-════════════════════════════════════════════════════════════
-КРИТИЧЕСКИ ВАЖНО - РАЗНООБРАЗИЕ ЗАДАЧ:
-════════════════════════════════════════════════════════════
-ЗАПРЕЩЕНО делать однотипные задачи где меняются только числа!
-
-Каждая задача должна быть УНИКАЛЬНОЙ:
-- Разные формулировки вопросов
-- Разные типы задач (найти X, доказать Y, объяснить Z)
-- Разные контексты и ситуации
-- Разные применяемые концепции из теории
-- Разные способы решения
-
-ПЛОХО (шаблонно):
-1. "Найдите скорость если путь 10 м, время 2 с"
-2. "Найдите скорость если путь 20 м, время 4 с"
-3. "Найдите скорость если путь 30 м, время 6 с"
-
-ХОРОШО (разнообразно):
-1. "Найдите скорость если путь 10 м, время 2 с"
-2. "За какое время пешеход пройдёт 3 км со скоростью 5 км/ч?"
-3. "Два поезда выехали навстречу. Через сколько встретятся?"
-4. "Найдите среднюю скорость если первую половину пути ехали 60 км/ч, вторую 40 км/ч"
-5. "Велосипедист обогнал пешехода. На сколько раньше он прибудет?"
-
-Прогрессия от easy к hard.
-Верни JSON: { "tasks": [...] }`
-    
-    console.log('[Practice] Generating tasks for topic type:', isProgramming ? 'PROGRAMMING' : isMath ? 'MATH' : isLanguage ? 'LANGUAGE' : 'GENERAL')
+    console.log('[Practice] Generating tasks for domain:', domain)
     const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.7, maxTokens: 12000 })
     const content = JSON.parse(response)
     
     if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
     
-    // Валидация и исправление заданий
-    const validatedTasks = content.tasks.map((task: any, idx: number) => {
-      // Проверяем что вопрос не пустой и достаточно длинный
-      if (!task.question || task.question.length < 15) {
-        console.log('[Practice] Task ' + idx + ' has invalid question, skipping')
-        return null
-      }
-      
-      // Для вопросов про код - проверяем что код есть в вопросе
-      const codeQuestionPatterns = /что выведет|какой результат|что вернёт|что напечатает|что будет выведено|результат выполнения/i
-      if (codeQuestionPatterns.test(task.question) && !task.question.includes('```') && task.type === 'single') {
-        console.log('[Practice] Task ' + idx + ' asks about code but has no code block, skipping')
-        return null
-      }
-      
-      // Для single - проверяем options
-      if (task.type === 'single') {
-        if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
-          console.log('[Practice] Task ' + idx + ' single has invalid options, skipping')
-          return null
-        }
-        // Проверяем correctAnswer
-        if (typeof task.correctAnswer !== 'number' || task.correctAnswer < 0 || task.correctAnswer >= task.options.length) {
-          task.correctAnswer = 0 // Исправляем на первый вариант
-        }
-      }
-      
-      // Для multiple - проверяем correctAnswers
-      if (task.type === 'multiple') {
-        if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
-          console.log('[Practice] Task ' + idx + ' multiple has invalid options, skipping')
-          return null
-        }
-        if (!task.correctAnswers || !Array.isArray(task.correctAnswers) || task.correctAnswers.length === 0) {
-          task.correctAnswers = [0] // Исправляем
-        }
-      }
-      
-      // Для number - проверяем correctAnswer
-      if (task.type === 'number') {
-        if (typeof task.correctAnswer !== 'number' && typeof task.correctAnswer !== 'string') {
-          console.log('[Practice] Task ' + idx + ' number has invalid correctAnswer, skipping')
-          return null
-        }
-        task.correctAnswer = parseFloat(task.correctAnswer)
-        if (isNaN(task.correctAnswer)) return null
-        task.tolerance = task.tolerance || 0.01
-      }
-      
-      // Для text - проверяем correctAnswers
-      if (task.type === 'text') {
-        if (!task.correctAnswers) {
-          if (task.correctAnswer) {
-            task.correctAnswers = [String(task.correctAnswer)]
-          } else {
-            console.log('[Practice] Task ' + idx + ' text has no correctAnswers, skipping')
-            return null
-          }
-        }
-        if (!Array.isArray(task.correctAnswers)) {
-          task.correctAnswers = [String(task.correctAnswers)]
-        }
-      }
-      
-      // Для code - проверяем обязательные поля
-      if (task.type === 'code') {
-        if (!task.language) task.language = 'python'
-        if (!task.starterCode) task.starterCode = '// Напишите код здесь\n'
-        if (!task.solution) {
-          console.log('[Practice] Task ' + idx + ' code has no solution, skipping')
-          return null
-        }
-      }
-      
-      // Добавляем id и difficulty если нет
-      task.id = task.id || idx + 1
-      task.difficulty = task.difficulty || 'medium'
-      task.explanation = task.explanation || 'Смотрите теорию по данной теме.'
-      
-      return task
-    }).filter(Boolean)
+    // Validate and fix tasks
+    const validatedTasks = validateAndFixTasks(content.tasks)
     
-    // Дедупликация: убираем задания с похожими вопросами
-    const seenQuestions = new Set<string>()
-    const uniqueTasks = validatedTasks.filter((task: any) => {
-      if (!task.question) return false
-      const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, 40)
-      if (seenQuestions.has(normalized)) {
-        console.log('[Practice] Removed duplicate:', task.question.slice(0, 50))
-        return false
-      }
-      seenQuestions.add(normalized)
-      return true
-    })
+    // Deduplicate tasks
+    const uniqueTasks = deduplicateTasks(validatedTasks)
+    
+    // Validate difficulty distribution
+    const distribution = validateDifficultyDistribution(uniqueTasks)
+    console.log('[Practice] Distribution:', distribution.distribution, 'Total:', distribution.total)
+    
+    if (!distribution.isValid) {
+      console.warn('[Practice] Distribution issues:', distribution.issues)
+    }
     
     console.log('[Practice] Generated ' + content.tasks.length + ' tasks, validated: ' + validatedTasks.length + ', unique: ' + uniqueTasks.length)
     
@@ -666,6 +280,116 @@ ${practiceInstructions}
     console.error('Practice from theory failed:', e)
     return generatePracticeTasks(topicName, courseTitle)
   }
+}
+
+/**
+ * Validate and fix individual tasks
+ */
+function validateAndFixTasks(tasks: any[]): any[] {
+  return tasks.map((task: any, idx: number) => {
+    // Check question is not empty and long enough
+    if (!task.question || task.question.length < 15) {
+      console.log('[Practice] Task ' + idx + ' has invalid question, skipping')
+      return null
+    }
+    
+    // For code questions - check that code is in the question
+    const codeQuestionPatterns = /что выведет|какой результат|что вернёт|что напечатает|что будет выведено|результат выполнения/i
+    if (codeQuestionPatterns.test(task.question) && !task.question.includes('```') && task.type === 'single') {
+      console.log('[Practice] Task ' + idx + ' asks about code but has no code block, skipping')
+      return null
+    }
+    
+    // For single - check options
+    if (task.type === 'single') {
+      if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
+        console.log('[Practice] Task ' + idx + ' single has invalid options, skipping')
+        return null
+      }
+      if (typeof task.correctAnswer !== 'number' || task.correctAnswer < 0 || task.correctAnswer >= task.options.length) {
+        task.correctAnswer = 0
+      }
+    }
+    
+    // For multiple - check correctAnswers
+    if (task.type === 'multiple') {
+      if (!task.options || !Array.isArray(task.options) || task.options.length < 2) {
+        console.log('[Practice] Task ' + idx + ' multiple has invalid options, skipping')
+        return null
+      }
+      if (!task.correctAnswers || !Array.isArray(task.correctAnswers) || task.correctAnswers.length === 0) {
+        task.correctAnswers = [0]
+      }
+    }
+    
+    // For number - check correctAnswer
+    if (task.type === 'number') {
+      if (typeof task.correctAnswer !== 'number' && typeof task.correctAnswer !== 'string') {
+        console.log('[Practice] Task ' + idx + ' number has invalid correctAnswer, skipping')
+        return null
+      }
+      task.correctAnswer = parseFloat(task.correctAnswer)
+      if (isNaN(task.correctAnswer)) return null
+      task.tolerance = task.tolerance || 0.01
+    }
+    
+    // For text - check correctAnswers
+    if (task.type === 'text') {
+      if (!task.correctAnswers) {
+        if (task.correctAnswer) {
+          task.correctAnswers = [String(task.correctAnswer)]
+        } else {
+          console.log('[Practice] Task ' + idx + ' text has no correctAnswers, skipping')
+          return null
+        }
+      }
+      if (!Array.isArray(task.correctAnswers)) {
+        task.correctAnswers = [String(task.correctAnswers)]
+      }
+    }
+    
+    // For code - check required fields
+    if (task.type === 'code') {
+      if (!task.language) task.language = 'python'
+      if (!task.starterCode) task.starterCode = '// Напишите код здесь\n'
+      if (!task.solution) {
+        console.log('[Practice] Task ' + idx + ' code has no solution, skipping')
+        return null
+      }
+    }
+    
+    // For matching - check required fields
+    if (task.type === 'matching') {
+      if (!task.leftItems || !task.rightItems || !task.correctPairs) {
+        console.log('[Practice] Task ' + idx + ' matching has missing fields, skipping')
+        return null
+      }
+    }
+    
+    // Add id and difficulty if missing
+    task.id = task.id || idx + 1
+    task.difficulty = task.difficulty || 'medium'
+    task.explanation = task.explanation || 'Смотрите теорию по данной теме.'
+    
+    return task
+  }).filter(Boolean)
+}
+
+/**
+ * Remove duplicate tasks based on question similarity
+ */
+function deduplicateTasks(tasks: any[]): any[] {
+  const seenQuestions = new Set<string>()
+  return tasks.filter((task: any) => {
+    if (!task.question) return false
+    const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, 40)
+    if (seenQuestions.has(normalized)) {
+      console.log('[Practice] Removed duplicate:', task.question.slice(0, 50))
+      return false
+    }
+    seenQuestions.add(normalized)
+    return true
+  })
 }
 
 async function generatePracticeTasks(topicName: string, courseTitle: string, domain: Domain = 'GENERAL') {

@@ -2188,3 +2188,272 @@ export function getDomainPracticePrompt(domain: Domain): DomainPracticePrompt {
 export function getAllDomainPracticePrompts(): DomainPracticePrompt[] {
   return Object.values(DOMAIN_PRACTICE_PROMPTS)
 }
+
+
+// ==================== UNIFIED PRACTICE GENERATION ====================
+// Requirements: 1.1-1.10, 2.1-2.4 from unified-practice-generation spec
+
+/**
+ * Difficulty distribution for practice tasks
+ * 20% easy, 40% medium, 40% hard
+ */
+export const DIFFICULTY_DISTRIBUTION = {
+  easy: 0.2,    // 20% — 3-4 tasks from 15-20
+  medium: 0.4,  // 40% — 6-8 tasks
+  hard: 0.4     // 40% — 6-8 tasks
+}
+
+/**
+ * Base practice prompt - common rules for ALL domains
+ */
+export const BASE_PRACTICE_PROMPT = `
+═══════════════════════════════════════════════════════════════
+🎯 ОБЩИЕ ПРАВИЛА ГЕНЕРАЦИИ ПРАКТИКИ
+═══════════════════════════════════════════════════════════════
+
+КОЛИЧЕСТВО: Создай 15-20 практических заданий.
+
+ПРОГРЕССИЯ: Задания должны идти от простых к сложным:
+1. Сначала easy — базовое понимание
+2. Затем medium — применение знаний  
+3. В конце hard — анализ, нестандартные задачи
+
+ПРИВЯЗКА К ТЕОРИИ:
+- Используй ТОЛЬКО материал из предоставленной теории
+- НЕ добавляй темы, которых нет в теории
+- В explanation ссылайся на конкретные концепции из теории
+
+РАЗНООБРАЗИЕ (КРИТИЧЕСКИ ВАЖНО!):
+- Каждое задание должно быть УНИКАЛЬНЫМ
+- НЕ делай однотипные задачи с разными числами
+- Разные формулировки вопросов
+- Разные типы задач (найти X, объяснить Y, сравнить Z)
+- Разные контексты и ситуации
+
+ПЛОХО (шаблонно):
+1. "Найдите X если a=10, b=2"
+2. "Найдите X если a=20, b=4"
+3. "Найдите X если a=30, b=6"
+
+ХОРОШО (разнообразно):
+1. "Найдите X если a=10, b=2"
+2. "За какое время Y достигнет значения Z?"
+3. "Сравните два подхода к решению..."
+4. "Объясните, почему в данной ситуации..."
+5. "Найдите ошибку в рассуждении..."
+
+КАЧЕСТВО КАЖДОГО ЗАДАНИЯ:
+- question: чёткая формулировка (минимум 20 символов)
+- hint: подсказка, направляющая к решению (не ответ!)
+- explanation: пошаговое объяснение решения
+- difficulty: соответствует реальной сложности
+`
+
+/**
+ * Difficulty validation result interface
+ */
+export interface DifficultyValidationResult {
+  isValid: boolean
+  distribution: { easy: number; medium: number; hard: number }
+  total: number
+  issues: string[]
+}
+
+/**
+ * Validate difficulty distribution of tasks
+ * Checks that distribution is close to 20/40/40
+ */
+export function validateDifficultyDistribution(
+  tasks: Array<{ difficulty?: string }>
+): DifficultyValidationResult {
+  const counts = { easy: 0, medium: 0, hard: 0 }
+  
+  tasks.forEach(task => {
+    const diff = (task.difficulty || 'medium').toLowerCase()
+    if (diff === 'easy') counts.easy++
+    else if (diff === 'hard') counts.hard++
+    else counts.medium++ // default to medium
+  })
+  
+  const total = tasks.length
+  const issues: string[] = []
+  
+  // Minimum requirements
+  if (counts.easy < 2) issues.push(`Недостаточно easy заданий: ${counts.easy} (минимум 2)`)
+  if (counts.medium < 4) issues.push(`Недостаточно medium заданий: ${counts.medium} (минимум 4)`)
+  if (counts.hard < 4) issues.push(`Недостаточно hard заданий: ${counts.hard} (минимум 4)`)
+  
+  // Check proportions
+  if (total > 0) {
+    const easyRatio = counts.easy / total
+    if (easyRatio > 0.35) {
+      issues.push(`Слишком много easy заданий: ${Math.round(easyRatio * 100)}% (макс 35%)`)
+    }
+    
+    const hardRatio = counts.hard / total
+    if (hardRatio < 0.2) {
+      issues.push(`Мало hard заданий: ${Math.round(hardRatio * 100)}% (минимум 20%)`)
+    }
+  }
+  
+  // Total count check
+  if (total < 10) {
+    issues.push(`Слишком мало заданий: ${total} (минимум 10)`)
+  }
+  
+  return {
+    isValid: issues.length === 0,
+    distribution: counts,
+    total,
+    issues
+  }
+}
+
+/**
+ * Build unified practice prompt for any domain
+ * Combines BASE_PRACTICE_PROMPT with domain-specific instructions
+ */
+export function buildUnifiedPracticePrompt(
+  domain: Domain,
+  topicName: string,
+  courseTitle: string,
+  theoryContent: string
+): string {
+  const domainPrompt = getDomainPracticePrompt(domain)
+  
+  // Calculate target counts based on distribution
+  const targetTotal = 18 // aim for 18 tasks
+  const targetEasy = Math.round(targetTotal * DIFFICULTY_DISTRIBUTION.easy)   // 3-4
+  const targetMedium = Math.round(targetTotal * DIFFICULTY_DISTRIBUTION.medium) // 7-8
+  const targetHard = Math.round(targetTotal * DIFFICULTY_DISTRIBUTION.hard)     // 7-8
+  
+  return `СТРОГО по материалу теории создай практические задания!
+
+${BASE_PRACTICE_PROMPT}
+
+═══════════════════════════════════════════════════════════════
+🎓 СПЕЦИФИКА ДОМЕНА: ${domain}
+═══════════════════════════════════════════════════════════════
+${domainPrompt.systemPrompt}
+
+Предпочтительные типы заданий: ${domainPrompt.taskTypes.join(', ')}
+
+═══════════════════════════════════════════════════════════════
+📊 РАСПРЕДЕЛЕНИЕ СЛОЖНОСТИ (СТРОГО ОБЯЗАТЕЛЬНО!)
+═══════════════════════════════════════════════════════════════
+Создай ровно ${targetTotal} заданий:
+- ${targetEasy} заданий easy (20%) — базовое понимание, простые вопросы
+- ${targetMedium} заданий medium (40%) — применение знаний, расчёты средней сложности
+- ${targetHard} заданий hard (40%) — сложный анализ, нестандартные задачи, доказательства
+
+⚠️ ВАЖНО: НЕ делай большинство заданий easy! 
+Студенту нужны СЛОЖНЫЕ задачи для развития!
+Минимум ${targetHard} заданий должны быть hard!
+
+═══════════════════════════════════════════════════════════════
+📝 ПРИМЕР ФОРМАТА ЗАДАНИЯ
+═══════════════════════════════════════════════════════════════
+${domainPrompt.exampleTasks}
+
+═══════════════════════════════════════════════════════════════
+📖 ТЕОРИЯ (используй ТОЛЬКО этот материал!)
+═══════════════════════════════════════════════════════════════
+Тема: "${topicName}"
+Курс: "${courseTitle}"
+
+${theoryContent}
+
+═══════════════════════════════════════════════════════════════
+📋 ФОРМАТ ОТВЕТА
+═══════════════════════════════════════════════════════════════
+Верни JSON: { "tasks": [...] }
+
+Каждое задание должно содержать:
+- id: порядковый номер (1, 2, 3...)
+- type: "${domainPrompt.taskTypes[0]}" или другой из [${domainPrompt.taskTypes.join(', ')}]
+- difficulty: "easy" | "medium" | "hard"
+- question: текст вопроса
+- hint: подсказка
+- explanation: пошаговое объяснение
+- + специфичные поля для типа (options, correctAnswer, etc.)
+`
+}
+
+// ==================== ENHANCED EXAMPLE TASKS ====================
+
+// Update BIOLOGY_PRACTICE with better examples
+const BIOLOGY_PRACTICE_ENHANCED: DomainPracticePrompt = {
+  ...BIOLOGY_PRACTICE,
+  exampleTasks: `{
+  "type": "single",
+  "difficulty": "medium",
+  "question": "Какая органелла клетки отвечает за синтез АТФ?",
+  "options": ["Рибосома", "Митохондрия", "Лизосома", "Аппарат Гольджи"],
+  "correctAnswer": 1,
+  "hint": "Эту органеллу называют 'энергетической станцией' клетки",
+  "explanation": "Митохондрия — органелла, в которой происходит клеточное дыхание и синтез АТФ."
+},
+{
+  "type": "matching",
+  "difficulty": "hard",
+  "question": "Соотнесите органеллы с их функциями",
+  "leftItems": ["Рибосома", "Митохондрия", "Лизосома", "ЭПС"],
+  "rightItems": ["Синтез белка", "Синтез АТФ", "Расщепление веществ", "Транспорт веществ"],
+  "correctPairs": [[0, 0], [1, 1], [2, 2], [3, 3]],
+  "hint": "Вспомните основные функции каждой органеллы",
+  "explanation": "Рибосома синтезирует белки, митохондрия — АТФ, лизосома расщепляет вещества, ЭПС транспортирует."
+}`
+}
+
+// Update HISTORY_PRACTICE with multiple choice example
+const HISTORY_PRACTICE_ENHANCED: DomainPracticePrompt = {
+  ...HISTORY_PRACTICE,
+  exampleTasks: `{
+  "type": "single",
+  "difficulty": "medium",
+  "question": "В каком году началась Первая мировая война?",
+  "options": ["1912", "1914", "1916", "1918"],
+  "correctAnswer": 1,
+  "hint": "Война началась после убийства эрцгерцога Франца Фердинанда",
+  "explanation": "Первая мировая война началась 28 июля 1914 года."
+},
+{
+  "type": "multiple",
+  "difficulty": "hard",
+  "question": "Какие страны входили в Антанту к 1914 году?",
+  "options": ["Россия", "Германия", "Франция", "Великобритания", "Австро-Венгрия"],
+  "correctAnswers": [0, 2, 3],
+  "hint": "Антанта — военно-политический блок, противостоявший Тройственному союзу",
+  "explanation": "В Антанту входили Россия, Франция и Великобритания. Германия и Австро-Венгрия были в Тройственном союзе."
+}`
+}
+
+// Update ECONOMICS_PRACTICE with realistic data
+const ECONOMICS_PRACTICE_ENHANCED: DomainPracticePrompt = {
+  ...ECONOMICS_PRACTICE,
+  exampleTasks: `{
+  "type": "number",
+  "difficulty": "medium",
+  "question": "Цена товара выросла с 1000 до 1150 рублей. Найдите темп инфляции в процентах.",
+  "correctAnswer": 15,
+  "tolerance": 0.1,
+  "hint": "Темп инфляции = (новая цена - старая цена) / старая цена × 100%",
+  "explanation": "Темп инфляции = (1150 - 1000) / 1000 × 100% = 15%"
+},
+{
+  "type": "number",
+  "difficulty": "hard",
+  "question": "Вклад 100 000 руб. под 10% годовых с ежемесячной капитализацией. Какая сумма будет через год? (округлите до целых)",
+  "correctAnswer": 110471,
+  "tolerance": 10,
+  "hint": "Используйте формулу сложных процентов: S = P × (1 + r/n)^(n×t)",
+  "explanation": "S = 100000 × (1 + 0.10/12)^12 = 100000 × 1.10471 ≈ 110471 руб."
+}`
+}
+
+// Update registry with enhanced versions
+DOMAIN_PRACTICE_PROMPTS.BIOLOGY = BIOLOGY_PRACTICE_ENHANCED
+DOMAIN_PRACTICE_PROMPTS.MEDICINE = BIOLOGY_PRACTICE_ENHANCED
+DOMAIN_PRACTICE_PROMPTS.HISTORY = HISTORY_PRACTICE_ENHANCED
+DOMAIN_PRACTICE_PROMPTS.LAW = HISTORY_PRACTICE_ENHANCED
+DOMAIN_PRACTICE_PROMPTS.ECONOMICS = ECONOMICS_PRACTICE_ENHANCED
