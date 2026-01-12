@@ -325,6 +325,196 @@ export async function generateParallel(
 // Экспорт для обратной совместимости с groq.ts
 export { generateGroq as generateCompletion }
 
+// === STREAMING SUPPORT ===
+
+/**
+ * Стриминг генерации с автоматическим fallback
+ * Возвращает AsyncGenerator для потоковой передачи чанков
+ */
+export async function* streamWithRouter(
+  taskType: TaskType,
+  systemPrompt: string,
+  userPrompt: string,
+  options: GenerateOptions = {}
+): AsyncGenerator<string, void, unknown> {
+  const providers = ROUTING[taskType]
+  const errors: string[] = []
+
+  for (const name of providers) {
+    const provider = PROVIDERS[name]
+    if (!provider) continue
+    
+    if (!checkRateLimit(name, provider.rateLimit)) {
+      errors.push(`${name}: rate limited`)
+      continue
+    }
+
+    // Проверяем наличие API ключа
+    if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
+    if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
+
+    try {
+      console.log(`[AI Router Stream] Trying ${name}...`)
+      
+      if (name === 'groq') {
+        yield* streamGroq(systemPrompt, userPrompt, options)
+        return
+      } else if (name === 'deepseek') {
+        yield* streamDeepSeek(systemPrompt, userPrompt, options)
+        return
+      } else if (name === 'gemini') {
+        // Gemini не поддерживает стриминг в простом API, делаем fallback на обычную генерацию
+        const content = await generateGemini(systemPrompt, userPrompt, options)
+        yield content
+        return
+      }
+    } catch (e: any) {
+      errors.push(`${name}: ${e.message}`)
+      console.warn(`[AI Router Stream] ${name} failed:`, e.message)
+    }
+  }
+
+  throw new Error(`All streaming providers failed: ${errors.join('; ')}`)
+}
+
+/**
+ * Стриминг через Groq
+ */
+async function* streamGroq(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): AsyncGenerator<string, void, unknown> {
+  // Прокси для России
+  if (USE_PROXY) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-proxy-stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.maxTokens ?? 4096,
+          stream: true,
+        }),
+      })
+      
+      if (res.ok && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          const text = decoder.decode(value, { stream: true })
+          const lines = text.split('\n')
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') continue
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content
+                if (content) yield content
+              } catch {}
+            }
+          }
+        }
+        return
+      }
+    } catch (e) {
+      console.warn('[AI Router Stream] Groq proxy failed, trying direct...')
+    }
+  }
+
+  // Прямой стриминг через Groq SDK
+  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
+  
+  for (const model of models) {
+    try {
+      const stream = await groq.chat.completions.create({
+        model,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: true,
+      })
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content
+        if (content) yield content
+      }
+      return
+    } catch (e: any) {
+      const msg = e?.message || ''
+      if (msg.includes('rate') || msg.includes('429')) {
+        console.warn(`[AI Router Stream] Groq ${model}: rate limited, trying next...`)
+        continue
+      }
+      throw e
+    }
+  }
+  throw new Error('Groq stream: all models failed')
+}
+
+/**
+ * Стриминг через DeepSeek
+ */
+async function* streamDeepSeek(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): AsyncGenerator<string, void, unknown> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error('DeepSeek API key not configured')
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: true,
+    }),
+  })
+
+  if (!res.ok) throw new Error(`DeepSeek stream: ${await res.text()}`)
+  if (!res.body) throw new Error('DeepSeek stream: no body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    
+    const text = decoder.decode(value, { stream: true })
+    const lines = text.split('\n')
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.choices?.[0]?.delta?.content
+          if (content) yield content
+        } catch {}
+      }
+    }
+  }
+}
+
 // === VISION SUPPORT ===
 
 /**

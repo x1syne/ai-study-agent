@@ -31,6 +31,7 @@ export interface Module {
   icon: string
   order: number
   topics: Topic[]
+  progress?: number // Calculated progress percentage
 }
 
 export interface Goal {
