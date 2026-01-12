@@ -2,11 +2,51 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Network, Target, Sparkles } from 'lucide-react'
+import { Network, Target, Sparkles, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { KnowledgeGraph } from '@/components/graph/KnowledgeGraph'
 import { TopicDetails } from '@/components/graph/TopicDetails'
 import type { Goal, Topic, Module } from '@/types'
+
+// Error boundary wrapper for KnowledgeGraph
+function SafeKnowledgeGraph({ topics, onTopicClick, selectedTopicId }: {
+  topics: Topic[]
+  onTopicClick: (topicId: string) => void
+  selectedTopicId?: string
+}) {
+  const [hasError, setHasError] = useState(false)
+
+  if (hasError) {
+    return (
+      <div className="h-[400px] flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+          <p className="text-slate-400 mb-4">Не удалось загрузить граф</p>
+          <button 
+            onClick={() => setHasError(false)}
+            className="btn-practicum-outline text-sm"
+          >
+            Попробовать снова
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  try {
+    return (
+      <KnowledgeGraph
+        topics={topics}
+        onTopicClick={onTopicClick}
+        selectedTopicId={selectedTopicId}
+      />
+    )
+  } catch (error) {
+    console.error('KnowledgeGraph render error:', error)
+    setHasError(true)
+    return null
+  }
+}
 
 export default function GraphPage() {
   const router = useRouter()
@@ -171,7 +211,7 @@ export default function GraphPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                   {selectedGoal && allTopics.length > 0 && (
-                    <KnowledgeGraph
+                    <SafeKnowledgeGraph
                       topics={allTopics}
                       onTopicClick={handleTopicClick}
                       selectedTopicId={selectedTopic?.id}

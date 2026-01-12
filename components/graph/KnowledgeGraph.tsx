@@ -88,8 +88,10 @@ function NeuralNode({ data }: {
     connections: number
   } 
 }) {
-  const styles = STATUS_STYLES[data.status]
-  const isActive = data.status !== 'LOCKED'
+  // Защита от неопределённого статуса
+  const safeStatus = data.status && STATUS_STYLES[data.status] ? data.status : 'AVAILABLE'
+  const styles = STATUS_STYLES[safeStatus]
+  const isActive = safeStatus !== 'LOCKED'
   const IconComponent = data.IconComponent
   
   return (
@@ -274,8 +276,10 @@ export function KnowledgeGraph({ topics, onTopicClick, selectedTopicId }: Knowle
         .filter(prereqId => topics.some(t => t.id === prereqId))
         .map(prereqId => {
           const status = getTopicStatus(topic)
-          const styles = STATUS_STYLES[status]
-          const isActive = status === 'IN_PROGRESS' || status === 'AVAILABLE'
+          // Защита от неопределённого статуса
+          const safeStatus = status && STATUS_STYLES[status] ? status : 'AVAILABLE'
+          const styles = STATUS_STYLES[safeStatus]
+          const isActive = safeStatus === 'IN_PROGRESS' || safeStatus === 'AVAILABLE'
           
           return {
             id: `${prereqId}-${topic.id}`,
