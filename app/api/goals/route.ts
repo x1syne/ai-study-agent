@@ -25,7 +25,7 @@ interface GeneratedModule {
   description?: string
   icon?: string
   order: number
-  topics: GeneratedTopic[]
+  topics?: GeneratedTopic[] // Теперь опционально - подтемы генерируются лениво
 }
 
 interface GeneratedCourse {
@@ -56,7 +56,7 @@ function setCachedStructure(title: string, level: string, data: GeneratedModule[
   courseStructureCache.set(key, { data, domain, timestamp: Date.now() })
 }
 
-// Fallback структура с модулями
+// Fallback структура - только модули без тем
 function getFallbackModules(): GeneratedModule[] {
   return [
     {
@@ -64,73 +64,46 @@ function getFallbackModules(): GeneratedModule[] {
       description: 'Знакомство с темой и базовые понятия',
       icon: '📚',
       order: 1,
-      topics: [
-        { slug: 'intro', name: 'Введение', description: 'Знакомство с темой', icon: '📖', difficulty: 'EASY', estimatedMinutes: 15, order: 1, prerequisites: [] },
-        { slug: 'basics', name: 'Основы', description: 'Базовые концепции', icon: '🎯', difficulty: 'EASY', estimatedMinutes: 20, order: 2, prerequisites: ['intro'] },
-      ]
+    },
+    {
+      name: 'Основы',
+      description: 'Фундаментальные концепции',
+      icon: '🎯',
+      order: 2,
     },
     {
       name: 'Практика',
       description: 'Применение знаний на практике',
       icon: '💻',
-      order: 2,
-      topics: [
-        { slug: 'practice', name: 'Практика', description: 'Применение знаний', icon: '💻', difficulty: 'MEDIUM', estimatedMinutes: 30, order: 1, prerequisites: ['basics'] },
-      ]
+      order: 3,
     },
     {
       name: 'Продвинутый уровень',
       description: 'Углублённое изучение темы',
       icon: '🚀',
-      order: 3,
-      topics: [
-        { slug: 'advanced', name: 'Продвинутые темы', description: 'Углублённое изучение', icon: '🚀', difficulty: 'HARD', estimatedMinutes: 45, order: 1, prerequisites: ['practice'] },
-      ]
+      order: 4,
     },
   ]
 }
 
-// Валидация и нормализация структуры модулей
+// Валидация и нормализация структуры модулей (без тем)
 function validateAndNormalizeModules(modules: any[]): GeneratedModule[] | null {
   if (!Array.isArray(modules) || modules.length === 0) {
     return null
   }
 
-  // Проверяем что модули имеют правильную структуру
   const validModules: GeneratedModule[] = []
   
   for (let i = 0; i < modules.length; i++) {
     const mod = modules[i]
-    if (!mod.name || !Array.isArray(mod.topics) || mod.topics.length === 0) {
-      continue
-    }
+    if (!mod.name) continue
 
-    const validTopics: GeneratedTopic[] = []
-    for (let j = 0; j < mod.topics.length; j++) {
-      const topic = mod.topics[j]
-      if (!topic.name) continue
-      
-      validTopics.push({
-        slug: topic.slug || `topic-${i + 1}-${j + 1}`,
-        name: topic.name,
-        description: topic.description || null,
-        icon: topic.icon || '📚',
-        difficulty: topic.difficulty || 'MEDIUM',
-        estimatedMinutes: topic.estimatedMinutes || 30,
-        order: topic.order || j + 1,
-        prerequisites: topic.prerequisites || [],
-      })
-    }
-
-    if (validTopics.length > 0) {
-      validModules.push({
-        name: mod.name,
-        description: mod.description || null,
-        icon: mod.icon || '📚',
-        order: mod.order || i + 1,
-        topics: validTopics,
-      })
-    }
+    validModules.push({
+      name: mod.name,
+      description: mod.description || null,
+      icon: mod.icon || '📚',
+      order: mod.order || i + 1,
+    })
   }
 
   return validModules.length > 0 ? validModules : null
@@ -280,8 +253,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Goals] Total structure time: ${Date.now() - startTime}ms`)
     }
 
-    // Create goal with modules and topics
-    // Requirements: 3.3 - сохраняем домен в базу данных
+    // Create goal with modules ONLY (no topics - they are generated lazily)
     const goal = await prisma.goal.create({
       data: {
         userId: user.id,
@@ -295,44 +267,18 @@ export async function POST(request: NextRequest) {
             description: mod.description || null,
             icon: mod.icon || '📚',
             order: mod.order,
-            topics: {
-              create: mod.topics.map((topic: GeneratedTopic) => ({
-                slug: topic.slug || `topic-${mod.order}-${topic.order}`,
-                name: topic.name,
-                description: topic.description || null,
-                icon: topic.icon || '📚',
-                difficulty: topic.difficulty || 'MEDIUM',
-                estimatedMinutes: topic.estimatedMinutes || 30,
-                order: topic.order || 1,
-                prerequisiteIds: topic.prerequisites || [],
-              })),
-            },
+            // НЕ создаём topics - они генерируются при клике на модуль
           })),
         },
       },
       include: {
         modules: {
-          include: {
-            topics: true,
-          },
           orderBy: { order: 'asc' },
         },
       },
     })
 
-    console.log(`[Goals] Created goal with domain: ${courseDomain}`)
-
-    // Собираем все topics для создания прогресса
-    const allTopics = goal.modules.flatMap(mod => mod.topics)
-
-    // Создание прогресса для всех тем
-    await prisma.topicProgress.createMany({
-      data: allTopics.map((topic) => ({
-        userId: user.id,
-        topicId: topic.id,
-        status: 'AVAILABLE',
-      })),
-    })
+    console.log(`[Goals] Created goal with ${goal.modules.length} modules (topics will be generated lazily)`)
 
     return NextResponse.json(goal, { status: 201 })
   } catch (error) {
