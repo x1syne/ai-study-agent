@@ -17,9 +17,53 @@
 import Groq from 'groq-sdk'
 import { withAIRetry, isAIRetryableError } from './utils/retry'
 import { v4 as uuidv4 } from 'uuid'
+import https from 'https'
 
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
+
+// === GIGACHAT HTTPS REQUEST ===
+// GigaChat использует самоподписанный сертификат, нужен кастомный агент
+function gigaChatRequest(url: string, options: {
+  method: string
+  headers: Record<string, string>
+  body?: string
+}): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<any> }> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url)
+    
+    const req = https.request({
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname,
+      method: options.method,
+      headers: options.headers,
+      rejectUnauthorized: false, // Отключаем проверку SSL для самоподписанного сертификата Сбера
+    }, (res) => {
+      let data = ''
+      res.on('data', chunk => data += chunk)
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode! >= 200 && res.statusCode! < 300,
+          status: res.statusCode!,
+          text: async () => data,
+          json: async () => JSON.parse(data),
+        })
+      })
+    })
+    
+    req.on('error', reject)
+    req.setTimeout(60000, () => {
+      req.destroy()
+      reject(new Error('Request timeout'))
+    })
+    
+    if (options.body) {
+      req.write(options.body)
+    }
+    req.end()
+  })
+}
 
 // === GIGACHAT AUTH ===
 let gigaChatToken: string | null = null
@@ -34,15 +78,7 @@ async function getGigaChatToken(): Promise<string> {
   const authKey = process.env.GIGACHAT_AUTH_KEY
   if (!authKey) throw new Error('GIGACHAT_AUTH_KEY not configured')
 
-  // Используем undici для поддержки самоподписанного сертификата Сбера
-  const { fetch: undiciFetch, Agent } = await import('undici')
-  const agent = new Agent({
-    connect: {
-      rejectUnauthorized: false
-    }
-  })
-
-  const res = await undiciFetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+  const res = await gigaChatRequest('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -51,7 +87,6 @@ async function getGigaChatToken(): Promise<string> {
       'Authorization': `Basic ${authKey}`,
     },
     body: 'scope=GIGACHAT_API_PERS',
-    dispatcher: agent,
   })
 
   if (!res.ok) {
@@ -61,7 +96,6 @@ async function getGigaChatToken(): Promise<string> {
 
   const data = await res.json() as { access_token: string; expires_at: number }
   gigaChatToken = data.access_token
-  // Используем expires_at из ответа (в миллисекундах)
   gigaChatTokenExpiry = data.expires_at
   
   console.log('[GigaChat] Token refreshed, expires at:', new Date(gigaChatTokenExpiry).toISOString())
@@ -262,68 +296,55 @@ async function generateGigaChat(
 ): Promise<string> {
   const token = await getGigaChatToken()
 
-  try {
-    // Выбираем модель: Pro для сложных задач (JSON, большие ответы), Lite для остальных
-    const model = options.json || (options.maxTokens && options.maxTokens > 2000)
-      ? 'GigaChat-Pro' 
-      : 'GigaChat'
+  // Выбираем модель: Pro для сложных задач (JSON, большие ответы), Lite для остальных
+  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
+    ? 'GigaChat-Pro' 
+    : 'GigaChat'
 
-    // Используем undici для поддержки самоподписанного сертификата Сбера
-    const { fetch: undiciFetch, Agent } = await import('undici')
-    const agent = new Agent({
-      connect: {
-        rejectUnauthorized: false
-      }
-    })
+  const res = await gigaChatRequest('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'X-Request-ID': uuidv4(),
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: false,
+    }),
+  })
 
-    const res = await undiciFetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-Request-ID': uuidv4(),
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-      }),
-      dispatcher: agent,
-    })
-
-    if (!res.ok) {
-      const error = await res.text()
-      // Если токен истёк — сбрасываем и пробуем снова
-      if (res.status === 401 || error.includes('Unauthorized')) {
-        gigaChatToken = null
-        gigaChatTokenExpiry = 0
-        throw new Error('GigaChat: token expired, retry needed')
-      }
-      // Rate limit
-      if (res.status === 429) {
-        throw new Error('GigaChat: rate limited')
-      }
-      throw new Error(`GigaChat: ${error}`)
+  if (!res.ok) {
+    const error = await res.text()
+    // Если токен истёк — сбрасываем и пробуем снова
+    if (res.status === 401 || error.includes('Unauthorized')) {
+      gigaChatToken = null
+      gigaChatTokenExpiry = 0
+      throw new Error('GigaChat: token expired, retry needed')
     }
-
-    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
-    const content = data.choices?.[0]?.message?.content || ''
-    
-    // Логируем использование токенов
-    if (data.usage) {
-      console.log(`[GigaChat] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
+    // Rate limit
+    if (res.status === 429) {
+      throw new Error('GigaChat: rate limited')
     }
-    
-    return content
-  } catch (e: any) {
-    throw e
+    throw new Error(`GigaChat: ${error}`)
   }
+
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
+  const content = data.choices?.[0]?.message?.content || ''
+    
+  // Логируем использование токенов
+  if (data.usage) {
+    console.log(`[GigaChat] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
+  }
+    
+  return content
 }
 
 async function generateGemini(
@@ -579,81 +600,17 @@ export async function* streamWithRouter(
 
 /**
  * Стриминг через GigaChat
+ * Используем обычную генерацию и возвращаем результат целиком
+ * (настоящий стриминг требует undici который не совместим с Next.js webpack)
  */
 async function* streamGigaChat(
   system: string,
   user: string,
   options: GenerateOptions
 ): AsyncGenerator<string, void, unknown> {
-  const token = await getGigaChatToken()
-  
-  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
-    ? 'GigaChat-Pro' 
-    : 'GigaChat'
-
-  // Используем undici для поддержки самоподписанного сертификата Сбера
-  const { fetch: undiciFetch, Agent } = await import('undici')
-  const agent = new Agent({
-    connect: {
-      rejectUnauthorized: false
-    }
-  })
-
-  const res = await undiciFetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
-      'Authorization': `Bearer ${token}`,
-      'X-Request-ID': uuidv4(),
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ],
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: true,
-      update_interval: 0,
-    }),
-    dispatcher: agent,
-  })
-
-  if (!res.ok) {
-    const error = await res.text()
-    if (res.status === 401) {
-      gigaChatToken = null
-      gigaChatTokenExpiry = 0
-    }
-    throw new Error(`GigaChat stream: ${error}`)
-  }
-  
-  if (!res.body) throw new Error('GigaChat stream: no body')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    
-    const text = decoder.decode(value, { stream: true })
-    const lines = text.split('\n')
-    
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') continue
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.choices?.[0]?.delta?.content
-          if (content) yield content
-        } catch {}
-      }
-    }
-  }
+  // Делаем обычную генерацию и возвращаем результат целиком
+  const content = await generateGigaChat(system, user, options)
+  yield content
 }
 
 /**

@@ -35,7 +35,6 @@
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "tailwind-merge": "^2.1.0",
-    "undici": "^7.18.2",
     "vis-data": "^7.1.9",
     "vis-network": "^9.1.9",
     "zustand": "^4.4.7"
