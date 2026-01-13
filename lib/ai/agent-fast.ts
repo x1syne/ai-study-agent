@@ -156,6 +156,12 @@ async function analyzeTopicFast(
 }
 
 
+// Результат генерации секции с информацией о провайдере
+interface SectionResult {
+  content: string
+  provider?: string
+}
+
 // Генерация одной секции с domain-specific промптом
 // Requirements: 4.2 - использовать getDomainPrompt для выбора промпта
 // Requirements: 4.5 - AI сам структурирует контент до наилучшей версии
@@ -165,7 +171,7 @@ async function generateSection(
   analysis: TopicAnalysis,
   ragContext: string = '',
   domainPrompt?: DomainPrompt  // Промпт из getDomainPrompt (если есть домен из БД)
-): Promise<string> {
+): Promise<SectionResult> {
   const baseContext = `Тема: "${analysis.topic}", Курс: "${analysis.courseName}"`
   
   // Добавляем RAG контекст
@@ -224,10 +230,13 @@ ${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
       temperature: 0.7,
       maxTokens: 2500  // Увеличено для более детального контента
     })
-    return result.content && result.content.length > 50 ? result.content : ''
+    return {
+      content: result.content && result.content.length > 50 ? result.content : '',
+      provider: result.provider
+    }
   } catch (e) {
     console.error(`[Fast Agent] Section "${template.title}" failed:`, e)
-    return ''
+    return { content: '', provider: undefined }
   }
 }
 
@@ -236,7 +245,7 @@ ${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
 async function generateAllSectionsParallel(
   analysis: TopicAnalysis,
   ragContext: string = ''
-): Promise<string> {
+): Promise<{ content: string; providers: string[] }> {
   console.log('[Fast Agent] Generating sections in PARALLEL...')
   console.log(`[Fast Agent] Domain: ${analysis.domain}`)
   console.log(`[Fast Agent] Domain Enum: ${analysis.domainEnum || 'not set'}`)
@@ -267,22 +276,29 @@ async function generateAllSectionsParallel(
   
   console.log(`[Fast Agent] Parallel generation took ${Date.now() - startTime}ms`)
 
-  // Собираем результаты
+  // Собираем результаты и провайдеры
   const contentParts: string[] = []
+  const usedProviders: string[] = []
   
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     const template = domainConfig.sectionTemplates[i]
     
-    if (result.status === 'fulfilled' && result.value) {
-      contentParts.push(`## ${template.title}\n\n${result.value}`)
+    if (result.status === 'fulfilled' && result.value.content) {
+      contentParts.push(`## ${template.title}\n\n${result.value.content}`)
+      if (result.value.provider && !usedProviders.includes(result.value.provider)) {
+        usedProviders.push(result.value.provider)
+      }
     } else if (template.required) {
       // Для обязательных секций добавляем placeholder
       contentParts.push(`## ${template.title}\n\n*Раздел генерируется...*`)
     }
   }
 
-  return contentParts.join('\n\n---\n\n')
+  return {
+    content: contentParts.join('\n\n---\n\n'),
+    providers: usedProviders
+  }
 }
 
 
@@ -408,7 +424,14 @@ export async function runLessonAgentFast(
       content: cachedLesson,
       analysis,
       plan: { title: topic, objectives: [], sections: [], practiceIdeas: [] },
-      metadata: { fromCache: true, generatedAt: new Date().toISOString(), domain: analysis.domain, domainEnum: analysis.domainEnum },
+      metadata: { 
+        fromCache: true, 
+        generatedAt: new Date().toISOString(), 
+        domain: analysis.domain, 
+        domainEnum: analysis.domainEnum,
+        provider: 'cache',  // Из кэша
+        providers: ['cache']
+      },
       tasks
     }
   }
@@ -442,10 +465,13 @@ export async function runLessonAgentFast(
   }
 
   // 2. ПАРАЛЛЕЛЬНАЯ генерация контента И заданий (с RAG контекстом)
-  let [content, tasks] = await Promise.all([
+  let [contentResult, tasks] = await Promise.all([
     generateAllSectionsParallel(analysis, ragContext),
     generateTasksFast(analysis)
   ])
+  
+  let content = contentResult.content
+  const usedProviders = contentResult.providers
   
   // Умное кэширование с валидацией
   const lessonCacheResult = setCachedLessonSmart(topic, courseName, content, analysis.domain)
@@ -502,6 +528,9 @@ export async function runLessonAgentFast(
       fromCache: false,
       ragContextLength: ragContext.length,
       usedFallback,
+      // Информация о провайдере
+      provider: usedProviders.length > 0 ? usedProviders[0] : 'unknown',
+      providers: usedProviders,
       // Информация о валидации
       validation: {
         lessonCached: lessonCacheResult.cached,

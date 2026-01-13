@@ -221,6 +221,7 @@ export async function GET(
       lesson,
       progress: { ...progress, status: 'IN_PROGRESS' },
       quality: qualityInfo, // Информация о качестве контента
+      provider: content?.metadata?.provider || 'unknown', // Какой AI провайдер использовался
     })
   } catch (error) {
     console.error('Error fetching lesson:', error)

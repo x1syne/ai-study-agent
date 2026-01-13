@@ -199,6 +199,14 @@ async function generateDeepSeek(
   }
 }
 
+// Список моделей Gemini для каскадного fallback
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',      // Основная - самая новая
+  'gemini-2.0-flash',      // Fallback 1
+  'gemini-1.5-flash',      // Fallback 2 - стабильная
+  'gemini-1.5-flash-8b',   // Fallback 3 - быстрая легкая
+]
+
 async function generateGemini(
   system: string,
   user: string,
@@ -212,43 +220,79 @@ async function generateGemini(
     ? '\n\nВАЖНО: Ответь ТОЛЬКО валидным JSON без markdown блоков.' 
     : ''
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+  const errors: string[] = []
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${system}${jsonInstruction}\n\n${user}` }] }],
-          generationConfig: {
-            temperature: options.temperature ?? 0.7,
-            maxOutputTokens: options.maxTokens ?? 4096,
-          },
-        }),
-        signal: controller.signal,
+  // Пробуем каждую модель по очереди
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+
+    try {
+      console.log(`[Gemini] Trying model: ${model}`)
+      
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${system}${jsonInstruction}\n\n${user}` }] }],
+            generationConfig: {
+              temperature: options.temperature ?? 0.7,
+              maxOutputTokens: options.maxTokens ?? 4096,
+            },
+          }),
+          signal: controller.signal,
+        }
+      )
+
+      clearTimeout(timeoutId)
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        // Проверяем на rate limit или quota exceeded
+        if (errorText.includes('429') || errorText.includes('quota') || errorText.includes('rate') || errorText.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`[Gemini] ${model} rate limited, trying next model...`)
+          errors.push(`${model}: rate limited`)
+          continue
+        }
+        throw new Error(`Gemini ${model}: ${errorText}`)
       }
-    )
-
-    clearTimeout(timeoutId)
-
-    if (!res.ok) throw new Error(`Gemini: ${await res.text()}`)
-    const data = await res.json()
-    let content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    
-    // Очищаем markdown блоки если ожидаем JSON
-    if (options.json && content) {
-      content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      
+      const data = await res.json()
+      let content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      
+      // Очищаем markdown блоки если ожидаем JSON
+      if (options.json && content) {
+        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      }
+      
+      if (content) {
+        console.log(`[Gemini] Success with ${model}`)
+        return content
+      }
+    } catch (e: any) {
+      clearTimeout(timeoutId)
+      const errorMsg = e?.message || String(e)
+      errors.push(`${model}: ${errorMsg}`)
+      
+      if (e.name === 'AbortError') {
+        console.warn(`[Gemini] ${model} timeout, trying next model...`)
+        continue
+      }
+      
+      // Если это rate limit ошибка - пробуем следующую модель
+      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('rate')) {
+        console.warn(`[Gemini] ${model} rate limited, trying next model...`)
+        continue
+      }
+      
+      // Для других ошибок тоже пробуем следующую модель
+      console.warn(`[Gemini] ${model} failed: ${errorMsg}, trying next...`)
     }
-    
-    return content
-  } catch (e: any) {
-    clearTimeout(timeoutId)
-    if (e.name === 'AbortError') throw new Error('Gemini: timeout')
-    throw e
   }
+  
+  throw new Error(`Gemini: all models failed - ${errors.join('; ')}`)
 }
 
 // === ГЛАВНЫЙ РОУТЕР ===
