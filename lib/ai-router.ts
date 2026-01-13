@@ -217,7 +217,7 @@ async function generateGemini(
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -262,9 +262,9 @@ const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast: ['groq', 'gemini'],
-  heavy: ['groq', 'gemini'],  // Убрал DeepSeek — теперь только бесплатные
-  chat: ['groq'],
+  fast: ['gemini', 'groq'],   // Gemini первый для теста
+  heavy: ['gemini', 'groq'],  // Gemini первый для теста
+  chat: ['gemini', 'groq'],   // Gemini первый для теста
 }
 
 /**
