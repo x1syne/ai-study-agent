@@ -200,11 +200,9 @@ async function generateDeepSeek(
 }
 
 // Список моделей Gemini для каскадного fallback
+// Только 2.5 Lite - используется как fallback после Groq
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',      // Основная - самая новая
-  'gemini-2.0-flash',      // Fallback 1
-  'gemini-1.5-flash',      // Fallback 2 - стабильная
-  'gemini-1.5-flash-8b',   // Fallback 3 - быстрая легкая
+  'gemini-2.5-flash-lite-preview-06-17',  // Lite версия 2.5
 ]
 
 async function generateGemini(
@@ -230,16 +228,22 @@ async function generateGemini(
     try {
       console.log(`[Gemini] Trying model: ${model}`)
       
+      // Gemma модели используют тот же API но с другим форматом
+      const isGemma = model.startsWith('gemma')
+      
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `${system}${jsonInstruction}\n\n${user}` }] }],
+            contents: [{ 
+              parts: [{ text: `${system}${jsonInstruction}\n\n${user}` }],
+              role: 'user'
+            }],
             generationConfig: {
               temperature: options.temperature ?? 0.7,
-              maxOutputTokens: options.maxTokens ?? 4096,
+              maxOutputTokens: isGemma ? Math.min(options.maxTokens ?? 4096, 8192) : (options.maxTokens ?? 4096),
             },
           }),
           signal: controller.signal,
@@ -254,6 +258,12 @@ async function generateGemini(
         if (errorText.includes('429') || errorText.includes('quota') || errorText.includes('rate') || errorText.includes('RESOURCE_EXHAUSTED')) {
           console.warn(`[Gemini] ${model} rate limited, trying next model...`)
           errors.push(`${model}: rate limited`)
+          continue
+        }
+        // Модель не найдена - пробуем следующую
+        if (errorText.includes('not found') || errorText.includes('404') || errorText.includes('NOT_FOUND')) {
+          console.warn(`[Gemini] ${model} not found, trying next model...`)
+          errors.push(`${model}: not found`)
           continue
         }
         throw new Error(`Gemini ${model}: ${errorText}`)
@@ -306,9 +316,9 @@ const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast: ['gemini', 'groq'],   // Gemini первый для теста
-  heavy: ['gemini', 'groq'],  // Gemini первый для теста
-  chat: ['gemini', 'groq'],   // Gemini первый для теста
+  fast: ['groq', 'gemini'],   // Groq первый, Gemini 2.5 Lite как fallback
+  heavy: ['groq', 'gemini'],  // Groq первый, Gemini 2.5 Lite как fallback
+  chat: ['groq', 'gemini'],   // Groq первый, Gemini 2.5 Lite как fallback
 }
 
 /**
