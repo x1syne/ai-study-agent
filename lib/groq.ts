@@ -68,7 +68,6 @@ export async function generateCompletion(
     'llama-3.3-70b-versatile',  // Best quality
     'llama-3.1-70b-versatile',  // Fallback
     'llama-3.1-8b-instant',     // Fast fallback
-    'mixtral-8x7b-32768'        // Alternative
   ]
   
   let lastError: Error | null = null
@@ -127,7 +126,7 @@ export async function streamCompletion(
   userPrompt: string
 ) {
   // Try models in order
-  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
   
   for (const model of models) {
     try {
