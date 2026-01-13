@@ -16,9 +16,48 @@
 
 import Groq from 'groq-sdk'
 import { withAIRetry, isAIRetryableError } from './utils/retry'
+import { v4 as uuidv4 } from 'uuid'
 
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
+
+// === GIGACHAT AUTH ===
+let gigaChatToken: string | null = null
+let gigaChatTokenExpiry: number = 0
+
+async function getGigaChatToken(): Promise<string> {
+  // Если токен ещё валиден (с запасом 2 минуты) — возвращаем его
+  if (gigaChatToken && Date.now() < gigaChatTokenExpiry - 120000) {
+    return gigaChatToken
+  }
+
+  const authKey = process.env.GIGACHAT_AUTH_KEY
+  if (!authKey) throw new Error('GIGACHAT_AUTH_KEY not configured')
+
+  const res = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'RqUID': uuidv4(),
+      'Authorization': `Basic ${authKey}`,
+    },
+    body: 'scope=GIGACHAT_API_PERS',
+  })
+
+  if (!res.ok) {
+    const error = await res.text()
+    throw new Error(`GigaChat auth failed: ${error}`)
+  }
+
+  const data = await res.json()
+  gigaChatToken = data.access_token
+  // Используем expires_at из ответа (в миллисекундах)
+  gigaChatTokenExpiry = data.expires_at
+  
+  console.log('[GigaChat] Token refreshed, expires at:', new Date(gigaChatTokenExpiry).toISOString())
+  return gigaChatToken!
+}
 
 /**
  * Безопасный парсинг JSON из AI ответа
@@ -205,6 +244,78 @@ const GEMINI_MODELS = [
   'gemini-2.5-flash-lite-preview-06-17',  // Lite версия 2.5
 ]
 
+// === GIGACHAT PROVIDER ===
+
+async function generateGigaChat(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): Promise<string> {
+  const token = await getGigaChatToken()
+  
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
+
+  try {
+    // Выбираем модель: Pro для сложных задач (JSON, большие ответы), Lite для остальных
+    const model = options.json || (options.maxTokens && options.maxTokens > 2000)
+      ? 'GigaChat-Pro' 
+      : 'GigaChat'
+
+    const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'X-Request-ID': uuidv4(),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: false,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!res.ok) {
+      const error = await res.text()
+      // Если токен истёк — сбрасываем и пробуем снова
+      if (res.status === 401 || error.includes('Unauthorized')) {
+        gigaChatToken = null
+        gigaChatTokenExpiry = 0
+        throw new Error('GigaChat: token expired, retry needed')
+      }
+      // Rate limit
+      if (res.status === 429) {
+        throw new Error('GigaChat: rate limited')
+      }
+      throw new Error(`GigaChat: ${error}`)
+    }
+
+    const data = await res.json()
+    const content = data.choices?.[0]?.message?.content || ''
+    
+    // Логируем использование токенов
+    if (data.usage) {
+      console.log(`[GigaChat] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
+    }
+    
+    return content
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('GigaChat: timeout')
+    throw e
+  }
+}
+
 async function generateGemini(
   system: string,
   user: string,
@@ -310,15 +421,16 @@ async function generateGemini(
 type ProviderFn = (s: string, u: string, o: GenerateOptions) => Promise<string>
 
 const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
+  gigachat: { fn: generateGigaChat, rateLimit: 60 },
   groq: { fn: generateGroq, rateLimit: 30 },
   deepseek: { fn: generateDeepSeek, rateLimit: 60 },
   gemini: { fn: generateGemini, rateLimit: 50 },
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast: ['groq', 'gemini'],   // Groq первый, Gemini 2.5 Lite как fallback
-  heavy: ['groq', 'gemini'],  // Groq первый, Gemini 2.5 Lite как fallback
-  chat: ['groq', 'gemini'],   // Groq первый, Gemini 2.5 Lite как fallback
+  fast: ['gigachat', 'groq', 'gemini'],   // GigaChat первый (быстрый и дешёвый)
+  heavy: ['gigachat', 'groq', 'gemini'],  // GigaChat для тяжёлых задач тоже
+  chat: ['gigachat', 'groq', 'gemini'],   // GigaChat для чата
 }
 
 /**
@@ -346,6 +458,7 @@ export async function generateWithRouter(
     }
 
     // Проверяем наличие API ключа
+    if (name === 'gigachat' && !process.env.GIGACHAT_AUTH_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
@@ -423,13 +536,17 @@ export async function* streamWithRouter(
     }
 
     // Проверяем наличие API ключа
+    if (name === 'gigachat' && !process.env.GIGACHAT_AUTH_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
     try {
       console.log(`[AI Router Stream] Trying ${name}...`)
       
-      if (name === 'groq') {
+      if (name === 'gigachat') {
+        yield* streamGigaChat(systemPrompt, userPrompt, options)
+        return
+      } else if (name === 'groq') {
         yield* streamGroq(systemPrompt, userPrompt, options)
         return
       } else if (name === 'deepseek') {
@@ -448,6 +565,76 @@ export async function* streamWithRouter(
   }
 
   throw new Error(`All streaming providers failed: ${errors.join('; ')}`)
+}
+
+/**
+ * Стриминг через GigaChat
+ */
+async function* streamGigaChat(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): AsyncGenerator<string, void, unknown> {
+  const token = await getGigaChatToken()
+  
+  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
+    ? 'GigaChat-Pro' 
+    : 'GigaChat'
+
+  const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'Authorization': `Bearer ${token}`,
+      'X-Request-ID': uuidv4(),
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: true,
+      update_interval: 0,
+    }),
+  })
+
+  if (!res.ok) {
+    const error = await res.text()
+    if (res.status === 401) {
+      gigaChatToken = null
+      gigaChatTokenExpiry = 0
+    }
+    throw new Error(`GigaChat stream: ${error}`)
+  }
+  
+  if (!res.body) throw new Error('GigaChat stream: no body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    
+    const text = decoder.decode(value, { stream: true })
+    const lines = text.split('\n')
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.choices?.[0]?.delta?.content
+          if (content) yield content
+        } catch {}
+      }
+    }
+  }
 }
 
 /**
