@@ -160,6 +160,33 @@ function MisconceptionBlock({ data }: { data: { wrong: string; right: string; wh
   )
 }
 
+// Замена кириллицы на латиницу в LaTeX формулах
+const cyrillicToLatinMap: Record<string, string> = {
+  'А': 'A', 'В': 'B', 'С': 'C', 'Е': 'E', 'Н': 'H', 'К': 'K', 'М': 'M', 
+  'О': 'O', 'Р': 'P', 'Т': 'T', 'Х': 'X', 'У': 'Y',
+  'а': 'a', 'в': 'b', 'с': 'c', 'е': 'e', 'н': 'h', 'к': 'k', 'м': 'm',
+  'о': 'o', 'р': 'p', 'т': 't', 'х': 'x', 'у': 'y'
+}
+
+function sanitizeLatexContent(content: string): string {
+  // Находим все LaTeX блоки и заменяем кириллицу на латиницу
+  return content.replace(/\$\$([^$]+)\$\$|\$([^$]+)\$/g, (match, block, inline) => {
+    const formula = block || inline
+    const isBlock = !!block
+    
+    // Заменяем похожие кириллические буквы на латинские
+    let sanitized = formula
+    for (const [cyr, lat] of Object.entries(cyrillicToLatinMap)) {
+      sanitized = sanitized.replace(new RegExp(cyr, 'g'), lat)
+    }
+    
+    // Оборачиваем кириллический текст в \text{}
+    sanitized = sanitized.replace(/([а-яёА-ЯЁ][а-яёА-ЯЁ\s]*)/g, '\\text{$1}')
+    
+    return isBlock ? `$$${sanitized}$$` : `$${sanitized}$`
+  })
+}
+
 // Парсинг интерактивных блоков из контента
 function parseInteractiveBlocks(content: string): (string | { type: string; data: any })[] {
   const parts: (string | { type: string; data: any })[] = []
@@ -202,8 +229,9 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
     setTimeout(() => setCopiedCode(null), 2000)
   }
 
-  // Парсим интерактивные блоки
-  const parts = parseInteractiveBlocks(content)
+  // Очищаем LaTeX от кириллицы и парсим интерактивные блоки
+  const sanitizedContent = sanitizeLatexContent(content)
+  const parts = parseInteractiveBlocks(sanitizedContent)
 
   return (
     <div className="markdown-content">
@@ -236,7 +264,8 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
               [rehypeKatex, { 
                 throwOnError: false,
                 errorColor: '#cc0000',
-                output: 'htmlAndMathml'
+                output: 'htmlAndMathml',
+                strict: false  // Отключаем strict mode для подавления предупреждений
               }]
             ]}
             components={{
