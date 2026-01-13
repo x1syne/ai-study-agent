@@ -12,6 +12,12 @@ import {
   buildUnifiedPracticePrompt, 
   validateDifficultyDistribution 
 } from '@/lib/ai/domain-prompts'
+// Quality Gateway для проверки качества контента
+import { 
+  processContentThroughGateway, 
+  logQualityMetrics,
+  formatQualityForResponse 
+} from '@/lib/ai/quality-gateway'
 
 // Обёртка для совместимости со старым API
 async function generateCompletion(
@@ -134,6 +140,7 @@ export async function GET(
     }
 
     let content: any
+    let qualityInfo: any = null
 
     if (lessonType === 'theory') {
       try {
@@ -142,11 +149,30 @@ export async function GET(
           // Requirements: 4.2, 4.4 - передаём домен из базы данных
           const goalDomain = topic.module.goal.domain as Domain
           const agentResult = await runLessonAgent(topic.name, topic.module.goal.title, user.id, goalDomain)
+          
+          // Пропускаем через Quality Gateway
+          const gatewayResult = processContentThroughGateway({
+            content: agentResult.content,
+            tasks: agentResult.tasks || [],
+            topicName: topic.name,
+            courseName: topic.module.goal.title,
+            domain: goalDomain
+          })
+          
+          // Логируем метрики качества
+          logQualityMetrics(topic.name, gatewayResult)
+          
+          // Сохраняем информацию о качестве
+          qualityInfo = formatQualityForResponse(gatewayResult)
+          
           content = { 
-            markdown: agentResult.content,
+            markdown: gatewayResult.content,
             analysis: agentResult.analysis,
             plan: agentResult.plan,
-            metadata: agentResult.metadata
+            metadata: {
+              ...agentResult.metadata,
+              quality: qualityInfo
+            }
           }
         } else {
           // Fallback: используем getFullRAGContext
@@ -194,6 +220,7 @@ export async function GET(
       topic: { id: topic.id, name: topic.name, description: topic.description, icon: topic.icon },
       lesson,
       progress: { ...progress, status: 'IN_PROGRESS' },
+      quality: qualityInfo, // Информация о качестве контента
     })
   } catch (error) {
     console.error('Error fetching lesson:', error)

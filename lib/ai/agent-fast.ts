@@ -3,20 +3,23 @@
  * 
  * Ключевые оптимизации:
  * 1. Параллельная генерация секций (вместо последовательной)
- * 2. Кэширование результатов
+ * 2. Кэширование результатов с валидацией
  * 3. Мульти-провайдер с fallback
  * 4. Уменьшенные задержки
  * 5. RAG интеграция с персонализацией
  * 6. Domain-specific prompts (13 доменов)
+ * 7. Fallback контент при ошибках
  */
 
 import { generateWithRouter } from '@/lib/ai-router'
 import { 
-  getCachedLesson, setCachedLesson,
-  getCachedTasks, setCachedTasks,
-  getCachedAnalysis, setCachedAnalysis 
+  getCachedLesson,
+  getCachedTasks,
+  getCachedAnalysis, setCachedAnalysis,
+  setCachedLessonSmart, setCachedTasksSmart
 } from '@/lib/ai-cache'
 import { getFullRAGContext, getDomainRAGContext } from '@/lib/rag'
+import { getFallbackTheory, getFallbackTasks } from './fallback-content'
 import { 
   detectDomain, 
   getConfigForTopic,
@@ -361,7 +364,7 @@ JSON формат:
       hint: t.hint || ''
     }))
     
-    setCachedTasks(analysis.topic, analysis.courseName, tasks)
+    // Кэширование перенесено в runLessonAgentFast с валидацией
     return tasks
   } catch (e) {
     console.error('[Fast Agent] Tasks generation failed:', e)
@@ -439,20 +442,38 @@ export async function runLessonAgentFast(
   }
 
   // 2. ПАРАЛЛЕЛЬНАЯ генерация контента И заданий (с RAG контекстом)
-  const [content, tasks] = await Promise.all([
+  let [content, tasks] = await Promise.all([
     generateAllSectionsParallel(analysis, ragContext),
     generateTasksFast(analysis)
   ])
   
-  // Кэшируем результат
-  if (content.length > 1000) {
-    setCachedLesson(topic, courseName, content)
+  // Умное кэширование с валидацией
+  const lessonCacheResult = setCachedLessonSmart(topic, courseName, content, analysis.domain)
+  const tasksCacheResult = setCachedTasksSmart(topic, courseName, tasks)
+
+  // Fallback при очень низком качестве
+  let usedFallback = false
+  
+  if (lessonCacheResult.validation.score < 30) {
+    console.warn(`[Fast Agent] ⚠️ Content quality too low (${lessonCacheResult.validation.score}), using fallback`)
+    content = getFallbackTheory(topic, courseName, analysis.domainEnum || 'GENERAL')
+    usedFallback = true
+  }
+  
+  if (tasksCacheResult.validation.score < 25) {
+    console.warn(`[Fast Agent] ⚠️ Tasks quality too low (${tasksCacheResult.validation.score}), using fallback`)
+    tasks = getFallbackTasks(topic, analysis.domainEnum || 'GENERAL')
+    usedFallback = true
   }
 
   const totalTime = Date.now() - startTime
   console.log(`\n[Fast Agent] DONE in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`)
   console.log(`[Fast Agent] Domain: ${domainConfig.name}`)
-  console.log(`[Fast Agent] Content: ${content.length} chars, Tasks: ${tasks.length}\n`)
+  console.log(`[Fast Agent] Content: ${content.length} chars, Tasks: ${tasks.length}`)
+  console.log(`[Fast Agent] Cached: lesson=${lessonCacheResult.cached}, tasks=${tasksCacheResult.cached}`)
+  if (usedFallback) {
+    console.log(`[Fast Agent] ⚠️ Used fallback content`)
+  }
 
   const plan: LessonPlan = {
     title: topic,
@@ -479,7 +500,19 @@ export async function runLessonAgentFast(
       sectionsCount: domainConfig.sectionTemplates.length,
       tasksCount: tasks.length,
       fromCache: false,
-      ragContextLength: ragContext.length
+      ragContextLength: ragContext.length,
+      usedFallback,
+      // Информация о валидации
+      validation: {
+        lessonCached: lessonCacheResult.cached,
+        lessonScore: lessonCacheResult.validation.score,
+        tasksCached: tasksCacheResult.cached,
+        tasksScore: tasksCacheResult.validation.score,
+        issues: [
+          ...lessonCacheResult.validation.issues,
+          ...tasksCacheResult.validation.issues
+        ]
+      }
     },
     tasks
   }

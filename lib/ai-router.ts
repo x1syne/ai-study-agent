@@ -5,9 +5,17 @@
  * - fast: Groq (самый быстрый) → Gemini
  * - heavy: DeepSeek (дешёвый) → Gemini → Groq
  * - chat: только Groq (для скорости)
+ * 
+ * Включает:
+ * - Автоматический fallback между провайдерами
+ * - Rate limiting
+ * - Retry с экспоненциальной задержкой
+ * - Стриминг
+ * - Vision API
  */
 
 import Groq from 'groq-sdk'
+import { withAIRetry, isAIRetryableError } from './utils/retry'
 
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
@@ -255,12 +263,13 @@ const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
 
 const ROUTING: Record<TaskType, string[]> = {
   fast: ['groq', 'gemini'],
-  heavy: ['deepseek', 'gemini', 'groq'],
+  heavy: ['groq', 'gemini'],  // Убрал DeepSeek — теперь только бесплатные
   chat: ['groq'],
 }
 
 /**
  * Генерация с автоматическим fallback между провайдерами
+ * Включает retry с экспоненциальной задержкой для каждого провайдера
  */
 export async function generateWithRouter(
   taskType: TaskType,
@@ -288,18 +297,28 @@ export async function generateWithRouter(
 
     try {
       console.log(`[AI Router] Trying ${name}...`)
-      const content = await provider.fn(systemPrompt, userPrompt, options)
+      
+      // Оборачиваем в retry для обработки временных ошибок
+      const content = await withAIRetry(
+        () => provider.fn(systemPrompt, userPrompt, options),
+        `AI Router ${name}`
+      )
       
       if (content) {
         console.log(`[AI Router] Success with ${name} in ${Date.now() - startTime}ms`)
         return { content, provider: name, latencyMs: Date.now() - startTime }
       }
     } catch (e: any) {
-      errors.push(`${name}: ${e.message}`)
-      console.warn(`[AI Router] ${name} failed:`, e.message)
+      const errorMsg = e?.message || String(e)
+      errors.push(`${name}: ${errorMsg}`)
+      console.warn(`[AI Router] ${name} failed:`, errorMsg)
+      
+      // Если ошибка не retryable — сразу переходим к следующему провайдеру
+      if (!isAIRetryableError(e)) {
+        console.log(`[AI Router] ${name} error is not retryable, trying next provider...`)
+      }
     }
   }
-
   throw new Error(`All providers failed: ${errors.join('; ')}`)
 }
 
