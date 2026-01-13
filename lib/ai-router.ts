@@ -34,7 +34,15 @@ async function getGigaChatToken(): Promise<string> {
   const authKey = process.env.GIGACHAT_AUTH_KEY
   if (!authKey) throw new Error('GIGACHAT_AUTH_KEY not configured')
 
-  const res = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+  // Используем undici для поддержки самоподписанного сертификата Сбера
+  const { fetch: undiciFetch, Agent } = await import('undici')
+  const agent = new Agent({
+    connect: {
+      rejectUnauthorized: false
+    }
+  })
+
+  const res = await undiciFetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -43,6 +51,7 @@ async function getGigaChatToken(): Promise<string> {
       'Authorization': `Basic ${authKey}`,
     },
     body: 'scope=GIGACHAT_API_PERS',
+    dispatcher: agent,
   })
 
   if (!res.ok) {
@@ -50,7 +59,7 @@ async function getGigaChatToken(): Promise<string> {
     throw new Error(`GigaChat auth failed: ${error}`)
   }
 
-  const data = await res.json()
+  const data = await res.json() as { access_token: string; expires_at: number }
   gigaChatToken = data.access_token
   // Используем expires_at из ответа (в миллисекундах)
   gigaChatTokenExpiry = data.expires_at
@@ -252,9 +261,6 @@ async function generateGigaChat(
   options: GenerateOptions
 ): Promise<string> {
   const token = await getGigaChatToken()
-  
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 60000)
 
   try {
     // Выбираем модель: Pro для сложных задач (JSON, большие ответы), Lite для остальных
@@ -262,7 +268,15 @@ async function generateGigaChat(
       ? 'GigaChat-Pro' 
       : 'GigaChat'
 
-    const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+    // Используем undici для поддержки самоподписанного сертификата Сбера
+    const { fetch: undiciFetch, Agent } = await import('undici')
+    const agent = new Agent({
+      connect: {
+        rejectUnauthorized: false
+      }
+    })
+
+    const res = await undiciFetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -280,10 +294,8 @@ async function generateGigaChat(
         max_tokens: options.maxTokens ?? 4096,
         stream: false,
       }),
-      signal: controller.signal,
+      dispatcher: agent,
     })
-
-    clearTimeout(timeoutId)
 
     if (!res.ok) {
       const error = await res.text()
@@ -300,7 +312,7 @@ async function generateGigaChat(
       throw new Error(`GigaChat: ${error}`)
     }
 
-    const data = await res.json()
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
     const content = data.choices?.[0]?.message?.content || ''
     
     // Логируем использование токенов
@@ -310,8 +322,6 @@ async function generateGigaChat(
     
     return content
   } catch (e: any) {
-    clearTimeout(timeoutId)
-    if (e.name === 'AbortError') throw new Error('GigaChat: timeout')
     throw e
   }
 }
@@ -581,7 +591,15 @@ async function* streamGigaChat(
     ? 'GigaChat-Pro' 
     : 'GigaChat'
 
-  const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+  // Используем undici для поддержки самоподписанного сертификата Сбера
+  const { fetch: undiciFetch, Agent } = await import('undici')
+  const agent = new Agent({
+    connect: {
+      rejectUnauthorized: false
+    }
+  })
+
+  const res = await undiciFetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -600,6 +618,7 @@ async function* streamGigaChat(
       stream: true,
       update_interval: 0,
     }),
+    dispatcher: agent,
   })
 
   if (!res.ok) {
