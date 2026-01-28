@@ -226,10 +226,12 @@ ${domainConfig.examplePatterns.map(p => `- ${p}`).join('\n')}${ragInstruction}`
 Используй ### для подзаголовков, **жирный** для терминов, списки для структуры.`
 
   try {
+    console.log(`[Fast Agent] Generating section "${template.title}" with ${template.minWords} words...`)
     const result = await generateWithRouter('heavy', fullSystemPrompt, sectionPrompt, {
       temperature: 0.7,
       maxTokens: 2500  // Увеличено для более детального контента
     })
+    console.log(`[Fast Agent] Section "${template.title}" generated: ${result.content.length} chars by ${result.provider}`)
     return {
       content: result.content && result.content.length > 50 ? result.content : '',
       provider: result.provider
@@ -280,6 +282,8 @@ async function generateAllSectionsParallel(
   const contentParts: string[] = []
   const usedProviders: string[] = []
   
+  let successfulSections = 0
+  
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     const template = domainConfig.sectionTemplates[i]
@@ -289,9 +293,22 @@ async function generateAllSectionsParallel(
       if (result.value.provider && !usedProviders.includes(result.value.provider)) {
         usedProviders.push(result.value.provider)
       }
+      successfulSections++
     } else if (template.required) {
       // Для обязательных секций добавляем placeholder
+      console.warn(`[Fast Agent] Required section "${template.title}" failed, adding placeholder`)
       contentParts.push(`## ${template.title}\n\n*Раздел генерируется...*`)
+    }
+  }
+  
+  console.log(`[Fast Agent] Successfully generated ${successfulSections}/${results.length} sections`)
+  
+  // Если ни одна секция не сгенерировалась - используем fallback
+  if (successfulSections === 0) {
+    console.error('[Fast Agent] All sections failed! Using fallback content')
+    return {
+      content: getFallbackTheory(analysis.topic, analysis.courseName, analysis.domainEnum || 'GENERAL'),
+      providers: ['fallback']
     }
   }
 

@@ -93,9 +93,12 @@ async function generateGroq(
   user: string,
   options: GenerateOptions
 ): Promise<string> {
+  console.log('[Groq] Starting generation...')
+  
   // Прокси для России
   if (USE_PROXY) {
     try {
+      console.log('[Groq] Trying proxy...')
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
       
@@ -118,11 +121,18 @@ async function generateGroq(
       
       if (res.ok) {
         const data = await res.json()
-        if (data.content) return data.content
+        if (data.content) {
+          console.log('[Groq] Proxy success:', data.content.length, 'chars')
+          return data.content
+        }
+      } else {
+        console.warn('[Groq] Proxy failed with status:', res.status)
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        console.warn('[AI Router] Groq proxy timeout, trying direct...')
+        console.warn('[Groq] Proxy timeout, trying direct...')
+      } else {
+        console.warn('[Groq] Proxy error:', e.message)
       }
       // fallthrough to direct
     }
@@ -133,6 +143,7 @@ async function generateGroq(
   
   for (const model of models) {
     try {
+      console.log(`[Groq] Trying model: ${model}`)
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Groq timeout')), 45000)
       )
@@ -147,11 +158,15 @@ async function generateGroq(
       
       const res = await Promise.race([requestPromise, timeoutPromise])
       const content = res.choices[0]?.message?.content
-      if (content) return content
+      if (content) {
+        console.log(`[Groq] Success with ${model}:`, content.length, 'chars')
+        return content
+      }
     } catch (e: any) {
       const msg = e?.message || ''
+      console.error(`[Groq] ${model} failed:`, msg)
       if (msg.includes('rate') || msg.includes('429') || msg.includes('timeout')) {
-        console.warn(`[AI Router] Groq ${model}: ${msg}, trying next...`)
+        console.warn(`[Groq] ${model}: ${msg}, trying next...`)
         continue
       }
       throw e

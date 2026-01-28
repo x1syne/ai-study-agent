@@ -87,7 +87,23 @@ export default function LearnPage() {
   const [goalId, setGoalId] = useState<string>('')
   const [currentTopicStatus, setCurrentTopicStatus] = useState<TopicStatus>('AVAILABLE')
 
-  useEffect(() => { fetchLesson('theory') }, [params.topicId])
+  useEffect(() => { 
+    // Сбрасываем состояние при смене темы
+    setStep('theory')
+    setTopic(null)
+    setLesson(null)
+    setPracticeLesson(null)
+    setPracticeTasks([])
+    setCurrentTaskIndex(0)
+    setTaskScore({ correct: 0, total: 0 })
+    setTaskResults([])
+    setSavedAnswers(new Map())
+    setTheoryContent('')
+    setLoadError(null)
+    
+    // Загружаем новую тему
+    fetchLesson('theory') 
+  }, [params.topicId])
 
   // Fetch course structure for sidebar
   const fetchCourseStructure = useCallback(async (goalIdParam: string) => {
