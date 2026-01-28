@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, User, Loader2, Mic, MicOff, Paperclip, X, FileText, Image as ImageIcon } from 'lucide-react'
 import { GenerativeUIRenderer } from '@/components/generative-ui'
 import { CharacterSelector } from './CharacterSelector'
+import { SessionList } from './SessionList'
 import { useSpeechToText } from '@/hooks/useSpeech'
 import { AI_CHARACTERS, type AICharacter } from '@/lib/ai/characters'
 import type { ChatMessage } from '@/types'
@@ -17,13 +18,15 @@ interface AttachedFile {
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
-  onSendMessage: (message: string, characterId?: string, files?: AttachedFile[]) => void
+  onSendMessage: (message: string, characterId?: string, files?: AttachedFile[], sessionId?: string) => void
   onCharacterChange?: (characterId: string) => void
+  onSessionChange?: (sessionId: string | null) => void
   isLoading?: boolean
   topicContext?: string
+  currentSessionId?: string
 }
 
-export function ChatInterface({ messages, onSendMessage, onCharacterChange, isLoading, topicContext }: ChatInterfaceProps) {
+export function ChatInterface({ messages, onSendMessage, onCharacterChange, onSessionChange, isLoading, topicContext, currentSessionId }: ChatInterfaceProps) {
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [selectedCharacter, setSelectedCharacter] = useState<AICharacter>(AI_CHARACTERS[0])
@@ -35,6 +38,14 @@ export function ChatInterface({ messages, onSendMessage, onCharacterChange, isLo
   const handleCharacterSelect = (character: AICharacter) => {
     setSelectedCharacter(character)
     onCharacterChange?.(character.id)
+  }
+
+  const handleSessionSelect = async (sessionId: string) => {
+    onSessionChange?.(sessionId)
+  }
+
+  const handleNewSession = () => {
+    onSessionChange?.(null)
   }
 
   useEffect(() => { if (transcript) setInput(prev => prev + transcript) }, [transcript])
@@ -78,7 +89,7 @@ export function ChatInterface({ messages, onSendMessage, onCharacterChange, isLo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if ((!input.trim() && attachedFiles.length === 0) || isLoading) return
-    onSendMessage(input.trim(), selectedCharacter.id, attachedFiles.length > 0 ? attachedFiles : undefined)
+    onSendMessage(input.trim(), selectedCharacter.id, attachedFiles.length > 0 ? attachedFiles : undefined, currentSessionId)
     setInput('')
     setAttachedFiles([])
   }
@@ -96,6 +107,14 @@ export function ChatInterface({ messages, onSendMessage, onCharacterChange, isLo
           {topicContext && <p className="text-xs text-[var(--color-text-secondary)] truncate">Контекст: {topicContext}</p>}
         </div>
       </div>
+
+      {/* Session List */}
+      <SessionList
+        characterId={selectedCharacter.id}
+        currentSessionId={currentSessionId}
+        onSessionSelect={handleSessionSelect}
+        onNewSession={handleNewSession}
+      />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">

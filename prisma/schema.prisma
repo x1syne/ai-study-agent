@@ -27,6 +27,8 @@ model User {
   stats           UserStats?
   achievements    Achievement[]
   chatMessages    ChatMessage[]
+  sessions        ConversationSession[]
+  preferences     UserPreferences?
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -259,26 +261,86 @@ model ReviewCard {
 }
 
 
-// ==================== ЧАТ ====================
+// ==================== ЧАТ И ПЕРСИСТЕНТНОСТЬ ДИАЛОГОВ ====================
+
+// Сессия диалога с персонажем
+model ConversationSession {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterId     String
+  
+  title           String?
+  summary         String?   @db.Text
+  summaryUpdatedAt DateTime?
+  
+  messageCount    Int       @default(0)
+  lastMessageAt   DateTime?
+  
+  isArchived      Boolean   @default(false)
+  
+  messages        ChatMessage[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId, characterId])
+  @@index([userId, lastMessageAt])
+}
 
 model ChatMessage {
   id              String    @id @default(cuid())
+  sessionId       String?
+  session         ConversationSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   role            MessageRole
-  content         String
+  content         String    @db.Text
   topicSlug       String?
   characterId     String    @default("default")
   
+  metadata        Json?
+  
   createdAt       DateTime  @default(now())
   
+  @@index([sessionId, createdAt])
   @@index([userId, characterId])
 }
 
 enum MessageRole {
   USER
   ASSISTANT
+}
+
+// Предпочтения пользователя для персонализации
+model UserPreferences {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  detailLevel     DetailLevel @default(BALANCED)
+  explanationStyle ExplanationStyle @default(MIXED)
+  
+  favoriteTopics  String[]  @default([])
+  avoidTopics     String[]  @default([])
+  
+  customInstructions String? @db.Text
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+enum DetailLevel {
+  BRIEF
+  BALANCED
+  DETAILED
+}
+
+enum ExplanationStyle {
+  THEORETICAL
+  PRACTICAL
+  MIXED
+  EXAMPLES_FIRST
 }
 
 // ==================== ДОСТИЖЕНИЯ ====================

@@ -2,9 +2,9 @@
  * AI ROUTER - Интеллектуальный роутер между AI провайдерами
  * 
  * Стратегия:
- * - fast: Groq (самый быстрый) → Gemini
- * - heavy: DeepSeek (дешёвый) → Gemini → Groq
- * - chat: только Groq (для скорости)
+ * - fast: Grok (мощный и быстрый) → Groq → Gemini
+ * - heavy: Grok (для сложных задач) → Groq → Gemini
+ * - chat: Grok (для чата) → Groq → Gemini
  * 
  * Включает:
  * - Автоматический fallback между провайдерами
@@ -16,91 +16,12 @@
 
 import Groq from 'groq-sdk'
 import { withAIRetry, isAIRetryableError } from './utils/retry'
-import { v4 as uuidv4 } from 'uuid'
-import https from 'https'
 
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
 
-// === GIGACHAT HTTPS REQUEST ===
-// GigaChat использует самоподписанный сертификат, нужен кастомный агент
-function gigaChatRequest(url: string, options: {
-  method: string
-  headers: Record<string, string>
-  body?: string
-}): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<any> }> {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(url)
-    
-    const req = https.request({
-      hostname: urlObj.hostname,
-      port: urlObj.port || 443,
-      path: urlObj.pathname,
-      method: options.method,
-      headers: options.headers,
-      rejectUnauthorized: false, // Отключаем проверку SSL для самоподписанного сертификата Сбера
-    }, (res) => {
-      let data = ''
-      res.on('data', chunk => data += chunk)
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode! >= 200 && res.statusCode! < 300,
-          status: res.statusCode!,
-          text: async () => data,
-          json: async () => JSON.parse(data),
-        })
-      })
-    })
-    
-    req.on('error', reject)
-    req.setTimeout(60000, () => {
-      req.destroy()
-      reject(new Error('Request timeout'))
-    })
-    
-    if (options.body) {
-      req.write(options.body)
-    }
-    req.end()
-  })
-}
-
-// === GIGACHAT AUTH ===
-let gigaChatToken: string | null = null
-let gigaChatTokenExpiry: number = 0
-
-async function getGigaChatToken(): Promise<string> {
-  // Если токен ещё валиден (с запасом 2 минуты) — возвращаем его
-  if (gigaChatToken && Date.now() < gigaChatTokenExpiry - 120000) {
-    return gigaChatToken
-  }
-
-  const authKey = process.env.GIGACHAT_AUTH_KEY
-  if (!authKey) throw new Error('GIGACHAT_AUTH_KEY not configured')
-
-  const res = await gigaChatRequest('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json',
-      'RqUID': uuidv4(),
-      'Authorization': `Basic ${authKey}`,
-    },
-    body: 'scope=GIGACHAT_API_PERS',
-  })
-
-  if (!res.ok) {
-    const error = await res.text()
-    throw new Error(`GigaChat auth failed: ${error}`)
-  }
-
-  const data = await res.json() as { access_token: string; expires_at: number }
-  gigaChatToken = data.access_token
-  gigaChatTokenExpiry = data.expires_at
-  
-  console.log('[GigaChat] Token refreshed, expires at:', new Date(gigaChatTokenExpiry).toISOString())
-  return gigaChatToken!
-}
+// === GROK (xAI) PROVIDER ===
+// Grok использует OpenAI-совместимый API
 
 /**
  * Безопасный парсинг JSON из AI ответа
@@ -282,69 +203,74 @@ async function generateDeepSeek(
 }
 
 // Список моделей Gemini для каскадного fallback
-// Только 2.5 Lite - используется как fallback после Groq
+// Только 2.5 Lite - используется как fallback после Grok
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite-preview-06-17',  // Lite версия 2.5
 ]
 
-// === GIGACHAT PROVIDER ===
+// === GROK (xAI) PROVIDER ===
 
-async function generateGigaChat(
+async function generateGrok(
   system: string,
   user: string,
   options: GenerateOptions
 ): Promise<string> {
-  const token = await getGigaChatToken()
+  const apiKey = process.env.GROK_API_KEY
+  if (!apiKey) throw new Error('GROK_API_KEY not configured')
 
-  // Выбираем модель: Pro для сложных задач (JSON, большие ответы), Lite для остальных
+  // Выбираем модель: grok-2-latest для сложных задач, grok-2-mini для быстрых
   const model = options.json || (options.maxTokens && options.maxTokens > 2000)
-    ? 'GigaChat-Pro' 
-    : 'GigaChat'
+    ? 'grok-2-latest' 
+    : 'grok-2-mini'
 
-  const res = await gigaChatRequest('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'X-Request-ID': uuidv4(),
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ],
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: false,
-    }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000) // 60s timeout
 
-  if (!res.ok) {
-    const error = await res.text()
-    // Если токен истёк — сбрасываем и пробуем снова
-    if (res.status === 401 || error.includes('Unauthorized')) {
-      gigaChatToken = null
-      gigaChatTokenExpiry = 0
-      throw new Error('GigaChat: token expired, retry needed')
+  try {
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: false,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!res.ok) {
+      const error = await res.text()
+      // Rate limit
+      if (res.status === 429) {
+        throw new Error('Grok: rate limited')
+      }
+      throw new Error(`Grok: ${error}`)
     }
-    // Rate limit
-    if (res.status === 429) {
-      throw new Error('GigaChat: rate limited')
-    }
-    throw new Error(`GigaChat: ${error}`)
-  }
 
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
-  const content = data.choices?.[0]?.message?.content || ''
-    
-  // Логируем использование токенов
-  if (data.usage) {
-    console.log(`[GigaChat] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
+    const content = data.choices?.[0]?.message?.content || ''
+      
+    // Логируем использование токенов
+    if (data.usage) {
+      console.log(`[Grok] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
+    }
+      
+    return content
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('Grok: timeout')
+    throw e
   }
-    
-  return content
 }
 
 async function generateGemini(
@@ -452,16 +378,16 @@ async function generateGemini(
 type ProviderFn = (s: string, u: string, o: GenerateOptions) => Promise<string>
 
 const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
-  gigachat: { fn: generateGigaChat, rateLimit: 60 },
+  grok: { fn: generateGrok, rateLimit: 60 },
   groq: { fn: generateGroq, rateLimit: 30 },
   deepseek: { fn: generateDeepSeek, rateLimit: 60 },
   gemini: { fn: generateGemini, rateLimit: 50 },
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast: ['gigachat', 'groq', 'gemini'],   // GigaChat первый (быстрый и дешёвый)
-  heavy: ['gigachat', 'groq', 'gemini'],  // GigaChat для тяжёлых задач тоже
-  chat: ['gigachat', 'groq', 'gemini'],   // GigaChat для чата
+  fast: ['grok', 'groq', 'gemini'],   // Grok первый (быстрый и мощный)
+  heavy: ['grok', 'groq', 'gemini'],  // Grok для тяжёлых задач тоже
+  chat: ['grok', 'groq', 'gemini'],   // Grok для чата
 }
 
 /**
@@ -489,7 +415,7 @@ export async function generateWithRouter(
     }
 
     // Проверяем наличие API ключа
-    if (name === 'gigachat' && !process.env.GIGACHAT_AUTH_KEY) continue
+    if (name === 'grok' && !process.env.GROK_API_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
@@ -567,15 +493,15 @@ export async function* streamWithRouter(
     }
 
     // Проверяем наличие API ключа
-    if (name === 'gigachat' && !process.env.GIGACHAT_AUTH_KEY) continue
+    if (name === 'grok' && !process.env.GROK_API_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
     try {
       console.log(`[AI Router Stream] Trying ${name}...`)
       
-      if (name === 'gigachat') {
-        yield* streamGigaChat(systemPrompt, userPrompt, options)
+      if (name === 'grok') {
+        yield* streamGrok(systemPrompt, userPrompt, options)
         return
       } else if (name === 'groq') {
         yield* streamGroq(systemPrompt, userPrompt, options)
@@ -599,18 +525,63 @@ export async function* streamWithRouter(
 }
 
 /**
- * Стриминг через GigaChat
- * Используем обычную генерацию и возвращаем результат целиком
- * (настоящий стриминг требует undici который не совместим с Next.js webpack)
+ * Стриминг через Grok (xAI)
  */
-async function* streamGigaChat(
+async function* streamGrok(
   system: string,
   user: string,
   options: GenerateOptions
 ): AsyncGenerator<string, void, unknown> {
-  // Делаем обычную генерацию и возвращаем результат целиком
-  const content = await generateGigaChat(system, user, options)
-  yield content
+  const apiKey = process.env.GROK_API_KEY
+  if (!apiKey) throw new Error('GROK_API_KEY not configured')
+
+  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
+    ? 'grok-2-latest' 
+    : 'grok-2-mini'
+
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: true,
+    }),
+  })
+
+  if (!res.ok) throw new Error(`Grok stream: ${await res.text()}`)
+  if (!res.body) throw new Error('Grok stream: no body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    
+    const text = decoder.decode(value, { stream: true })
+    const lines = text.split('\n')
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.choices?.[0]?.delta?.content
+          if (content) yield content
+        } catch {}
+      }
+    }
+  }
 }
 
 /**

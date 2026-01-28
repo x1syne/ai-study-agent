@@ -10,6 +10,11 @@ import {
   getOrCreateState 
 } from '@/lib/ai/characters'
 import { searchArxiv, formatArxivForContext, shouldSearchArxiv, extractSearchQuery } from '@/lib/arxiv'
+import { getProfessorContext } from '@/lib/ai/professor-knowledge'
+import { getCheckpointer } from '@/lib/ai/checkpointer'
+import { buildPromptContext } from '@/lib/ai/context-builder'
+import { getSummarizer } from '@/lib/ai/summarizer'
+import { analyzeMessageForPreferences, updateUserPreferences } from '@/lib/ai/user-preferences'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
@@ -69,10 +74,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { message, topicSlug, characterId = 'default', files = [] } = body
+    const { message, topicSlug, characterId = 'default', files = [], sessionId: requestSessionId } = body
 
     if (!message && files.length === 0) {
       return NextResponse.json({ error: 'Message or files required' }, { status: 400 })
+    }
+
+    // Получаем или создаём сессию для персистентности
+    const checkpointer = getCheckpointer()
+    let sessionId = requestSessionId
+    
+    if (!sessionId) {
+      const session = await checkpointer.getOrCreateSession(user.id, characterId)
+      sessionId = session.id
+    }
+
+    // Анализируем сообщение на предмет предпочтений
+    const preferenceUpdates = analyzeMessageForPreferences(message)
+    if (preferenceUpdates) {
+      await updateUserPreferences(user.id, preferenceUpdates)
     }
 
     // Process attached files
@@ -100,55 +120,25 @@ export async function POST(request: NextRequest) {
       displayContent = message ? `${message}\n\n[Прикреплено: ${fileNames}]` : `[Прикреплено: ${fileNames}]`
     }
 
-    // Save user message (with characterId if supported)
-    let userMessage
-    try {
-      userMessage = await prisma.chatMessage.create({
-        data: {
-          userId: user.id,
-          role: 'USER',
-          content: displayContent,
-          topicSlug,
-          characterId,
-        },
-      })
-    } catch {
-      // Fallback without characterId
-      userMessage = await prisma.chatMessage.create({
-        data: {
-          userId: user.id,
-          role: 'USER',
-          content: displayContent,
-          topicSlug,
-        },
-      })
-    }
+    // Сохраняем сообщение пользователя через Checkpointer
+    const userMessage = await checkpointer.saveMessage({
+      sessionId,
+      userId: user.id,
+      characterId,
+      role: 'user',
+      content: displayContent,
+      topicSlug,
+      metadata: files.length > 0 ? { hasFiles: true, fileCount: files.length } : undefined
+    })
 
-    // Get recent chat history
-    let recentMessages
-    try {
-      recentMessages = await prisma.chatMessage.findMany({
-        where: { 
-          userId: user.id,
-          characterId: characterId,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      })
-    } catch {
-      recentMessages = await prisma.chatMessage.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      })
-    }
-
-    const historyText = recentMessages
-      .reverse()
-      .map((m: { role: string; content: string }) => 
-        `${m.role === 'USER' ? 'Студент' : 'Репетитор'}: ${m.content}`
-      )
-      .join('\n')
+    // Получаем контекст диалога с историей и предпочтениями
+    const promptContext = await buildPromptContext({
+      sessionId,
+      userId: user.id,
+      characterId,
+      currentMessage: message,
+      topicSlug
+    })
 
     // Get current learning context (universal, not just programming)
     let context = 'Свободный диалог на любые темы'
@@ -192,11 +182,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Объединяем все источники информации
-    const fullContext = `${context}${courseContext}${arxivContext}`
+    // Поиск в базе знаний профессора Остроуха (если выбран этот персонаж)
+    let professorContext = ''
+    if (characterId === 'ostroukh') {
+      professorContext = await getProfessorContext(message)
+    }
+
+    // Объединяем все источники информации + контекст из истории
+    const fullContext = `${context}${courseContext}${arxivContext}${professorContext ? '\n\n' + professorContext : ''}\n\n${promptContext.historyContext}`
 
     // Update character state based on conversation
-    const historyArray = recentMessages.map((m: { content: string }) => m.content)
+    const dialogContext = await checkpointer.getContext(sessionId)
+    const historyArray = dialogContext.messages.map(m => m.content)
     const characterState = updateStateAfterMessage(user.id, characterId, message, historyArray)
     
     // Calculate dynamic temperature based on character state
@@ -207,7 +204,7 @@ export async function POST(request: NextRequest) {
     try {
       // Add file context to the prompt
       const messageWithFiles = fileContext ? `${message}\n${fileContext}` : message
-      const prompt = getCharacterPrompt(characterId, fullContext, historyText, characterState) + `\n\nСообщение студента: ${messageWithFiles}`
+      const prompt = getCharacterPrompt(characterId, fullContext, promptContext.historyContext, characterState) + `\n\nСообщение студента: ${messageWithFiles}`
       
       // If there are images, use vision model with fallback
       if (imageContents.length > 0) {
@@ -243,32 +240,34 @@ export async function POST(request: NextRequest) {
 Пожалуйста, проверьте GROQ_API_KEY в файле .env и получите новый ключ на https://console.groq.com/keys`
     }
 
-    // Save AI response (with characterId if supported)
-    let aiMessage
-    try {
-      aiMessage = await prisma.chatMessage.create({
-        data: {
-          userId: user.id,
-          role: 'ASSISTANT',
-          content: response,
-          topicSlug,
-          characterId,
-        },
-      })
-    } catch {
-      aiMessage = await prisma.chatMessage.create({
-        data: {
-          userId: user.id,
-          role: 'ASSISTANT',
-          content: response,
-          topicSlug,
-        },
-      })
-    }
+    // Сохраняем ответ AI через Checkpointer
+    const aiMessage = await checkpointer.saveMessage({
+      sessionId,
+      userId: user.id,
+      characterId,
+      role: 'assistant',
+      content: response,
+      topicSlug
+    })
+
+    // Планируем асинхронную суммаризацию если нужно
+    const summarizer = getSummarizer()
+    summarizer.scheduleSummary(sessionId)
 
     return NextResponse.json({
-      userMessage,
-      aiMessage,
+      userMessage: {
+        id: userMessage.id,
+        role: 'USER',
+        content: displayContent,
+        createdAt: userMessage.createdAt
+      },
+      aiMessage: {
+        id: aiMessage.id,
+        role: 'ASSISTANT',
+        content: response,
+        createdAt: aiMessage.createdAt
+      },
+      sessionId
     })
   } catch (error) {
     console.error('Error in chat:', error)
