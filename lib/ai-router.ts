@@ -2,9 +2,9 @@
  * AI ROUTER - Интеллектуальный роутер между AI провайдерами
  * 
  * Стратегия:
- * - fast: Grok (мощный и быстрый) → Groq → Gemini
- * - heavy: Grok (для сложных задач) → Groq → Gemini
- * - chat: Grok (для чата) → Groq → Gemini
+ * - fast: Groq (самый быстрый) → Gemini → DeepSeek
+ * - heavy: Groq → DeepSeek → Gemini
+ * - chat: Groq (для скорости и качества)
  * 
  * Включает:
  * - Автоматический fallback между провайдерами
@@ -19,8 +19,6 @@ import { withAIRetry, isAIRetryableError } from './utils/retry'
 
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat'
-
-// === GROK (xAI) PROVIDER ===
 // Grok использует OpenAI-совместимый API
 
 /**
@@ -203,75 +201,9 @@ async function generateDeepSeek(
 }
 
 // Список моделей Gemini для каскадного fallback
-// Только 2.5 Lite - используется как fallback после Grok
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite-preview-06-17',  // Lite версия 2.5
 ]
-
-// === GROK (xAI) PROVIDER ===
-
-async function generateGrok(
-  system: string,
-  user: string,
-  options: GenerateOptions
-): Promise<string> {
-  const apiKey = process.env.GROK_API_KEY
-  if (!apiKey) throw new Error('GROK_API_KEY not configured')
-
-  // Выбираем модель: grok-2-latest для сложных задач, grok-2-mini для быстрых
-  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
-    ? 'grok-2-latest' 
-    : 'grok-2-mini'
-
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 60000) // 60s timeout
-
-  try {
-    const res = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-      }),
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeoutId)
-
-    if (!res.ok) {
-      const error = await res.text()
-      // Rate limit
-      if (res.status === 429) {
-        throw new Error('Grok: rate limited')
-      }
-      throw new Error(`Grok: ${error}`)
-    }
-
-    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number } }
-    const content = data.choices?.[0]?.message?.content || ''
-      
-    // Логируем использование токенов
-    if (data.usage) {
-      console.log(`[Grok] ${model} - tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`)
-    }
-      
-    return content
-  } catch (e: any) {
-    clearTimeout(timeoutId)
-    if (e.name === 'AbortError') throw new Error('Grok: timeout')
-    throw e
-  }
-}
 
 async function generateGemini(
   system: string,
@@ -378,16 +310,15 @@ async function generateGemini(
 type ProviderFn = (s: string, u: string, o: GenerateOptions) => Promise<string>
 
 const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
-  grok: { fn: generateGrok, rateLimit: 60 },
   groq: { fn: generateGroq, rateLimit: 30 },
   deepseek: { fn: generateDeepSeek, rateLimit: 60 },
   gemini: { fn: generateGemini, rateLimit: 50 },
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast: ['grok', 'groq', 'gemini'],   // Grok первый (быстрый и мощный)
-  heavy: ['grok', 'groq', 'gemini'],  // Grok для тяжёлых задач тоже
-  chat: ['grok', 'groq', 'gemini'],   // Grok для чата
+  fast: ['groq', 'gemini', 'deepseek'],   // Groq первый (самый быстрый)
+  heavy: ['groq', 'deepseek', 'gemini'],  // Groq для тяжёлых задач
+  chat: ['groq', 'gemini', 'deepseek'],   // Groq для чата
 }
 
 /**
@@ -415,7 +346,6 @@ export async function generateWithRouter(
     }
 
     // Проверяем наличие API ключа
-    if (name === 'grok' && !process.env.GROK_API_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
@@ -493,17 +423,13 @@ export async function* streamWithRouter(
     }
 
     // Проверяем наличие API ключа
-    if (name === 'grok' && !process.env.GROK_API_KEY) continue
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
 
     try {
       console.log(`[AI Router Stream] Trying ${name}...`)
       
-      if (name === 'grok') {
-        yield* streamGrok(systemPrompt, userPrompt, options)
-        return
-      } else if (name === 'groq') {
+      if (name === 'groq') {
         yield* streamGroq(systemPrompt, userPrompt, options)
         return
       } else if (name === 'deepseek') {
@@ -522,66 +448,6 @@ export async function* streamWithRouter(
   }
 
   throw new Error(`All streaming providers failed: ${errors.join('; ')}`)
-}
-
-/**
- * Стриминг через Grok (xAI)
- */
-async function* streamGrok(
-  system: string,
-  user: string,
-  options: GenerateOptions
-): AsyncGenerator<string, void, unknown> {
-  const apiKey = process.env.GROK_API_KEY
-  if (!apiKey) throw new Error('GROK_API_KEY not configured')
-
-  const model = options.json || (options.maxTokens && options.maxTokens > 2000)
-    ? 'grok-2-latest' 
-    : 'grok-2-mini'
-
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ],
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: true,
-    }),
-  })
-
-  if (!res.ok) throw new Error(`Grok stream: ${await res.text()}`)
-  if (!res.body) throw new Error('Grok stream: no body')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    
-    const text = decoder.decode(value, { stream: true })
-    const lines = text.split('\n')
-    
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') continue
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.choices?.[0]?.delta?.content
-          if (content) yield content
-        } catch {}
-      }
-    }
-  }
 }
 
 /**
