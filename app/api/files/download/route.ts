@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { FilesystemTool } from '@/lib/mcp/tools/filesystem'
 import { MCPClient } from '@/lib/mcp/mcp-client'
 import * as path from 'path'
+import * as fs from 'fs/promises'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +12,9 @@ export const dynamic = 'force-dynamic'
 const mcpClient = new MCPClient([])
 const userFilesDir = path.join(process.cwd(), 'user-files')
 const filesystemTool = new FilesystemTool(mcpClient, userFilesDir)
+
+// Check if we're running locally (not on Vercel)
+const isLocal = process.env.VERCEL !== '1'
 
 // GET /api/files/download - Download a file
 export async function GET(request: NextRequest) {
@@ -40,24 +44,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Find file in database
-    const file = await prisma.userFile.findUnique({
-      where: {
-        userId_filename: {
-          userId,
-          filename
-        }
-      }
-    })
-
-    if (!file) {
-      return NextResponse.json(
-        { error: 'File not found' },
-        { status: 404 }
-      )
-    }
-
     // Determine content type based on file extension
+    const ext = filename.split('.').pop()?.toLowerCase()
     const ext = filename.split('.').pop()?.toLowerCase()
     const contentTypeMap: Record<string, string> = {
       // Text
@@ -107,11 +95,47 @@ export async function GET(request: NextRequest) {
       'doc': 'application/msword',
     }
     const contentType = contentTypeMap[ext || ''] || 'text/plain'
+    const isWordDoc = ext === 'docx' || ext === 'doc'
+
+    // Try to read from filesystem first (local development)
+    if (isLocal) {
+      try {
+        const filePath = path.join(userFilesDir, userId, filename)
+        const fileBuffer = await fs.readFile(filePath)
+        
+        console.log(`[API Files] File downloaded from disk: ${filename} for user ${user.id}`)
+        
+        return new NextResponse(fileBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'no-cache'
+          }
+        })
+      } catch (fsError) {
+        console.log(`[API Files] File not found on disk, falling back to database`)
+      }
+    }
+
+    // Fallback to database (Vercel or if file not found on disk)
+    const file = await prisma.userFile.findUnique({
+      where: {
+        userId_filename: {
+          userId,
+          filename
+        }
+      }
+    })
+
+    if (!file) {
+      return NextResponse.json(
+        { error: 'File not found' },
+        { status: 404 }
+      )
+    }
 
     console.log(`[API Files] File downloaded from DB: ${filename} for user ${user.id}`)
-    
-    // Check if file is Word document (stored as base64)
-    const isWordDoc = ext === 'docx' || ext === 'doc'
     
     if (isWordDoc) {
       // Decode base64 to binary buffer for Word documents

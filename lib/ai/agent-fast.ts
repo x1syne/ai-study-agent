@@ -453,8 +453,7 @@ export async function generateAllSectionsParallelForStateMachine(
 
 
 // Генерация практических заданий с domain-specific подходом
-// Requirements: 6.1, 6.2, 6.3, 6.4, 6.5 - integrate TaskClassifier
-async function generateTasksFast(analysis: TopicAnalysis, classifier?: any): Promise<any[]> {
+async function generateTasksFast(analysis: TopicAnalysis): Promise<any[]> {
   // Проверяем кэш
   const cached = getCachedTasks(analysis.topic, analysis.courseName)
   if (cached) {
@@ -485,8 +484,7 @@ async function generateTasksFast(analysis: TopicAnalysis, classifier?: any): Pro
     general: 'Включи разнообразные типы заданий.'
   }
   
-  // Requirements: 6.5 - Use AI to classify tasks based on content analysis
-  // Generate tasks without difficulty specification, let classifier determine it
+  // Generate tasks without AI classification
   const prompt = `Создай 10 заданий по теме "${analysis.topic}" (${domainConfig.name}).
 
 Требования:
@@ -524,7 +522,7 @@ JSON формат:
     let tasks = (data.tasks || []).map((t: any, i: number) => ({
       id: t.id || i + 1,
       type: t.type || 'single',
-      difficulty: t.difficulty || 'medium', // Default, will be overridden by classifier
+      difficulty: t.difficulty || 'medium', // Simple default
       question: t.question || 'Вопрос',
       options: t.options || [],
       correctAnswer: t.correctAnswer ?? 0,
@@ -533,57 +531,26 @@ JSON формат:
       hint: t.hint || ''
     }))
     
-    // Requirements: 6.1, 6.2, 6.3 - Use TaskClassifier to analyze and assign difficulty
-    if (classifier) {
-      console.log('[Fast Agent] Classifying tasks with TaskClassifier...')
-      
-      try {
-        // Import TaskClassifier dynamically
-        const { TaskClassifier } = await import('./task-classifier')
-        const taskClassifier = classifier instanceof TaskClassifier ? classifier : new TaskClassifier()
-        
-        // Classify all tasks
-        const classifications = await taskClassifier.classifyBatch(tasks)
-        
-        // Apply classifications to tasks
-        tasks = tasks.map((task: any, index: number) => ({
-          ...task,
-          difficulty: classifications[index].difficulty,
-          classificationConfidence: classifications[index].confidence,
-          classificationFactors: classifications[index].factors
-        }))
-        
-        console.log('[Fast Agent] Tasks classified successfully')
-        
-        // Requirements: 6.3 - Validate distribution (40% easy, 40% medium, 20% hard)
-        const isValidDistribution = taskClassifier.validateDistribution(classifications)
-        
-        if (!isValidDistribution) {
-          console.warn('[Fast Agent] Task distribution does not match target (40% easy, 40% medium, 20% hard)')
-          console.warn('[Fast Agent] Adjusting distribution...')
-          
-          // Adjust distribution to match target
-          tasks = adjustTaskDistribution(tasks, classifications)
-          
-          // Validate again
-          const adjustedClassifications = tasks.map((t: any) => ({
-            difficulty: t.difficulty,
-            confidence: t.classificationConfidence || 0.7,
-            factors: t.classificationFactors || { complexity: 5, knowledgeRequired: 5, timeEstimate: 5 }
-          }))
-          
-          const isValidAfterAdjustment = taskClassifier.validateDistribution(adjustedClassifications)
-          console.log(`[Fast Agent] Distribution after adjustment: ${isValidAfterAdjustment ? 'valid' : 'still invalid'}`)
-        } else {
-          console.log('[Fast Agent] Task distribution is valid')
-        }
-      } catch (classifierError) {
-        console.error('[Fast Agent] Task classification failed:', classifierError)
-        console.log('[Fast Agent] Using tasks without classification')
+    // Simple difficulty assignment based on task order
+    // First 40% = easy, next 40% = medium, last 20% = hard
+    const total = tasks.length
+    tasks = tasks.map((task: any, index: number) => {
+      let difficulty: 'easy' | 'medium' | 'hard'
+      if (index < total * 0.4) {
+        difficulty = 'easy'
+      } else if (index < total * 0.8) {
+        difficulty = 'medium'
+      } else {
+        difficulty = 'hard'
       }
-    } else {
-      console.log('[Fast Agent] No classifier provided, using default difficulty assignments')
-    }
+      
+      return {
+        ...task,
+        difficulty
+      }
+    })
+    
+    console.log('[Fast Agent] Tasks difficulty assigned')
     
     // Кэширование перенесено в runLessonAgentFast с валидацией
     return tasks
@@ -592,13 +559,6 @@ JSON формат:
     return getDefaultTasks(analysis.topic)
   }
 }
-
-// Helper function to adjust task distribution to match target (40% easy, 40% medium, 20% hard)
-// Requirements: 6.3 - Ensure distribution matches target
-function adjustTaskDistribution(tasks: any[], classifications: any[]): any[] {
-  const total = tasks.length
-  const targetEasy = Math.round(total * 0.4)
-  const targetMedium = Math.round(total * 0.4)
   const targetHard = total - targetEasy - targetMedium
   
   console.log(`[Fast Agent] Target distribution: ${targetEasy} easy, ${targetMedium} medium, ${targetHard} hard`)
@@ -715,13 +675,9 @@ export async function runLessonAgentFast(
   }
 
   // 2. ПАРАЛЛЕЛЬНАЯ генерация контента И заданий (с RAG контекстом)
-  // Requirements: 6.1, 6.2, 6.3 - Use TaskClassifier for task generation
-  const { TaskClassifier } = await import('./task-classifier')
-  const taskClassifier = new TaskClassifier()
-  
   let [contentResult, tasks] = await Promise.all([
     generateAllSectionsParallel(analysis, ragContext),
-    generateTasksFast(analysis, taskClassifier)
+    generateTasksFast(analysis)
   ])
   
   let content = contentResult.content
@@ -920,10 +876,7 @@ export async function runLessonAgentWithStateMachine(
   }
 
   // Generate tasks in parallel
-  // Requirements: 6.1, 6.2, 6.3 - Use TaskClassifier for task generation
-  const { TaskClassifier } = await import('./task-classifier')
-  const taskClassifier = new TaskClassifier()
-  let tasks = await generateTasksFast(analysis, taskClassifier)
+  let tasks = await generateTasksFast(analysis)
   
   // Get domain config for metadata
   const domainConfig = getConfigForTopic(topic, courseName)
