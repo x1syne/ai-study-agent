@@ -7,7 +7,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
+import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui'
 import { 
   Server, 
   CheckCircle, 
@@ -19,7 +19,6 @@ import {
   ChevronUp,
   Terminal
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 
 interface MCPServerCardProps {
   name: string

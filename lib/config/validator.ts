@@ -3,10 +3,10 @@
  * 
  * Validates environment variables and configuration on application startup.
  * Ensures all required API keys are present and tests connectivity.
+ * 
+ * NOTE: This file uses Node.js fs/path modules and should only be used on the server
  */
 
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
 import Groq from 'groq-sdk'
 
 export interface ValidationResult {
@@ -84,16 +84,25 @@ export class ConfigValidator {
       return warnings
     }
 
-    // Try to load MCP config
-    const configPath = join(process.cwd(), '.kiro', 'settings', 'mcp.json')
-    
-    if (!existsSync(configPath)) {
-      warnings.push('MCP is enabled but no configuration file found at .kiro/settings/mcp.json')
+    // Only run on server
+    if (typeof window !== 'undefined') {
       return warnings
     }
 
     try {
-      const configContent = readFileSync(configPath, 'utf-8')
+      // Dynamic require to avoid webpack bundling
+      const fs = eval('require')('fs')
+      const path = eval('require')('path')
+      
+      // Try to load MCP config
+      const configPath = path.join(process.cwd(), '.kiro', 'settings', 'mcp.json')
+      
+      if (!fs.existsSync(configPath)) {
+        warnings.push('MCP is enabled but no configuration file found at .kiro/settings/mcp.json')
+        return warnings
+      }
+
+      const configContent = fs.readFileSync(configPath, 'utf-8')
       const config: MCPConfig = JSON.parse(configContent)
 
       // Check if any servers are configured

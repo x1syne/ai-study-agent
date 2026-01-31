@@ -3,3 +3,5 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 export { Input } from './Input'
 export { Progress, CircularProgress } from './Progress'
 export { Badge } from './Badge'
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogTrigger, DialogFooter } from './Dialog'
+export { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './Select'

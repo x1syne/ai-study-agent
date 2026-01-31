@@ -7,11 +7,12 @@
  * @see https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 
-import { ConfigValidator } from './lib/config/validator'
-
 export async function register() {
   // Only run on server side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Dynamic import to avoid bundling server-only code
+    const { ConfigValidator } = await import('./lib/config/validator')
+    
     console.log('[Startup] Running configuration validation...')
     
     const validator = new ConfigValidator()

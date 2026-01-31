@@ -336,7 +336,7 @@ export async function POST(request: NextRequest) {
         if (!content || content.trim() === '') {
           // Extract code blocks from AI response
           const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
-          const codeBlocks = [...response.matchAll(codeBlockPattern)]
+          const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
           if (codeBlocks.length > 0) {
             content = codeBlocks[0][1].trim()
           }

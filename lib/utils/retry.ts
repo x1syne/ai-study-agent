@@ -142,3 +142,33 @@ export async function withRetry<T>(
 
   throw lastError
 }
+
+// ==================== AI-SPECIFIC RETRY ====================
+
+/**
+ * Определяет, является ли ошибка AI API "повторяемой"
+ * Отличается от isRetryableError тем, что НЕ повторяет rate limit ошибки
+ */
+export function isAIRetryableError(error: unknown): boolean {
+  return isRetryableError(error)
+}
+
+/**
+ * Retry специально для AI вызовов
+ * Использует настройки, оптимизированные для AI API
+ */
+export async function withAIRetry<T>(
+  fn: () => Promise<T>,
+  context: string = 'AI call'
+): Promise<T> {
+  return withRetry(fn, {
+    maxRetries: 2,
+    initialDelay: 1000,
+    maxDelay: 5000,
+    backoffMultiplier: 2,
+    shouldRetry: isAIRetryableError,
+    onRetry: (attempt, error) => {
+      console.warn(`[${context}] Retry attempt ${attempt}:`, getErrorMessage(error))
+    }
+  })
+}

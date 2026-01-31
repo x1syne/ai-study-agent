@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react'
 import { MCPServerCard } from './MCPServerCard'
 import { Server, RefreshCw, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui'
 
 interface MCPServer {
   name: string
@@ -137,7 +137,7 @@ export function MCPServerManagement() {
             <p className="text-red-300 font-medium">Ошибка загрузки серверов</p>
             <p className="text-red-400 text-sm mt-1">{error}</p>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleRefresh}
               className="mt-3 bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
@@ -166,7 +166,7 @@ export function MCPServerManagement() {
           </div>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleRefresh}
           disabled={isRefreshing}

@@ -60,7 +60,7 @@ export function detectFileSave(message: string): { detected: boolean; filename?:
 
   // Extract code blocks
   const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
-  const codeBlocks = [...message.matchAll(codeBlockPattern)]
+  const codeBlocks = Array.from(message.matchAll(codeBlockPattern))
   if (codeBlocks.length > 0) {
     // Use the first code block as content
     content = codeBlocks[0][1].trim()

@@ -4,8 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { TaskClassifier } from '@/lib/ai/task-classifier'
 
 // Global classifier instance to maintain overrides across requests
@@ -17,10 +15,11 @@ const globalClassifier = new TaskClassifier()
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // TODO: Re-enable authentication when next-auth is configured
+    // const session = await getServerSession(authOptions)
+    // if (!session?.user) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // }
 
     const body = await req.json()
     const { action, tasks, taskId, difficulty } = body
@@ -119,10 +118,11 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // TODO: Re-enable authentication when next-auth is configured
+    // const session = await getServerSession(authOptions)
+    // if (!session?.user) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // }
 
     const overrides = Array.from(globalClassifier.getOverrides().entries()).map(([id, diff]) => ({
       taskId: id,

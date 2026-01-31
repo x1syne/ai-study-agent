@@ -7,15 +7,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui'
+import { Button } from '@/components/ui'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@/components/ui'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
+} from '@/components/ui'
 import { Settings, AlertCircle } from 'lucide-react'
 
 interface TaskDifficultyOverrideProps {
@@ -200,7 +200,7 @@ export function TaskDifficultyOverride({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => setIsOpen(false)}
             disabled={isLoading}
             className="bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
