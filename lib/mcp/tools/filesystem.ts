@@ -321,22 +321,28 @@ export class FilesystemTool {
     const fullPath = path.join(this.baseDir, filePath)
 
     try {
-      // Ensure directory exists
-      const dir = path.dirname(fullPath)
-      await fs.mkdir(dir, { recursive: true })
+      // Try to save to filesystem (works locally, fails on Vercel)
+      try {
+        const dir = path.dirname(fullPath)
+        await fs.mkdir(dir, { recursive: true })
 
-      // Check if file is Word document
-      const ext = filename.split('.').pop()?.toLowerCase()
-      if (ext === 'docx' || ext === 'doc') {
-        // Create Word document
-        const buffer = await createWordDocument(content)
-        await fs.writeFile(fullPath, buffer)
-      } else {
-        // Write regular text file
-        await fs.writeFile(fullPath, content, 'utf-8')
+        // Check if file is Word document
+        const ext = filename.split('.').pop()?.toLowerCase()
+        if (ext === 'docx' || ext === 'doc') {
+          // Create Word document
+          const buffer = await createWordDocument(content)
+          await fs.writeFile(fullPath, buffer)
+        } else {
+          // Write regular text file
+          await fs.writeFile(fullPath, content, 'utf-8')
+        }
+        console.log(`[FilesystemTool] File saved to disk: ${fullPath}`)
+      } catch (fsError) {
+        // Filesystem write failed (probably on Vercel), continue with DB save
+        console.log(`[FilesystemTool] Filesystem write failed (expected on Vercel):`, fsError)
       }
 
-      // Save to database
+      // Save to database (always works)
       await prisma.userFile.upsert({
         where: {
           userId_filename: {
