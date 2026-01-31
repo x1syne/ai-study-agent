@@ -18,6 +18,7 @@ import { analyzeMessageForPreferences, updateUserPreferences } from '@/lib/ai/us
 import { MemoryManager } from '@/lib/ai/memory-manager'
 import { detectToolNeeds } from '@/lib/mcp/tool-detector'
 import { FilesystemTool } from '@/lib/mcp/tools/filesystem'
+import * as path from 'path'
 import { SearchTool } from '@/lib/mcp/tools/search'
 import { MCPClient } from '@/lib/mcp/mcp-client'
 
@@ -329,7 +330,8 @@ export async function POST(request: NextRequest) {
     if (toolDetection.needsFileSave && toolDetection.fileInfo) {
       try {
         console.log('[Chat] Executing FilesystemTool...')
-        const filesystemTool = new FilesystemTool(new MCPClient([]), './user-files')
+        const userFilesDir = path.join(process.cwd(), 'user-files')
+        const filesystemTool = new FilesystemTool(new MCPClient([]), userFilesDir)
         
         // If content is empty, try to extract from AI response
         let content = toolDetection.fileInfo.content

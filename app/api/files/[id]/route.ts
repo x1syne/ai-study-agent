@@ -3,12 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { FilesystemTool } from '@/lib/mcp/tools/filesystem'
 import { MCPClient } from '@/lib/mcp/mcp-client'
+import * as path from 'path'
 
 export const dynamic = 'force-dynamic'
 
 // Initialize MCP client and filesystem tool
 const mcpClient = new MCPClient([])
-const filesystemTool = new FilesystemTool(mcpClient)
+const userFilesDir = path.join(process.cwd(), 'user-files')
+const filesystemTool = new FilesystemTool(mcpClient, userFilesDir)
 
 // DELETE /api/files/[id] - Delete a file
 export async function DELETE(
