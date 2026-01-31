@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Timer, Play, Pause, ArrowCounterClockwise, GearSix, Settings } from '@phosphor-icons/react'
+import { Timer, Play, Pause, ArrowCounterClockwise, GearSix } from '@phosphor-icons/react'
 
 export function MiniPomodoro() {
   const [isOpen, setIsOpen] = useState(false)
@@ -106,7 +106,7 @@ export function MiniPomodoro() {
               /* Settings view */
               <div className="p-4">
                 <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-4 h-4 text-white" />
+                  <GearSix className="w-4 h-4 text-white" />
                   <h4 className="text-sm font-semibold text-white">Настройки таймера</h4>
                 </div>
                 
