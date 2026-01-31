@@ -321,19 +321,28 @@ export class FilesystemTool {
     const fullPath = path.join(this.baseDir, filePath)
 
     try {
+      // Check if file is Word document
+      const ext = filename.split('.').pop()?.toLowerCase()
+      const isWordDoc = ext === 'docx' || ext === 'doc'
+      
+      let fileBuffer: Buffer | null = null
+      let contentToSave = content
+
+      // Create Word document buffer if needed
+      if (isWordDoc) {
+        fileBuffer = await createWordDocument(content)
+        // Save as base64 for database
+        contentToSave = fileBuffer.toString('base64')
+      }
+
       // Try to save to filesystem (works locally, fails on Vercel)
       try {
         const dir = path.dirname(fullPath)
         await fs.mkdir(dir, { recursive: true })
 
-        // Check if file is Word document
-        const ext = filename.split('.').pop()?.toLowerCase()
-        if (ext === 'docx' || ext === 'doc') {
-          // Create Word document
-          const buffer = await createWordDocument(content)
-          await fs.writeFile(fullPath, buffer)
+        if (isWordDoc && fileBuffer) {
+          await fs.writeFile(fullPath, fileBuffer)
         } else {
-          // Write regular text file
           await fs.writeFile(fullPath, content, 'utf-8')
         }
         console.log(`[FilesystemTool] File saved to disk: ${fullPath}`)
@@ -351,14 +360,14 @@ export class FilesystemTool {
           }
         },
         update: {
-          content,
+          content: contentToSave,
           type,
           path: filePath
         },
         create: {
           userId,
           filename,
-          content,
+          content: contentToSave,
           type,
           path: filePath
         }

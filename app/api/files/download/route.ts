@@ -102,13 +102,25 @@ export async function GET(request: NextRequest) {
       'bash': 'text/x-sh',
       // SQL
       'sql': 'text/x-sql',
+      // Word documents
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'doc': 'application/msword',
     }
     const contentType = contentTypeMap[ext || ''] || 'text/plain'
 
     console.log(`[API Files] File downloaded from DB: ${filename} for user ${user.id}`)
     
+    // Check if file is Word document (stored as base64)
+    const isWordDoc = ext === 'docx' || ext === 'doc'
+    let fileContent: string | Buffer = file.content
+    
+    if (isWordDoc) {
+      // Decode base64 to binary buffer
+      fileContent = Buffer.from(file.content, 'base64')
+    }
+    
     // Return file content from database
-    return new NextResponse(file.content, {
+    return new NextResponse(fileContent, {
       status: 200,
       headers: {
         'Content-Type': contentType,
