@@ -183,7 +183,7 @@ export default function DashboardPage() {
               <Link key={task.topic.id} href={`/learn/${task.topic.id}`}>
                 <div className="course-card group">
                   <div className="course-card-icon">
-                    <TopicIcon icon={task.topic.icon} size={32} className="text-[var(--color-yellow)]" />
+                    <TopicIcon icon={task.topic.icon || undefined} size={32} className="text-[var(--color-yellow)]" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 group-hover:text-[var(--color-yellow)] transition-colors">
                     {task.topic.name}

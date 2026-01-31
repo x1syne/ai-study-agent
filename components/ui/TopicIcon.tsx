@@ -47,7 +47,7 @@ const emojiToIcon: Record<string, React.ComponentType<any>> = {
 }
 
 interface TopicIconProps {
-  icon?: string
+  icon?: string | null
   size?: number
   className?: string
 }
@@ -55,7 +55,7 @@ interface TopicIconProps {
 export function TopicIcon({ icon, size = 32, className = '' }: TopicIconProps) {
   console.log('TopicIcon render:', { icon, size, className })
   
-  // Если иконка не передана, используем дефолтную
+  // Если иконка не передана или null, используем дефолтную
   if (!icon) {
     return <IconBook size={size} className={className} stroke={1.5} />
   }
