@@ -55,32 +55,58 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Read file content
-    const result = await filesystemTool.readFile({
-      userId,
-      filename
-    })
-
     // Determine content type based on file extension
     const ext = filename.split('.').pop()?.toLowerCase()
     const contentTypeMap: Record<string, string> = {
+      // Text
       'txt': 'text/plain',
       'md': 'text/markdown',
+      // Web
       'js': 'application/javascript',
       'ts': 'application/typescript',
       'jsx': 'application/javascript',
       'tsx': 'application/typescript',
-      'py': 'text/x-python',
-      'json': 'application/json',
       'html': 'text/html',
-      'css': 'text/css'
+      'css': 'text/css',
+      // Python
+      'py': 'text/x-python',
+      // C/C++
+      'c': 'text/x-c',
+      'cpp': 'text/x-c++',
+      'h': 'text/x-c',
+      'hpp': 'text/x-c++',
+      // Java/Kotlin
+      'java': 'text/x-java',
+      'kt': 'text/x-kotlin',
+      // C#
+      'cs': 'text/x-csharp',
+      // Go
+      'go': 'text/x-go',
+      // Rust
+      'rs': 'text/x-rust',
+      // PHP
+      'php': 'text/x-php',
+      // Ruby
+      'rb': 'text/x-ruby',
+      // Swift
+      'swift': 'text/x-swift',
+      // Data
+      'json': 'application/json',
+      'xml': 'application/xml',
+      'yaml': 'text/yaml',
+      'yml': 'text/yaml',
+      // Shell
+      'sh': 'text/x-sh',
+      'bash': 'text/x-sh',
+      // SQL
+      'sql': 'text/x-sql',
     }
     const contentType = contentTypeMap[ext || ''] || 'text/plain'
 
-    console.log(`[API Files] File downloaded: ${filename} for user ${user.id}`)
-
-    // Return file content with appropriate headers
-    return new NextResponse(result.content, {
+    console.log(`[API Files] File downloaded from DB: ${filename} for user ${user.id}`)
+    
+    // Return file content from database
+    return new NextResponse(file.content, {
       status: 200,
       headers: {
         'Content-Type': contentType,
