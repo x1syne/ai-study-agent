@@ -6,22 +6,48 @@ export const revalidate = 0
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Brain, Mail, ArrowRight, Loader2, Lock, Github } from 'lucide-react'
+import { Brain, Mail, ArrowRight, Loader2, Lock, User as UserIcon, Github, Globe } from 'lucide-react'
 import { Card, CardContent, Button, Input } from '@/components/ui'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    username: '',
+    country: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [isSuccess, setIsSuccess] = useState(false)
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) {
-      setMessage('Введите email и пароль')
+    
+    // Валидация
+    if (!formData.firstName || !formData.lastName || !formData.username || 
+        !formData.country || !formData.email || !formData.password) {
+      setMessage('Заполните все поля')
+      setIsSuccess(false)
+      return
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setMessage('Пароли не совпадают')
+      setIsSuccess(false)
+      return
+    }
+
+    if (formData.password.length < 6) {
+      setMessage('Пароль должен быть минимум 6 символов')
       setIsSuccess(false)
       return
     }
@@ -30,22 +56,56 @@ export default function LoginPage() {
     setMessage('')
     const supabase = createClient()
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    // Регистрация в Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: formData.email,
+      password: formData.password,
+      options: {
+        data: {
+          username: formData.username,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          country: formData.country,
+        },
+      },
     })
 
-    if (error) {
-      setMessage('Неверный email или пароль')
+    if (authError) {
+      setMessage(authError.message === 'User already registered' 
+        ? 'Пользователь с таким email уже существует' 
+        : 'Ошибка регистрации. Попробуйте ещё раз.')
       setIsSuccess(false)
       setIsLoading(false)
-    } else {
-      setIsSuccess(true)
-      router.push('/dashboard')
+      return
     }
+
+    // Создание записи в таблице User
+    if (authData.user) {
+      const { error: dbError } = await supabase
+        .from('User')
+        .insert({
+          id: authData.user.id,
+          email: formData.email,
+          username: formData.username,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          name: `${formData.firstName} ${formData.lastName}`,
+          country: formData.country,
+        })
+
+      if (dbError) {
+        console.error('Error creating user record:', dbError)
+      }
+    }
+
+    setIsSuccess(true)
+    setMessage('Регистрация успешна! Перенаправление...')
+    setTimeout(() => {
+      router.push('/dashboard')
+    }, 1500)
   }
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleRegister = async () => {
     setIsLoading(true)
     const supabase = createClient()
 
@@ -57,13 +117,13 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setMessage('Ошибка входа через Google')
+      setMessage('Ошибка регистрации через Google')
       setIsSuccess(false)
       setIsLoading(false)
     }
   }
 
-  const handleGithubLogin = async () => {
+  const handleGithubRegister = async () => {
     setIsLoading(true)
     const supabase = createClient()
 
@@ -75,7 +135,7 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setMessage('Ошибка входа через GitHub')
+      setMessage('Ошибка регистрации через GitHub')
       setIsSuccess(false)
       setIsLoading(false)
     }
@@ -97,16 +157,16 @@ export default function LoginPage() {
         <Card>
           <CardContent className="p-6 space-y-6">
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-white">Вход</h1>
+              <h1 className="text-2xl font-bold text-white">Регистрация</h1>
               <p className="text-slate-400 mt-1">
-                Войдите, чтобы начать обучение
+                Создайте аккаунт для начала обучения
               </p>
             </div>
 
-            {/* Google login */}
+            {/* Google register */}
             <Button
               variant="secondary"
-              onClick={handleGoogleLogin}
+              onClick={handleGoogleRegister}
               disabled={isLoading}
               className="w-full"
             >
@@ -132,13 +192,13 @@ export default function LoginPage() {
                   />
                 </svg>
               )}
-              Войти через Google
+              Регистрация через Google
             </Button>
 
-            {/* GitHub login */}
+            {/* GitHub register */}
             <Button
               variant="secondary"
-              onClick={handleGithubLogin}
+              onClick={handleGithubRegister}
               disabled={isLoading}
               className="w-full"
             >
@@ -147,7 +207,7 @@ export default function LoginPage() {
               ) : (
                 <Github className="w-5 h-5 mr-2" />
               )}
-              Войти через GitHub
+              Регистрация через GitHub
             </Button>
 
             {/* Divider */}
@@ -156,30 +216,83 @@ export default function LoginPage() {
                 <div className="w-full border-t border-slate-700" />
               </div>
               <div className="relative flex justify-center">
-                <span className="px-4 bg-slate-800 text-slate-400 text-sm">или по email</span>
+                <span className="px-4 bg-slate-800 text-slate-400 text-sm">или заполните форму</span>
               </div>
             </div>
 
-            {/* Email/Password login */}
-            <form onSubmit={handleEmailLogin} className="space-y-4">
+            {/* Registration form */}
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  type="text"
+                  label="Имя"
+                  placeholder="Иван"
+                  value={formData.firstName}
+                  onChange={(e) => handleChange('firstName', e.target.value)}
+                  leftIcon={<UserIcon className="w-5 h-5" />}
+                  disabled={isLoading}
+                />
+                <Input
+                  type="text"
+                  label="Фамилия"
+                  placeholder="Иванов"
+                  value={formData.lastName}
+                  onChange={(e) => handleChange('lastName', e.target.value)}
+                  leftIcon={<UserIcon className="w-5 h-5" />}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Input
+                type="text"
+                label="Username"
+                placeholder="ivan_ivanov"
+                value={formData.username}
+                onChange={(e) => handleChange('username', e.target.value)}
+                leftIcon={<UserIcon className="w-5 h-5" />}
+                disabled={isLoading}
+              />
+
+              <Input
+                type="text"
+                label="Страна"
+                placeholder="Россия"
+                value={formData.country}
+                onChange={(e) => handleChange('country', e.target.value)}
+                leftIcon={<Globe className="w-5 h-5" />}
+                disabled={isLoading}
+              />
+
               <Input
                 type="email"
                 label="Email"
                 placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={formData.email}
+                onChange={(e) => handleChange('email', e.target.value)}
                 leftIcon={<Mail className="w-5 h-5" />}
                 disabled={isLoading}
               />
+
               <Input
                 type="password"
                 label="Пароль"
                 placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={formData.password}
+                onChange={(e) => handleChange('password', e.target.value)}
                 leftIcon={<Lock className="w-5 h-5" />}
                 disabled={isLoading}
               />
+
+              <Input
+                type="password"
+                label="Подтвердите пароль"
+                placeholder="••••••••"
+                value={formData.confirmPassword}
+                onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                leftIcon={<Lock className="w-5 h-5" />}
+                disabled={isLoading}
+              />
+
               <Button
                 type="submit"
                 disabled={isLoading}
@@ -189,10 +302,10 @@ export default function LoginPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Вход...
+                    Регистрация...
                   </>
                 ) : (
-                  'Войти'
+                  'Зарегистрироваться'
                 )}
               </Button>
             </form>
@@ -208,14 +321,14 @@ export default function LoginPage() {
             )}
 
             <p className="text-center text-sm text-slate-400">
-              Нет аккаунта?{' '}
-              <Link href="/register" className="text-primary-400 hover:text-primary-300 font-medium">
-                Зарегистрироваться
+              Уже есть аккаунт?{' '}
+              <Link href="/login" className="text-primary-400 hover:text-primary-300 font-medium">
+                Войти
               </Link>
             </p>
 
             <p className="text-center text-xs text-slate-500">
-              При входе вы соглашаетесь с условиями использования сервиса
+              При регистрации вы соглашаетесь с условиями использования сервиса
             </p>
           </CardContent>
         </Card>
@@ -230,4 +343,3 @@ export default function LoginPage() {
     </div>
   )
 }
-

@@ -19,8 +19,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // Redirect logged in users from login page to dashboard
-  if (req.nextUrl.pathname === '/login' && session) {
+  // Redirect logged in users from auth pages to dashboard
+  const authPages = ['/login', '/register']
+  if (authPages.includes(req.nextUrl.pathname) && session) {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 

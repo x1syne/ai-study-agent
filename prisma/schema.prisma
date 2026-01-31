@@ -12,7 +12,11 @@ datasource db {
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
+  username        String?   @unique
+  firstName       String?
+  lastName        String?
   name            String?
+  country         String?
   avatar          String?
   googleId        String?   @unique
   telegramId      String?   @unique
@@ -416,4 +420,35 @@ model UserFile {
   
   @@unique([userId, filename])
   @@index([userId])
+}
+
+// ==================== RAG / VECTOR SEARCH ====================
+
+// Таблица документов для векторного поиска
+// Использует pgvector расширение для хранения эмбеддингов
+// Индексы для vector и tsvector создаются через SQL (см. setup-vector-db.sql)
+model Document {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content     String   @db.Text
+  metadata    Json     @default("{}")
+  // vector(384) - не поддерживается Prisma напрямую, управляется через SQL
+  embedding   Unsupported("vector(384)")?
+  contentHash String?  @map("content_hash")
+  // tsvector - не поддерживается Prisma напрямую, управляется через триггер
+  fts         Unsupported("tsvector")?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@map("documents")
+}
+
+// Таблица кэша для RAG запросов
+model RagCache {
+  key       String   @id
+  data      Json
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  
+  @@map("rag_cache")
+  @@index([expiresAt])
 }
