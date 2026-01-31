@@ -29,6 +29,7 @@ model User {
   chatMessages    ChatMessage[]
   sessions        ConversationSession[]
   preferences     UserPreferences?
+  files           UserFile[]
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -398,4 +399,21 @@ model SkillTemplate {
   
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
+}
+
+// ==================== MCP INTEGRATION ====================
+
+model UserFile {
+  id        String   @id @default(cuid())
+  userId    String
+  filename  String
+  path      String
+  type      String   // 'code', 'note', 'example'
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, filename])
+  @@index([userId])
 }

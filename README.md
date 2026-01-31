@@ -272,6 +272,82 @@ Level = floor(sqrt(totalXP / 100))
 - Проверка тест-кейсов
 - Генерация обратной связи
 
+### 8. Model Context Protocol (MCP) Integration
+
+Система интегрирована с **Model Context Protocol (MCP)** — открытым стандартом для подключения языковых моделей к внешним инструментам и данным. Это превращает AI-агента из простого генератора текста в полноценного помощника, способного выполнять реальные действия.
+
+#### Возможности MCP
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      AI Study Agent                          │
+│                                                              │
+│  ┌──────────────┐      ┌──────────────┐                    │
+│  │   AI Chat    │      │ Theory Gen   │                    │
+│  │              │      │              │                    │
+│  │  - Memory    │      │ - State      │                    │
+│  │  - Context   │      │   Machine    │                    │
+│  │  - MCP Tools │      │ - Retry      │                    │
+│  └──────┬───────┘      └──────┬───────┘                    │
+│         │                     │                             │
+│         └──────────┬──────────┘                             │
+│                    │                                        │
+│         ┌──────────▼──────────┐                            │
+│         │   MCP Client        │                            │
+│         │                     │                            │
+│         │  - Server Manager   │                            │
+│         │  - Tool Router      │                            │
+│         │  - Error Handler    │                            │
+│         └──────────┬──────────┘                            │
+│                    │                                        │
+└────────────────────┼────────────────────────────────────────┘
+                     │
+         ┌───────────┴───────────┐
+         │                       │
+    ┌────▼─────┐          ┌─────▼────┐
+    │Filesystem│          │  Brave   │
+    │  Server  │          │  Search  │
+    └──────────┘          └──────────┘
+```
+
+#### MCP Серверы
+
+| Сервер | Назначение | Инструменты |
+|--------|------------|-------------|
+| **Filesystem** | Работа с файлами | `read_file`, `write_file`, `list_directory`, `create_directory`, `delete_file` |
+| **Brave Search** | Веб-поиск | `brave_web_search` |
+
+#### Примеры использования
+
+**Сохранение кода:**
+```
+Студент: "Сохрани этот код в файл example.js"
+AI: Сохраняет файл через Filesystem Server
+    Возвращает ссылку для скачивания
+```
+
+**Поиск информации:**
+```
+Студент: "Какие новые фичи в React 19?"
+AI: Выполняет поиск через Brave Search
+    Возвращает актуальные результаты с источниками
+```
+
+#### Безопасность MCP
+
+- **Path Validation**: Все пути файлов валидируются на directory traversal
+- **User Isolation**: Файлы каждого пользователя в отдельной директории
+- **API Keys**: Не передаются на клиент, только на сервере
+- **Rate Limiting**: Кэширование поиска, retry с backoff
+- **Input Sanitization**: Имена файлов очищаются от опасных символов
+
+#### Дополнительные возможности
+
+- **Contextual Memory**: AI помнит контекст разговора (до 10 сообщений)
+- **Retry Mechanism**: Автоматические повторы при сбоях (до 3 раз)
+- **State Machine**: Управление состоянием генерации контента
+- **Task Classification**: AI-классификация сложности заданий
+
 ---
 
 ## Стек технологий
@@ -432,11 +508,84 @@ ai-study-agent/
 | POST | `/api/topics/[id]/lesson` | Отметка о прохождении |
 | POST | `/api/topics/[id]/submit` | Отправка ответа |
 
+#### MCP File Operations
+
+| Метод | Endpoint | Описание | Параметры |
+|-------|----------|----------|-----------|
+| POST | `/api/files` | Сохранение файла | `filename`, `content`, `type` (code/note/example) |
+| GET | `/api/files` | Список файлов пользователя | `type` (опционально) |
+| GET | `/api/files/download` | Скачивание файла | `userId`, `filename` |
+
+**Пример запроса POST /api/files:**
+```json
+{
+  "filename": "example.js",
+  "content": "console.log('Hello World')",
+  "type": "code"
+}
+```
+
+**Пример ответа:**
+```json
+{
+  "id": "clx123...",
+  "filename": "example.js",
+  "path": "user-files/user123/example.js",
+  "type": "code",
+  "url": "/api/files/download?userId=user123&filename=example.js",
+  "createdAt": "2025-01-30T12:00:00.000Z"
+}
+```
+
+#### AI Chat (с MCP интеграцией)
+
+| Метод | Endpoint | Описание | Параметры |
+|-------|----------|----------|-----------|
+| POST | `/api/chat` | Отправка сообщения AI | `message`, `characterId`, `threadId`, `files` |
+| GET | `/api/chat` | История чата | `characterId`, `limit` |
+
+**Пример запроса POST /api/chat:**
+```json
+{
+  "message": "Сохрани этот код в файл test.py",
+  "characterId": "default",
+  "threadId": "thread_abc123"
+}
+```
+
+**Пример ответа с MCP tool calls:**
+```json
+{
+  "userMessage": {
+    "id": "msg_123",
+    "role": "USER",
+    "content": "Сохрани этот код в файл test.py",
+    "createdAt": "2025-01-30T12:00:00.000Z"
+  },
+  "aiMessage": {
+    "id": "msg_124",
+    "role": "ASSISTANT",
+    "content": "Код сохранён!\n\n✅ Файл сохранён: [test.py](/api/files/download?userId=user123&filename=test.py)",
+    "createdAt": "2025-01-30T12:00:01.000Z"
+  },
+  "sessionId": "session_xyz",
+  "threadId": "thread_abc123",
+  "toolCalls": [
+    {
+      "tool": "save_file",
+      "result": {
+        "path": "user-files/user123/test.py",
+        "url": "/api/files/download?userId=user123&filename=test.py"
+      }
+    }
+  ]
+}
+```
+
 #### Дополнительные
 
 | Метод | Endpoint | Описание |
 |-------|----------|----------|
-| POST | `/api/chat` | Сообщение AI-репетитору |
 | GET | `/api/review` | Карточки для повторения |
 | POST | `/api/review/[id]` | Обновление карточки |
 | GET | `/api/stats` | Статистика пользователя |
@@ -660,15 +809,37 @@ DATABASE_URL="postgresql://user:password@host:5432/database"
 NEXT_PUBLIC_SUPABASE_URL="https://xxx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="your_anon_key"
 
-# Groq AI
+# Groq AI (обязательно)
 GROQ_API_KEY="gsk_xxx"
+
+# MCP Integration (опционально)
+MCP_ENABLED=true
+BRAVE_API_KEY="BSA_xxx"  # Для веб-поиска
+MCP_FILESYSTEM_PATH="./user-files"  # Путь для файлов пользователей
 
 # Приложение
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Опционально
 USE_AI_AGENT="true"
+SERPER_API_KEY="your_serper_api_key"  # Для RAG поиска
 ```
+
+#### Обязательные переменные
+
+- `DATABASE_URL` — подключение к PostgreSQL
+- `GROQ_API_KEY` — ключ для Groq AI (получить на [console.groq.com](https://console.groq.com))
+- `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` — для Supabase
+
+#### MCP переменные (опционально)
+
+- `MCP_ENABLED` — включить/выключить MCP интеграцию (по умолчанию `true`)
+- `BRAVE_API_KEY` — ключ для Brave Search API (получить на [brave.com/search/api](https://brave.com/search/api/))
+  - Бесплатный тариф: 2000 запросов/месяц
+  - Используется для веб-поиска в AI-чате
+- `MCP_FILESYSTEM_PATH` — путь для хранения файлов пользователей (по умолчанию `./user-files`)
+
+**Примечание:** Если `BRAVE_API_KEY` не указан, веб-поиск будет недоступен, но остальные функции будут работать.
 
 ### 3. Инициализация базы данных
 
@@ -713,6 +884,114 @@ npm start
 3. Скопируйте URL и ключи из Settings → API
 4. Скопируйте DATABASE_URL из Settings → Database
 
+### Brave Search API (опционально, бесплатно)
+
+1. Зарегистрируйтесь на [brave.com/search/api](https://brave.com/search/api/)
+2. Создайте API ключ в Dashboard
+3. Лимиты бесплатного тарифа: 2000 запросов/месяц
+4. Используется для веб-поиска в AI-чате
+
+**Примечание:** Без Brave API ключа веб-поиск будет недоступен, но все остальные функции (генерация курсов, AI-чат, сохранение файлов) будут работать нормально.
+
+---
+
+## MCP Configuration
+
+### Настройка MCP серверов
+
+MCP серверы настраиваются в файле `.kiro/settings/mcp.json`. По умолчанию настроены два сервера:
+
+#### 1. Filesystem Server
+
+Позволяет AI сохранять и читать файлы:
+
+```json
+{
+  "filesystem": {
+    "name": "filesystem",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "./user-files"],
+    "disabled": false,
+    "autoApprove": ["read_file", "write_file", "list_directory"]
+  }
+}
+```
+
+**Возможности:**
+- Сохранение кода, заметок, примеров
+- Чтение файлов пользователя
+- Список файлов в директории
+- Создание и удаление файлов
+
+**Безопасность:**
+- Все файлы изолированы в user-specific директориях
+- Валидация путей для предотвращения directory traversal
+- Санитизация имён файлов
+
+#### 2. Brave Search Server
+
+Позволяет AI искать информацию в интернете:
+
+```json
+{
+  "brave-search": {
+    "name": "brave-search",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": {
+      "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+    },
+    "disabled": false,
+    "autoApprove": ["brave_web_search"]
+  }
+}
+```
+
+**Возможности:**
+- Поиск актуальной информации
+- Поиск документации библиотек
+- Поиск примеров кода
+- Поиск научных статей
+
+**Оптимизация:**
+- Результаты кэшируются на 1 час
+- Ограничение до 5 результатов
+- Автоматическое определение необходимости поиска
+
+### Проверка статуса MCP
+
+После запуска приложения проверьте логи:
+
+```bash
+npm run dev
+
+# Должны увидеть:
+# [MCP] Initialization complete
+# [MCP] Filesystem server: running
+# [MCP] Brave-search server: running (или disabled если нет API ключа)
+```
+
+Также можно проверить статус в настройках приложения (Settings → MCP Servers).
+
+### Отключение MCP
+
+Если хотите отключить MCP интеграцию:
+
+```env
+# В .env файле
+MCP_ENABLED=false
+```
+
+Или отключите конкретный сервер в `mcp.json`:
+
+```json
+{
+  "brave-search": {
+    "disabled": true
+  }
+}
+```
+
 ---
 
 ## Безопасность
@@ -724,6 +1003,178 @@ npm start
 - Санитизация пользовательского ввода
 - Защита от XSS в Markdown рендеринге
 - CORS настройки для API
+- MCP Path Validation для предотвращения directory traversal
+- Изоляция файлов пользователей в отдельных директориях
+
+---
+
+## Troubleshooting (Решение проблем)
+
+### MCP Integration Issues
+
+#### Проблема: MCP серверы не запускаются
+
+**Симптомы:**
+- В логах нет сообщения `[MCP] Initialization complete`
+- Ошибки при попытке сохранить файл или выполнить поиск
+
+**Решение:**
+1. Проверьте, что `MCP_ENABLED=true` в `.env`
+2. Убедитесь, что `npx` доступен (входит в Node.js)
+3. Проверьте права доступа к директории `./user-files`
+4. Проверьте логи на наличие конкретных ошибок
+
+```bash
+# Создайте директорию вручную если нужно
+mkdir user-files
+chmod 755 user-files
+```
+
+#### Проблема: Brave Search не работает
+
+**Симптомы:**
+- Поиск не выполняется в AI-чате
+- В логах: `BRAVE_API_KEY not configured`
+
+**Решение:**
+1. Получите API ключ на [brave.com/search/api](https://brave.com/search/api/)
+2. Добавьте в `.env`: `BRAVE_API_KEY=BSA_xxx`
+3. Перезапустите приложение
+
+**Примечание:** Без Brave API ключа приложение работает нормально, просто без веб-поиска.
+
+#### Проблема: Файлы не сохраняются
+
+**Симптомы:**
+- Ошибка при попытке сохранить файл через AI-чат
+- `Error saving file` в логах
+
+**Решение:**
+1. Проверьте права доступа к `MCP_FILESYSTEM_PATH` (по умолчанию `./user-files`)
+2. Убедитесь, что путь существует и доступен для записи
+3. Проверьте, что имя файла валидное (без `..`, `/`, и других опасных символов)
+
+```bash
+# Проверка прав
+ls -la user-files
+
+# Если нужно, исправьте права
+chmod -R 755 user-files
+```
+
+#### Проблема: Rate limit ошибки
+
+**Симптомы:**
+- Ошибка 429 от Brave Search API
+- Слишком много запросов
+
+**Решение:**
+- Результаты поиска кэшируются на 1 час автоматически
+- Бесплатный тариф: 2000 запросов/месяц
+- Рассмотрите платный тариф если нужно больше запросов
+
+### AI Generation Issues
+
+#### Проблема: AI не отвечает или возвращает ошибку
+
+**Симптомы:**
+- `AI временно недоступен`
+- Ошибки в логах от Groq API
+
+**Решение:**
+1. Проверьте `GROQ_API_KEY` в `.env`
+2. Убедитесь, что ключ действителен на [console.groq.com](https://console.groq.com)
+3. Проверьте лимиты: 30 запросов/мин, 14,400 запросов/день
+4. Подождите несколько минут если превышен rate limit
+
+#### Проблема: Генерация курса зависает
+
+**Симптомы:**
+- Создание курса не завершается
+- Spinner крутится бесконечно
+
+**Решение:**
+1. Проверьте логи сервера на наличие ошибок
+2. Убедитесь, что `USE_AI_AGENT=true` в `.env`
+3. Попробуйте более простую тему
+4. Проверьте подключение к интернету (для arXiv/OpenLibrary)
+
+### Database Issues
+
+#### Проблема: Ошибки подключения к базе данных
+
+**Симптомы:**
+- `Error connecting to database`
+- Prisma ошибки
+
+**Решение:**
+1. Проверьте `DATABASE_URL` в `.env`
+2. Убедитесь, что PostgreSQL запущен
+3. Проверьте права доступа к базе данных
+4. Выполните миграции:
+
+```bash
+npm run db:generate
+npm run db:push
+```
+
+### General Issues
+
+#### Проблема: Приложение не запускается
+
+**Решение:**
+1. Удалите `node_modules` и переустановите зависимости:
+```bash
+rm -rf node_modules
+npm install
+```
+
+2. Очистите кэш Next.js:
+```bash
+rm -rf .next
+npm run dev
+```
+
+3. Проверьте версию Node.js (требуется 18+):
+```bash
+node --version
+```
+
+#### Проблема: TypeScript ошибки
+
+**Решение:**
+```bash
+# Регенерируйте Prisma клиент
+npm run db:generate
+
+# Перезапустите TypeScript сервер в IDE
+```
+
+### Логирование и отладка
+
+Для детальной отладки включите подробное логирование:
+
+```env
+# В .env
+NODE_ENV=development
+DEBUG=mcp:*
+```
+
+Проверьте логи в консоли:
+- `[MCP]` — логи MCP интеграции
+- `[Chat]` — логи AI-чата
+- `[API Files]` — логи файловых операций
+- `[Retry]` — логи механизма повторов
+- `[StateMachine]` — логи state machine
+
+### Получение помощи
+
+Если проблема не решена:
+
+1. Проверьте [Issues на GitHub](https://github.com/x1syne/ai-study-agent/issues)
+2. Создайте новый Issue с описанием проблемы и логами
+3. Укажите версии: Node.js, npm, PostgreSQL
+4. Приложите скриншоты ошибок
 
 ---
 

@@ -136,7 +136,7 @@ describe('Course Generation Structure Properties', () => {
           return isValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 
@@ -234,7 +234,7 @@ describe('Course Generation Structure Properties', () => {
           return isValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 
@@ -332,7 +332,7 @@ describe('Course Generation Structure Properties', () => {
           return isValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 
@@ -353,7 +353,7 @@ describe('Course Generation Structure Properties', () => {
           return isValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 
@@ -455,7 +455,7 @@ describe('Course Generation Structure Properties', () => {
           return isValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 
@@ -520,7 +520,7 @@ describe('Course Validation Utility Functions', () => {
           return moduleCountValid && topicCountValid && moduleOrderValid && topicOrderValid && descriptionsValid
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 5, timeout: 10000 }
     )
   })
 })

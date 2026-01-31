@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Settings, User, Bell, Moon, Sun, Save, Monitor, Volume2, Mic, Check } from 'lucide-react'
+import { Settings, User, Bell, Moon, Sun, Save, Monitor, Volume2, Mic, Check, Server } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAppStore } from '@/lib/store'
+import { MCPServerManagement } from '@/components/settings/MCPServerManagement'
 
 export default function SettingsPage() {
   const { theme } = useTheme()
@@ -189,6 +190,19 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ToggleRow icon={<Bell />} title="Напоминания" desc="Напоминания о повторении" value={notifications} onChange={setNotifications} />
+        </CardContent>
+      </Card>
+
+      {/* MCP Servers */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="w-5 h-5 text-[var(--color-primary)]" />
+            MCP Серверы
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MCPServerManagement />
         </CardContent>
       </Card>
 

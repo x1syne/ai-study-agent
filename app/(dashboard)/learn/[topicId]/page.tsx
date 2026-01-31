@@ -569,6 +569,13 @@ export default function LearnPage() {
                         taskResults={taskResults}
                         theoryContent={theoryContent}
                         savedAnswer={savedAnswers.get(currentTaskIndex)}
+                        lessonId={practiceLesson?.id}
+                        onDifficultyOverride={(taskId, newDifficulty) => {
+                          // Update the task in the local state
+                          setPracticeTasks(prev => prev.map(t => 
+                            t.id === taskId ? { ...t, difficulty: newDifficulty, manualOverride: true } : t
+                          ))
+                        }}
                         onAnswer={(isCorrect, answer) => {
                           // Обновляем score только если это первый ответ на задание
                           if (taskResults[currentTaskIndex] === 'pending') {

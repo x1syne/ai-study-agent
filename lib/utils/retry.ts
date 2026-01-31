@@ -11,49 +11,58 @@
 
 export interface RetryOptions {
   /** Максимум попыток (default: 3) */
-  maxRetries?: number
+  maxRetries: number
   /** Начальная задержка в мс (default: 1000) */
-  baseDelayMs?: number
+  initialDelay: number
   /** Максимальная задержка в мс (default: 10000) */
-  maxDelayMs?: number
+  maxDelay: number
   /** Множитель задержки (default: 2) */
-  backoffFactor?: number
+  backoffMultiplier: number
   /** Функция для определения, стоит ли повторять (default: retryable errors) */
   shouldRetry?: (error: unknown) => boolean
   /** Callback при каждой попытке */
-  onRetry?: (attempt: number, error: unknown, delayMs: number) => void
+  onRetry?: (attempt: number, error: unknown) => void
 }
 
-export interface RetryResult<T> {
-  success: boolean
-  data?: T
-  error?: unknown
-  attempts: number
-  totalTimeMs: number
+// ==================== УТИЛИТЫ ====================
+
+/**
+ * Промис-based sleep
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-// ==================== КОНФИГУРАЦИЯ ====================
-
-const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'onRetry'>> & { onRetry?: RetryOptions['onRetry'] } = {
-  maxRetries: 3,
-  baseDelayMs: 1000,
-  maxDelayMs: 10000,
-  backoffFactor: 2,
-  shouldRetry: isRetryableError,
-  onRetry: undefined
+/**
+ * Извлекает сообщение из ошибки
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message: unknown }).message)
+  }
+  return String(error)
 }
 
 /**
  * Определяет, является ли ошибка "повторяемой"
+ * NOTE: Rate limit (429) errors should NOT be retried according to design spec
  */
 export function isRetryableError(error: unknown): boolean {
   if (!error) return false
   
   const message = getErrorMessage(error).toLowerCase()
   
-  // Rate limit errors
-  if (message.includes('rate limit') || message.includes('429') || message.includes('too many requests')) {
-    return true
+  // Check for status code in error object
+  const errorObj = error as any
+  if (errorObj?.status === 429 || errorObj?.statusCode === 429) {
+    return false // Do NOT retry rate limit errors
+  }
+  
+  // Rate limit errors - do NOT retry
+  if (message.includes('429') || message.includes('too many requests')) {
+    return false
   }
   
   // Timeout errors
@@ -79,18 +88,6 @@ export function isRetryableError(error: unknown): boolean {
   return false
 }
 
-/**
- * Извлекает сообщение из ошибки
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  if (error && typeof error === 'object' && 'message' in error) {
-    return String((error as { message: unknown }).message)
-  }
-  return String(error)
-}
-
 // ==================== ОСНОВНЫЕ ФУНКЦИИ ====================
 
 /**
@@ -99,17 +96,20 @@ function getErrorMessage(error: unknown): string {
  * @example
  * const result = await withRetry(
  *   () => fetchFromAPI(),
- *   { maxRetries: 3, baseDelayMs: 1000 }
+ *   { maxRetries: 3, initialDelay: 1000, maxDelay: 10000, backoffMultiplier: 2 }
  * )
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  options: RetryOptions = {}
+  options: RetryOptions
 ): Promise<T> {
-  const opts = { ...DEFAULT_OPTIONS, ...options }
+  const opts = {
+    shouldRetry: isRetryableError,
+    ...options
+  }
   let lastError: unknown
 
-  for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     try {
       return await fn()
     } catch (error) {
@@ -125,12 +125,15 @@ export async function withRetry<T>(
         break
       }
 
-      // Экспоненциальная задержка с jitter
-      const delay = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs, opts.backoffFactor)
+      // Экспоненциальная задержка
+      const delay = Math.min(
+        opts.initialDelay * Math.pow(opts.backoffMultiplier, attempt),
+        opts.maxDelay
+      )
       
       // Callback
       if (opts.onRetry) {
-        opts.onRetry(attempt, error, delay)
+        opts.onRetry(attempt + 1, error)
       }
 
       await sleep(delay)
@@ -138,151 +141,4 @@ export async function withRetry<T>(
   }
 
   throw lastError
-}
-
-/**
- * Версия withRetry которая возвращает результат вместо throw
- */
-export async function withRetryResult<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<RetryResult<T>> {
-  const startTime = Date.now()
-  const opts = { ...DEFAULT_OPTIONS, ...options }
-  let attempts = 0
-  let lastError: unknown
-
-  for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
-    attempts = attempt
-    try {
-      const data = await fn()
-      return {
-        success: true,
-        data,
-        attempts,
-        totalTimeMs: Date.now() - startTime
-      }
-    } catch (error) {
-      lastError = error
-      
-      if (!opts.shouldRetry(error) || attempt === opts.maxRetries) {
-        break
-      }
-
-      const delay = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs, opts.backoffFactor)
-      
-      if (opts.onRetry) {
-        opts.onRetry(attempt, error, delay)
-      }
-
-      await sleep(delay)
-    }
-  }
-
-  return {
-    success: false,
-    error: lastError,
-    attempts,
-    totalTimeMs: Date.now() - startTime
-  }
-}
-
-// ==================== AI-СПЕЦИФИЧНЫЕ ФУНКЦИИ ====================
-
-/**
- * Retry для AI вызовов с оптимизированными настройками
- */
-export async function withAIRetry<T>(
-  fn: () => Promise<T>,
-  context: string = 'AI call'
-): Promise<T> {
-  return withRetry(fn, {
-    maxRetries: 2,  // Для AI достаточно 2 попыток (потом fallback провайдер)
-    baseDelayMs: 2000,
-    maxDelayMs: 8000,
-    backoffFactor: 2,
-    shouldRetry: isAIRetryableError,
-    onRetry: (attempt, error, delay) => {
-      console.log(`[${context}] Attempt ${attempt} failed, retrying in ${delay}ms...`)
-      console.log(`[${context}] Error: ${getErrorMessage(error).slice(0, 100)}`)
-    }
-  })
-}
-
-/**
- * Определяет, является ли AI ошибка "повторяемой"
- */
-export function isAIRetryableError(error: unknown): boolean {
-  const message = getErrorMessage(error).toLowerCase()
-  
-  // Rate limit — точно повторяем
-  if (message.includes('rate limit') || message.includes('429')) {
-    return true
-  }
-  
-  // Timeout — повторяем
-  if (message.includes('timeout') || message.includes('aborted')) {
-    return true
-  }
-  
-  // Сервер перегружен
-  if (message.includes('overloaded') || message.includes('503') || message.includes('capacity')) {
-    return true
-  }
-  
-  // Сетевые ошибки
-  if (message.includes('network') || message.includes('econnreset')) {
-    return true
-  }
-  
-  // НЕ повторяем: invalid API key, bad request, content policy
-  if (message.includes('invalid') || message.includes('401') || message.includes('400')) {
-    return false
-  }
-  
-  if (message.includes('content policy') || message.includes('safety')) {
-    return false
-  }
-  
-  return false
-}
-
-// ==================== УТИЛИТЫ ====================
-
-/**
- * Вычисляет задержку с экспоненциальным backoff и jitter
- */
-function calculateDelay(
-  attempt: number,
-  baseDelay: number,
-  maxDelay: number,
-  factor: number
-): number {
-  // Экспоненциальная задержка: base * factor^(attempt-1)
-  const exponentialDelay = baseDelay * Math.pow(factor, attempt - 1)
-  
-  // Ограничиваем максимумом
-  const cappedDelay = Math.min(exponentialDelay, maxDelay)
-  
-  // Добавляем jitter ±20% для избежания thundering herd
-  const jitter = cappedDelay * 0.2 * (Math.random() * 2 - 1)
-  
-  return Math.round(cappedDelay + jitter)
-}
-
-/**
- * Промис-based sleep
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-/**
- * Создаёт retry-обёртку для функции
- */
-export function createRetryWrapper<TArgs extends unknown[], TResult>(
-  fn: (...args: TArgs) => Promise<TResult>,
-  options: RetryOptions = {}
-): (...args: TArgs) => Promise<TResult> {
-  return (...args: TArgs) => withRetry(() => fn(...args), options)
 }

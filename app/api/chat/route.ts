@@ -15,11 +15,27 @@ import { getCheckpointer } from '@/lib/ai/checkpointer'
 import { buildPromptContext } from '@/lib/ai/context-builder'
 import { getSummarizer } from '@/lib/ai/summarizer'
 import { analyzeMessageForPreferences, updateUserPreferences } from '@/lib/ai/user-preferences'
+import { MemoryManager } from '@/lib/ai/memory-manager'
+import { detectToolNeeds } from '@/lib/mcp/tool-detector'
+import { FilesystemTool } from '@/lib/mcp/tools/filesystem'
+import { SearchTool } from '@/lib/mcp/tools/search'
+import { MCPClient } from '@/lib/mcp/mcp-client'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
   const result = await generateWithRouter('chat', system, user, opts)
   return result.content
+}
+
+// Singleton instance of MemoryManager
+// Requirement 4.4: Store context in memory (not database) for session duration
+let memoryManagerInstance: MemoryManager | null = null
+
+function getMemoryManager(): MemoryManager {
+  if (!memoryManagerInstance) {
+    memoryManagerInstance = new MemoryManager(10) // Max 10 messages before summarization
+  }
+  return memoryManagerInstance
 }
 
 export const dynamic = 'force-dynamic'
@@ -74,13 +90,22 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { message, topicSlug, characterId = 'default', files = [], sessionId: requestSessionId } = body
+    const { message, topicSlug, characterId = 'default', files = [], sessionId: requestSessionId, threadId: requestThreadId } = body
 
     if (!message && files.length === 0) {
       return NextResponse.json({ error: 'Message or files required' }, { status: 400 })
     }
 
-    // Получаем или создаём сессию для персистентности
+    // Get MemoryManager instance
+    const memoryManager = getMemoryManager()
+
+    // Requirement 4.1: Create session on first message
+    let threadId = requestThreadId
+    if (!threadId) {
+      threadId = memoryManager.createSession(user.id)
+    }
+
+    // Получаем или создаём сессию для персистентности (Checkpointer)
     const checkpointer = getCheckpointer()
     let sessionId = requestSessionId
     
@@ -120,7 +145,24 @@ export async function POST(request: NextRequest) {
       displayContent = message ? `${message}\n\n[Прикреплено: ${fileNames}]` : `[Прикреплено: ${fileNames}]`
     }
 
-    // Сохраняем сообщение пользователя через Checkpointer
+    // Requirement 4.2: Add message to memory context
+    memoryManager.addMessage(threadId, {
+      role: 'user',
+      content: displayContent,
+      timestamp: Date.now()
+    })
+
+    // Requirement 4.3: Summarize old messages when exceeding 10 messages
+    await memoryManager.summarizeOldMessages(threadId)
+
+    // Requirement 4.2: Get context from MemoryManager
+    const memoryContext = memoryManager.getContext(threadId)
+
+    // Requirements 1.1, 2.1: Detect tool needs
+    const toolDetection = detectToolNeeds(message)
+    console.log('[Chat] Tool detection:', toolDetection)
+
+    // Сохраняем сообщение пользователя через Checkpointer (для персистентности)
     const userMessage = await checkpointer.saveMessage({
       sessionId,
       userId: user.id,
@@ -188,8 +230,41 @@ export async function POST(request: NextRequest) {
       professorContext = await getProfessorContext(message)
     }
 
-    // Объединяем все источники информации + контекст из истории
-    const fullContext = `${context}${courseContext}${arxivContext}${professorContext ? '\n\n' + professorContext : ''}\n\n${promptContext.historyContext}`
+    // Requirement 4.2, 4.5: Include memory context in AI prompts
+    // Build memory context string from MemoryManager
+    let memoryContextString = ''
+    if (memoryContext.summary) {
+      memoryContextString += `\n\n📝 Краткое содержание предыдущего разговора: ${memoryContext.summary}\n`
+    }
+    if (memoryContext.context.lastCodeExample) {
+      memoryContextString += `\n💾 Последний пример кода из разговора:\n${memoryContext.context.lastCodeExample}\n`
+    }
+    if (memoryContext.messages.length > 0) {
+      memoryContextString += `\n📜 Последние ${memoryContext.messages.length} сообщений:\n`
+      memoryContext.messages.forEach(msg => {
+        const role = msg.role === 'user' ? 'Студент' : 'Ассистент'
+        const preview = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content
+        memoryContextString += `- ${role}: ${preview}\n`
+      })
+    }
+
+    // Requirement 4.5: Handle references to earlier content
+    // Check if user is referencing earlier content
+    const referencePhrases = ['earlier', 'showed', 'mentioned', 'said', 'code', 'ранее', 'показал', 'упоминал', 'говорил', 'код']
+    const isReferencingEarlier = referencePhrases.some(phrase => message.toLowerCase().includes(phrase))
+    
+    if (isReferencingEarlier) {
+      const relevantMessages = memoryManager.findInContext(threadId, message)
+      if (relevantMessages.length > 0) {
+        memoryContextString += `\n\n🔍 Релевантные сообщения из истории:\n`
+        relevantMessages.slice(0, 3).forEach(msg => {
+          memoryContextString += `- ${msg.role === 'user' ? 'Студент' : 'Ассистент'}: ${msg.content.substring(0, 200)}...\n`
+        })
+      }
+    }
+
+    // Объединяем все источники информации + контекст из истории + память
+    const fullContext = `${context}${courseContext}${arxivContext}${professorContext ? '\n\n' + professorContext : ''}${memoryContextString}\n\n${promptContext.historyContext}`
 
     // Update character state based on conversation
     const dialogContext = await checkpointer.getContext(sessionId)
@@ -240,7 +315,108 @@ export async function POST(request: NextRequest) {
 Пожалуйста, проверьте GROQ_API_KEY в файле .env и получите новый ключ на https://console.groq.com/keys`
     }
 
-    // Сохраняем ответ AI через Checkpointer
+    // Requirement 4.2: Add AI response to memory context
+    memoryManager.addMessage(threadId, {
+      role: 'assistant',
+      content: response,
+      timestamp: Date.now()
+    })
+
+    // Requirements 1.1, 2.1, 2.2: Execute MCP tools if needed
+    const toolResults: Array<{ tool: string; result: any; error?: string }> = []
+    
+    // Execute Filesystem Tool if needed
+    if (toolDetection.needsFileSave && toolDetection.fileInfo) {
+      try {
+        console.log('[Chat] Executing FilesystemTool...')
+        const filesystemTool = new FilesystemTool(new MCPClient([]), './user-files')
+        
+        // If content is empty, try to extract from AI response
+        let content = toolDetection.fileInfo.content
+        if (!content || content.trim() === '') {
+          // Extract code blocks from AI response
+          const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
+          const codeBlocks = [...response.matchAll(codeBlockPattern)]
+          if (codeBlocks.length > 0) {
+            content = codeBlocks[0][1].trim()
+          }
+        }
+        
+        if (content && content.trim() !== '') {
+          const saveResult = await filesystemTool.saveFile({
+            userId: user.id,
+            filename: toolDetection.fileInfo.filename,
+            content: content,
+            type: toolDetection.fileInfo.type
+          })
+          
+          toolResults.push({
+            tool: 'save_file',
+            result: saveResult
+          })
+          
+          // Add file save info to response
+          response += `\n\n✅ Файл сохранён: [${toolDetection.fileInfo.filename}](${saveResult.url})`
+          
+          console.log('[Chat] File saved:', saveResult.path)
+        }
+      } catch (error) {
+        console.error('[Chat] FilesystemTool error:', error)
+        toolResults.push({
+          tool: 'save_file',
+          result: null,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        
+        response += `\n\n❌ Не удалось сохранить файл: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }
+    }
+    
+    // Execute Search Tool if needed
+    if (toolDetection.needsSearch && toolDetection.searchQuery) {
+      try {
+        console.log('[Chat] Executing SearchTool...')
+        const braveApiKey = process.env.BRAVE_API_KEY || ''
+        
+        if (!braveApiKey) {
+          console.warn('[Chat] BRAVE_API_KEY not configured, skipping search')
+        } else {
+          const searchTool = new SearchTool(braveApiKey)
+          const searchResults = await searchTool.search({
+            query: toolDetection.searchQuery,
+            count: 5
+          })
+          
+          toolResults.push({
+            tool: 'search',
+            result: searchResults
+          })
+          
+          // Format search results for response
+          if (searchResults.length > 0) {
+            response += `\n\n🔍 Результаты поиска по запросу "${toolDetection.searchQuery}":\n\n`
+            searchResults.forEach((result, index) => {
+              response += `${index + 1}. **[${result.title}](${result.url})**\n`
+              response += `   ${result.snippet}\n\n`
+            })
+          }
+          
+          console.log('[Chat] Search completed:', searchResults.length, 'results')
+        }
+      } catch (error) {
+        console.error('[Chat] SearchTool error:', error)
+        toolResults.push({
+          tool: 'search',
+          result: null,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        
+        // Don't add error to response for search failures (graceful degradation)
+        console.warn('[Chat] Search failed, continuing without search results')
+      }
+    }
+
+    // Сохраняем ответ AI через Checkpointer (для персистентности)
     const aiMessage = await checkpointer.saveMessage({
       sessionId,
       userId: user.id,
@@ -267,7 +443,9 @@ export async function POST(request: NextRequest) {
         content: response,
         createdAt: aiMessage.createdAt
       },
-      sessionId
+      sessionId,
+      threadId, // Return threadId for client to maintain memory context
+      toolCalls: toolResults.length > 0 ? toolResults : undefined // Include tool results if any
     })
   } catch (error) {
     console.error('Error in chat:', error)

@@ -4,8 +4,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { generateWithRouter } from '@/lib/ai-router'
 import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
 import { getFullRAGContext } from '@/lib/rag'
-// Используем оптимизированный агент с параллельной генерацией
-import { runLessonAgentFast as runLessonAgent } from '@/lib/ai/agent-fast'
+// Используем оптимизированный агент с параллельной генерацией и state machine
+import { runLessonAgentFast as runLessonAgent, runLessonAgentWithStateMachine } from '@/lib/ai/agent-fast'
 import type { Domain } from '@/lib/ai/domain-prompts'
 import { 
   getDomainPracticePrompt, 
@@ -145,10 +145,21 @@ export async function GET(
     if (lessonType === 'theory') {
       try {
         if (USE_AGENT) {
-          // Оптимизированный агент с параллельной генерацией и RAG
-          // Requirements: 4.2, 4.4 - передаём домен из базы данных
+          // Оптимизированный агент с state machine для надёжной генерации
+          // Requirements: 7.1, 7.2, 7.3, 7.4, 7.5 - state machine integration
           const goalDomain = topic.module.goal.domain as Domain
-          const agentResult = await runLessonAgent(topic.name, topic.module.goal.title, user.id, goalDomain)
+          
+          // Use state machine for theory generation with progress tracking
+          const agentResult = await runLessonAgentWithStateMachine(
+            topic.name, 
+            topic.module.goal.title, 
+            user.id, 
+            goalDomain,
+            // Progress callback for UI updates (can be extended later)
+            (progressEvent) => {
+              console.log(`[API] Theory generation progress: ${progressEvent.phase}`)
+            }
+          )
           
           // Пропускаем через Quality Gateway
           const gatewayResult = processContentThroughGateway({
