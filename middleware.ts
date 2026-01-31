@@ -4,6 +4,12 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
+  
+  // В режиме разработки пропускаем проверку авторизации
+  if (process.env.NODE_ENV === 'development' && process.env.SKIP_AUTH === 'true') {
+    return res
+  }
+  
   const supabase = createMiddlewareClient({ req, res })
 
   const {

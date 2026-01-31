@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { CheckCircle, X } from 'lucide-react'
+import { CheckCircle, X, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { TopicStatus } from '@/types'
@@ -171,7 +171,7 @@ export function CompletionModal({
                 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)]',
                 'text-sm text-slate-300'
               )}>
-                <span className="text-lg">📚</span>
+                <BookOpen className="w-5 h-5 text-primary-400" />
                 <span className="truncate max-w-[250px]">{topicName}</span>
               </div>
             )}

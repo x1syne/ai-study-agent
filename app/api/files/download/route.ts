@@ -46,7 +46,6 @@ export async function GET(request: NextRequest) {
 
     // Determine content type based on file extension
     const ext = filename.split('.').pop()?.toLowerCase()
-    const ext = filename.split('.').pop()?.toLowerCase()
     const contentTypeMap: Record<string, string> = {
       // Text
       'txt': 'text/plain',

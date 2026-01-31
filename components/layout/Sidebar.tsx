@@ -128,7 +128,10 @@ export function Sidebar() {
           
           {sidebarOpen && (
             <div className="mt-4 p-4 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20">
-              <p className="text-sm text-[var(--color-primary)] font-medium">🎯 Совет дня</p>
+              <div className="flex items-center gap-2 mb-1">
+                <Target size={16} className="text-[var(--color-primary)]" />
+                <p className="text-sm text-[var(--color-primary)] font-medium">Совет дня</p>
+              </div>
               <p className="text-xs text-[var(--color-text-secondary)] mt-1">
                 Занимайся каждый день по 20 минут для лучшего результата
               </p>

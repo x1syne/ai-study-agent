@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Search, Sparkles, ChevronRight, Loader2 } from 'lucide-react'
+import { ArrowLeft, Search, Sparkles, ChevronRight, Loader2, Code, Globe, Ruler, Microscope, TrendingUp, Palette, Music, Heart } from 'lucide-react'
 import { Card, CardContent, Button, Input } from '@/components/ui'
 import Link from 'next/link'
 
@@ -261,7 +261,7 @@ export default function NewGoalPage() {
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
-                      <div className="text-3xl">{topic.icon}</div>
+                      <div className="flex-shrink-0">{topic.icon}</div>
                       <div className="flex-1">
                         <h3 className="font-semibold text-white">{topic.name}</h3>
                         <p className="text-sm text-slate-400">{Object.keys(topic.subtopics).slice(0, 3).join(', ')}...</p>
@@ -283,7 +283,7 @@ export default function NewGoalPage() {
           </Button>
 
           <div className="flex items-center gap-4 mb-6">
-            <div className="text-4xl">{selectedCategory.icon}</div>
+            <div className="flex-shrink-0">{selectedCategory.icon}</div>
             <div>
               <h2 className="text-2xl font-bold text-white">{selectedCategory.name}</h2>
               <p className="text-slate-400">Выбери направление или введи своё</p>
@@ -340,7 +340,7 @@ export default function NewGoalPage() {
           </Button>
 
           <div className="flex items-center gap-4 mb-6">
-            <div className="text-4xl">{selectedCategory.icon}</div>
+            <div className="flex-shrink-0">{selectedCategory.icon}</div>
             <div>
               <h2 className="text-2xl font-bold text-white">{selectedSubtopic}</h2>
               <p className="text-slate-400">Выбери конкретную тему или введи свою</p>

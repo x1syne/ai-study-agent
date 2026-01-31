@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { Progress } from '@/components/ui'
+import { Progress, TopicIcon } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 export interface ModuleCardProps {
@@ -56,7 +56,9 @@ export function ModuleCard({
         </div>
 
         {/* Module icon */}
-        <div className="text-2xl flex-shrink-0">{module.icon}</div>
+        <div className="flex-shrink-0">
+          <TopicIcon icon={module.icon} size={28} className="text-[var(--color-yellow)]" />
+        </div>
 
         {/* Module info */}
         <div className="flex-1 min-w-0">

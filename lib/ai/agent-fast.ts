@@ -559,44 +559,6 @@ JSON формат:
     return getDefaultTasks(analysis.topic)
   }
 }
-  const targetHard = total - targetEasy - targetMedium
-  
-  console.log(`[Fast Agent] Target distribution: ${targetEasy} easy, ${targetMedium} medium, ${targetHard} hard`)
-  
-  // Sort tasks by their classification confidence and factors
-  const tasksWithScores = tasks.map((task, index) => ({
-    task,
-    classification: classifications[index],
-    score: (
-      classifications[index].factors.complexity +
-      classifications[index].factors.knowledgeRequired +
-      classifications[index].factors.timeEstimate
-    ) / 3
-  })).sort((a, b) => a.score - b.score)
-  
-  // Assign difficulties based on sorted order
-  const adjustedTasks = tasksWithScores.map((item, index) => {
-    let difficulty: 'easy' | 'medium' | 'hard'
-    
-    if (index < targetEasy) {
-      difficulty = 'easy'
-    } else if (index < targetEasy + targetMedium) {
-      difficulty = 'medium'
-    } else {
-      difficulty = 'hard'
-    }
-    
-    return {
-      ...item.task,
-      difficulty,
-      originalDifficulty: item.classification.difficulty,
-      adjusted: item.classification.difficulty !== difficulty
-    }
-  })
-  
-  // Sort back to original order by id
-  return adjustedTasks.sort((a, b) => a.id - b.id)
-}
 
 function getDefaultTasks(topic: string): any[] {
   return [

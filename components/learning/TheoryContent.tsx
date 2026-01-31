@@ -110,7 +110,10 @@ function InteractiveCode({ data }: { data: { language: string; title: string; co
       </div>
       {data.task && (
         <div className="px-4 py-2 bg-primary-500/10 border-t border-slate-700">
-          <p className="text-sm text-primary-300">💡 Задание: {data.task}</p>
+          <div className="flex items-center gap-2">
+            <Lightbulb className="w-4 h-4 text-primary-300" />
+            <p className="text-sm text-primary-300">Задание: {data.task}</p>
+          </div>
         </div>
       )}
       {output && (
@@ -144,7 +147,10 @@ function MisconceptionBlock({ data }: { data: { wrong: string; right: string; wh
               <p className="text-green-300">На самом деле: "{data.right}"</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-300">💡 {data.why}</p>
+              <div className="flex items-start gap-2">
+                <Lightbulb className="w-4 h-4 text-slate-300 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-slate-300">{data.why}</p>
+              </div>
             </div>
           </>
         ) : (

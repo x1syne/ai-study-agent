@@ -36,7 +36,7 @@ interface AchievementInfo {
 }
 
 export const ACHIEVEMENTS: Record<AchievementType, AchievementInfo> = {
-  FIRST_LESSON: { icon: '📖', name: 'Первый шаг', description: 'Завершить первый урок', rarity: 'common' },
+  FIRST_LESSON: { icon: '📚', name: 'Первый шаг', description: 'Завершить первый урок', rarity: 'common' },
   FIRST_TOPIC: { icon: '🎯', name: 'Тема закрыта', description: 'Завершить первую тему', rarity: 'common' },
   FIRST_GOAL: { icon: '🚀', name: 'Цель поставлена', description: 'Создать первую цель', rarity: 'common' },
   STREAK_3: { icon: '🔥', name: 'Разогрев', description: '3 дня подряд', rarity: 'common' },
@@ -48,17 +48,17 @@ export const ACHIEVEMENTS: Record<AchievementType, AchievementInfo> = {
   TASKS_100: { icon: '🏆', name: 'Мастер задач', description: 'Решить 100 задач', rarity: 'epic' },
   CARDS_10: { icon: '🃏', name: 'Картёжник', description: 'Повторить 10 карточек', rarity: 'common' },
   CARDS_50: { icon: '🎴', name: 'Коллекционер', description: 'Повторить 50 карточек', rarity: 'rare' },
-  CARDS_100: { icon: '🎰', name: 'Мастер памяти', description: 'Повторить 100 карточек', rarity: 'epic' },
+  CARDS_100: { icon: '🧠', name: 'Мастер памяти', description: 'Повторить 100 карточек', rarity: 'epic' },
   PERFECT_QUIZ: { icon: '💯', name: 'Перфекционист', description: 'Пройти квиз без ошибок', rarity: 'rare' },
   SPEED_LEARNER: { icon: '⚡', name: 'Скорость', description: 'Завершить тему за 10 минут', rarity: 'rare' },
-  NIGHT_OWL: { icon: '🦉', name: 'Ночная сова', description: 'Учиться после полуночи', rarity: 'common' },
-  EARLY_BIRD: { icon: '🐦', name: 'Ранняя пташка', description: 'Учиться до 7 утра', rarity: 'common' },
+  NIGHT_OWL: { icon: '🌙', name: 'Ночная сова', description: 'Учиться после полуночи', rarity: 'common' },
+  EARLY_BIRD: { icon: '🌅', name: 'Ранняя пташка', description: 'Учиться до 7 утра', rarity: 'common' },
   XP_100: { icon: '⭐', name: 'Новичок', description: 'Набрать 100 XP', rarity: 'common' },
-  XP_500: { icon: '🌟', name: 'Ученик', description: 'Набрать 500 XP', rarity: 'rare' },
+  XP_500: { icon: '⭐', name: 'Ученик', description: 'Набрать 500 XP', rarity: 'rare' },
   XP_1000: { icon: '✨', name: 'Знаток', description: 'Набрать 1000 XP', rarity: 'epic' },
-  XP_5000: { icon: '💫', name: 'Эксперт', description: 'Набрать 5000 XP', rarity: 'legendary' },
-  LEVEL_5: { icon: '🎖️', name: 'Уровень 5', description: 'Достичь 5 уровня', rarity: 'rare' },
-  LEVEL_10: { icon: '🏅', name: 'Уровень 10', description: 'Достичь 10 уровня', rarity: 'epic' },
+  XP_5000: { icon: '✨', name: 'Эксперт', description: 'Набрать 5000 XP', rarity: 'legendary' },
+  LEVEL_5: { icon: '🏅', name: 'Уровень 5', description: 'Достичь 5 уровня', rarity: 'rare' },
+  LEVEL_10: { icon: '🥇', name: 'Уровень 10', description: 'Достичь 10 уровня', rarity: 'epic' },
   DAILY_CHALLENGE_7: { icon: '🎯', name: 'Челленджер', description: '7 daily challenges подряд', rarity: 'rare' },
 }
 
@@ -130,7 +130,7 @@ export function AchievementUnlockToast({ type }: { type: AchievementType }) {
 
   return (
     <div className="flex items-center gap-4 p-4 bg-slate-800 rounded-xl border border-yellow-500/50 animate-bounce">
-      <div className="text-4xl">{achievement.icon}</div>
+      <div className="w-12 h-12 flex items-center justify-center text-yellow-400">{achievement.icon}</div>
       <div>
         <div className="text-yellow-400 font-bold">Достижение разблокировано!</div>
         <div className="text-white font-medium">{achievement.name}</div>

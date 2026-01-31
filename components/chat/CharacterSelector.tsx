@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import { AI_CHARACTERS, type AICharacter } from '@/lib/ai/characters'
+import { CharacterIcon } from './CharacterIcon'
 
 interface CharacterSelectorProps {
   selectedId: string
@@ -19,8 +20,8 @@ export function CharacterSelector({ selectedId, onSelect }: CharacterSelectorPro
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-3 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded-xl border border-slate-700/50 transition-colors"
       >
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${selected.color} flex items-center justify-center text-xl`}>
-          {selected.icon}
+        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${selected.color} flex items-center justify-center`}>
+          <CharacterIcon characterId={selected.id} size={20} className="text-white" />
         </div>
         <div className="text-left">
           <p className="font-medium text-white text-sm">{selected.name}</p>
@@ -53,8 +54,8 @@ export function CharacterSelector({ selectedId, onSelect }: CharacterSelectorPro
                       : 'hover:bg-slate-700/50'
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${character.color} flex items-center justify-center text-2xl flex-shrink-0`}>
-                    {character.icon}
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${character.color} flex items-center justify-center flex-shrink-0`}>
+                    <CharacterIcon characterId={character.id} size={24} className="text-white" />
                   </div>
                   <div className="flex-1 text-left">
                     <div className="flex items-center gap-2">

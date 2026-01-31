@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Settings, User, Bell, Moon, Sun, Save, Monitor, Volume2, Mic, Check, Server } from 'lucide-react'
+import { Settings, User, Bell, Moon, Sun, Save, Monitor, Volume2, Mic, Check, Server, GraduationCap, MessageCircle, Rocket } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -158,9 +158,9 @@ export default function SettingsPage() {
             <p className="text-sm text-[var(--color-text-secondary)] mb-3">Как AI будет объяснять материал</p>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { id: 'academic', name: '🎓 Научный', desc: 'Формальный стиль' },
-                { id: 'conversational', name: '💬 Простой', desc: 'Понятный язык' },
-                { id: 'motivational', name: '🚀 Мотивирующий', desc: 'Вдохновляющий' }
+                { id: 'academic', name: 'Научный', icon: <GraduationCap className="w-4 h-4" />, desc: 'Формальный стиль' },
+                { id: 'conversational', name: 'Простой', icon: <MessageCircle className="w-4 h-4" />, desc: 'Понятный язык' },
+                { id: 'motivational', name: 'Мотивирующий', icon: <Rocket className="w-4 h-4" />, desc: 'Вдохновляющий' }
               ].map(t => (
                 <button 
                   key={t.id} 
@@ -171,8 +171,11 @@ export default function SettingsPage() {
                       : 'border-[var(--color-border)] hover:border-[var(--color-primary)]'
                   }`}
                 >
-                  <p className="font-medium text-white text-sm">{t.name}</p>
-                  <p className="text-xs text-[var(--color-text-secondary)] mt-1">{t.desc}</p>
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    {t.icon}
+                    <p className="font-medium text-white text-sm">{t.name}</p>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-secondary)]">{t.desc}</p>
                 </button>
               ))}
             </div>

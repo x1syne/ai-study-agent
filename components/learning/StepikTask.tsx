@@ -8,7 +8,6 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { TaskDifficultyOverride } from './TaskDifficultyOverride'
 
 // Компонент для рендеринга текста с LaTeX
 function MathText({ children, className = '' }: { children: string; className?: string }) {
@@ -564,20 +563,6 @@ export function StepikTask({
           <div className="flex items-center gap-3">
             <span className="text-lg font-semibold text-white">Задание {taskNumber}/{totalTasks}</span>
             <Badge className={difficultyColors[task.difficulty || 'easy']}>{difficultyLabels[task.difficulty || 'easy']}</Badge>
-            {lessonId && (
-              <TaskDifficultyOverride
-                lessonId={lessonId}
-                taskId={task.id}
-                currentDifficulty={task.difficulty || 'easy'}
-                originalDifficulty={(task as any).originalDifficulty}
-                manualOverride={(task as any).manualOverride}
-                onOverrideSuccess={(newDifficulty) => {
-                  if (onDifficultyOverride) {
-                    onDifficultyOverride(task.id, newDifficulty)
-                  }
-                }}
-              />
-            )}
             {attempts > 0 && <span className="text-xs text-slate-400">Попытка {attempts}</span>}
           </div>
           <div className="flex items-center gap-2">
