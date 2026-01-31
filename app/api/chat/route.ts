@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
                 // Fallback: use the entire response but clean it up
                 content = response
                   .replace(/^.*?(Конечно|Хорошо|Отлично|Вот|Держи).*?\n/i, '') // Remove intro
-                  .replace(/\n\n✅.*Файл сохранён.*$/s, '') // Remove file save confirmation
+                  .replace(/\n\n✅.*Файл сохранён.*[\s\S]*$/, '') // Remove file save confirmation
                   .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove markdown links
                   .trim()
               }
