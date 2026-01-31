@@ -334,11 +334,70 @@ export async function POST(request: NextRequest) {
         // If content is empty, try to extract from AI response
         let content = toolDetection.fileInfo.content
         if (!content || content.trim() === '') {
-          // Extract code blocks from AI response
-          const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
-          const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
-          if (codeBlocks.length > 0) {
-            content = codeBlocks[0][1].trim()
+          const fileType = toolDetection.fileInfo.type
+          
+          // For code files, extract from code blocks
+          if (fileType === 'code') {
+            const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
+            const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
+            if (codeBlocks.length > 0) {
+              content = codeBlocks[0][1].trim()
+            }
+          } else {
+            // For text/note files, extract only the main content
+            // Remove AI's conversational parts (greetings, explanations, etc.)
+            
+            // Try to find content between markers or in code blocks first
+            const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
+            const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
+            
+            if (codeBlocks.length > 0) {
+              // If there are code blocks, use them (they contain the actual content)
+              content = codeBlocks.map(block => block[1]).join('\n\n').trim()
+            } else {
+              // Otherwise, try to extract structured content
+              // Remove common AI phrases and keep only the main information
+              const lines = response.split('\n')
+              const contentLines: string[] = []
+              let skipIntro = true
+              
+              for (const line of lines) {
+                const trimmed = line.trim()
+                
+                // Skip empty lines at the start
+                if (skipIntro && !trimmed) continue
+                
+                // Skip common AI intro phrases
+                if (skipIntro && (
+                  trimmed.match(/^(Конечно|Хорошо|Отлично|Вот|Держи|Пожалуйста|Sure|Here|Okay)/i) ||
+                  trimmed.match(/сохран[юи]/i) ||
+                  trimmed.match(/созда[мл]/i) ||
+                  trimmed.match(/файл/i) && trimmed.length < 50
+                )) {
+                  continue
+                }
+                
+                skipIntro = false
+                
+                // Skip file save confirmation messages
+                if (trimmed.match(/^✅.*Файл сохранён/)) continue
+                if (trimmed.match(/^❌.*Не удалось сохранить/)) continue
+                
+                contentLines.push(line)
+              }
+              
+              content = contentLines.join('\n').trim()
+              
+              // If content is still too conversational, try to extract just headings and paragraphs
+              if (content.length < 100 || content.match(/^(Я |Давай |Сейчас |Вот )/)) {
+                // Fallback: use the entire response but clean it up
+                content = response
+                  .replace(/^.*?(Конечно|Хорошо|Отлично|Вот|Держи).*?\n/i, '') // Remove intro
+                  .replace(/\n\n✅.*Файл сохранён.*$/s, '') // Remove file save confirmation
+                  .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove markdown links
+                  .trim()
+              }
+            }
           }
         }
         
@@ -359,6 +418,8 @@ export async function POST(request: NextRequest) {
           response += `\n\n✅ Файл сохранён: [${toolDetection.fileInfo.filename}](${saveResult.url})`
           
           console.log('[Chat] File saved:', saveResult.path)
+        } else {
+          console.warn('[Chat] No content to save for file:', toolDetection.fileInfo.filename)
         }
       } catch (error) {
         console.error('[Chat] FilesystemTool error:', error)

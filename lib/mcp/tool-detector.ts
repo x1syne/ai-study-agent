@@ -23,22 +23,20 @@ export function detectFileSave(message: string): { detected: boolean; filename?:
     'save', 'сохрани', 'сохранить', 'запиши', 'записать',
     'create file', 'создай файл', 'создать файл',
     'download', 'скачать', 'загрузить',
-    'export', 'экспорт', 'экспортировать'
+    'export', 'экспорт', 'экспортировать',
+    'write', 'напиши', 'написать'
   ]
 
   // Check for save keywords
   const hasSaveKeyword = saveKeywords.some(keyword => lowerMessage.includes(keyword))
-  if (!hasSaveKeyword) {
-    return { detected: false }
-  }
-
-  // Extract filename
+  
+  // Extract filename first
   let filename: string | undefined
   let content: string | undefined
   let type: 'code' | 'note' | 'example' = 'code'
 
   // Pattern 1: "save to file.js" or "сохрани в file.js"
-  const filenamePattern1 = /(?:save|сохрани|сохранить|запиши|записать|create|создай|создать).*?(?:to|в|file|файл)?\s+([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i
+  const filenamePattern1 = /(?:save|сохрани|сохранить|запиши|записать|create|создай|создать|write|напиши|написать).*?(?:to|в|file|файл)?\s+([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i
   const match1 = message.match(filenamePattern1)
   if (match1) {
     filename = match1[1]
@@ -52,10 +50,17 @@ export function detectFileSave(message: string): { detected: boolean; filename?:
   }
 
   // Pattern 3: Just a filename with extension mentioned
-  const filenamePattern3 = /\b([a-zA-Z0-9_-]+\.(js|ts|py|txt|md|json|jsx|tsx|css|html))\b/i
+  const filenamePattern3 = /\b([a-zA-Z0-9_-]+\.(js|ts|py|txt|md|json|jsx|tsx|css|html|docx|doc))\b/i
   const match3 = message.match(filenamePattern3)
   if (match3 && !filename) {
     filename = match3[1]
+  }
+
+  // If filename is found, consider it as save intent even without explicit keywords
+  const hasFilename = !!filename
+  
+  if (!hasSaveKeyword && !hasFilename) {
+    return { detected: false }
   }
 
   // Extract code blocks
@@ -69,7 +74,7 @@ export function detectFileSave(message: string): { detected: boolean; filename?:
   // Determine file type from extension
   if (filename) {
     const ext = filename.split('.').pop()?.toLowerCase()
-    if (ext === 'md' || ext === 'txt') {
+    if (ext === 'md' || ext === 'txt' || ext === 'docx' || ext === 'doc') {
       type = 'note'
     } else if (ext === 'js' || ext === 'ts' || ext === 'py' || ext === 'jsx' || ext === 'tsx' || ext === 'json' || ext === 'css' || ext === 'html') {
       type = 'code'

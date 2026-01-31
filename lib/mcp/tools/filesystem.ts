@@ -2,8 +2,10 @@
 
 import { MCPClient } from '../mcp-client'
 import { MCPError } from '../errors'
+import { prisma } from '@/lib/prisma'
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 
 export interface SaveFileParams {
   userId: string
@@ -73,8 +75,170 @@ export function getUserFilePath(userId: string, filename: string): string {
   // Sanitize filename - remove dangerous characters
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
   
-  // Construct safe path
-  return path.join('user-files', userId, sanitized)
+  // Construct safe path (without 'user-files' prefix since baseDir already includes it)
+  return path.join(userId, sanitized)
+}
+
+/**
+ * Create Word document from text content with GOST formatting
+ * GOST requirements:
+ * - Font: Times New Roman, 14pt
+ * - Line spacing: 1.5
+ * - First line indent: 1.25cm (708 twips)
+ * - Alignment: Justified
+ * - Headings: Bold, centered for H1, left-aligned for H2/H3
+ */
+async function createWordDocument(content: string): Promise<Buffer> {
+  // Parse content into paragraphs
+  const lines = content.split('\n')
+  const paragraphs: Paragraph[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    
+    if (!trimmed) {
+      // Empty line
+      paragraphs.push(new Paragraph({ text: '' }))
+      continue
+    }
+
+    // Check for headings (lines starting with #)
+    if (trimmed.startsWith('# ')) {
+      // Heading 1 - GOST: Bold, 14pt, centered, no indent
+      paragraphs.push(new Paragraph({
+        text: trimmed.substring(2),
+        heading: HeadingLevel.HEADING_1,
+        alignment: 'center',
+        spacing: {
+          before: 240, // 12pt before
+          after: 120   // 6pt after
+        },
+        style: 'Heading1'
+      }))
+    } else if (trimmed.startsWith('## ')) {
+      // Heading 2 - GOST: Bold, 14pt, left-aligned, no indent
+      paragraphs.push(new Paragraph({
+        text: trimmed.substring(3),
+        heading: HeadingLevel.HEADING_2,
+        alignment: 'left',
+        spacing: {
+          before: 240,
+          after: 120
+        },
+        style: 'Heading2'
+      }))
+    } else if (trimmed.startsWith('### ')) {
+      // Heading 3 - GOST: Bold, 14pt, left-aligned, no indent
+      paragraphs.push(new Paragraph({
+        text: trimmed.substring(4),
+        heading: HeadingLevel.HEADING_3,
+        alignment: 'left',
+        spacing: {
+          before: 240,
+          after: 120
+        },
+        style: 'Heading3'
+      }))
+    } else {
+      // Regular paragraph - GOST: Times New Roman 14pt, justified, 1.25cm indent, 1.5 line spacing
+      paragraphs.push(new Paragraph({
+        children: [
+          new TextRun({
+            text: trimmed,
+            font: 'Times New Roman',
+            size: 28 // 14pt = 28 half-points
+          })
+        ],
+        alignment: 'both', // Justified (по ширине)
+        indent: {
+          firstLine: 708 // 1.25cm = 708 twips (1cm = 566.93 twips)
+        },
+        spacing: {
+          line: 360, // 1.5 line spacing (240 = single, 360 = 1.5, 480 = double)
+          lineRule: 'auto'
+        }
+      }))
+    }
+  }
+
+  // Create document with GOST styles
+  const doc = new Document({
+    styles: {
+      paragraphStyles: [
+        {
+          id: 'Heading1',
+          name: 'Heading 1',
+          basedOn: 'Normal',
+          next: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 28, // 14pt
+            bold: true
+          },
+          paragraph: {
+            alignment: 'center',
+            spacing: {
+              before: 240,
+              after: 120
+            }
+          }
+        },
+        {
+          id: 'Heading2',
+          name: 'Heading 2',
+          basedOn: 'Normal',
+          next: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 28, // 14pt
+            bold: true
+          },
+          paragraph: {
+            alignment: 'left',
+            spacing: {
+              before: 240,
+              after: 120
+            }
+          }
+        },
+        {
+          id: 'Heading3',
+          name: 'Heading 3',
+          basedOn: 'Normal',
+          next: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 28, // 14pt
+            bold: true
+          },
+          paragraph: {
+            alignment: 'left',
+            spacing: {
+              before: 240,
+              after: 120
+            }
+          }
+        }
+      ]
+    },
+    sections: [{
+      properties: {
+        page: {
+          margin: {
+            top: 1134,    // 2cm = 1134 twips
+            right: 850,   // 1.5cm = 850 twips
+            bottom: 1134, // 2cm
+            left: 1701    // 3cm = 1701 twips (GOST left margin)
+          }
+        }
+      },
+      children: paragraphs
+    }]
+  })
+
+  // Generate buffer
+  const buffer = await Packer.toBuffer(doc)
+  return buffer
 }
 
 /**
@@ -91,7 +255,40 @@ export function validateFileExtension(filename: string, allowedExtensions: strin
 export class FilesystemTool {
   private mcpClient: MCPClient
   private baseDir: string
-  private allowedExtensions: string[] = ['.txt', '.md', '.js', '.py', '.json', '.ts', '.jsx', '.tsx', '.css', '.html']
+  private allowedExtensions: string[] = [
+    // Текст и документация
+    '.txt', '.md', '.rst', '.tex',
+    // Документы
+    '.docx', '.doc',
+    // Web
+    '.js', '.ts', '.jsx', '.tsx', '.html', '.css', '.scss', '.sass', '.less',
+    // Python
+    '.py', '.pyw', '.pyx',
+    // C/C++
+    '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hxx',
+    // Java/Kotlin
+    '.java', '.kt', '.kts',
+    // C#
+    '.cs',
+    // Go
+    '.go',
+    // Rust
+    '.rs',
+    // PHP
+    '.php',
+    // Ruby
+    '.rb',
+    // Swift
+    '.swift',
+    // Данные
+    '.json', '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg',
+    // Shell
+    '.sh', '.bash', '.zsh', '.fish',
+    // SQL
+    '.sql',
+    // R
+    '.r', '.R'
+  ]
 
   constructor(mcpClient: MCPClient, baseDir: string = './user-files') {
     this.mcpClient = mcpClient
@@ -128,8 +325,38 @@ export class FilesystemTool {
       const dir = path.dirname(fullPath)
       await fs.mkdir(dir, { recursive: true })
 
-      // Write file
-      await fs.writeFile(fullPath, content, 'utf-8')
+      // Check if file is Word document
+      const ext = filename.split('.').pop()?.toLowerCase()
+      if (ext === 'docx' || ext === 'doc') {
+        // Create Word document
+        const buffer = await createWordDocument(content)
+        await fs.writeFile(fullPath, buffer)
+      } else {
+        // Write regular text file
+        await fs.writeFile(fullPath, content, 'utf-8')
+      }
+
+      // Save to database
+      await prisma.userFile.upsert({
+        where: {
+          userId_filename: {
+            userId,
+            filename
+          }
+        },
+        update: {
+          content,
+          type,
+          path: filePath
+        },
+        create: {
+          userId,
+          filename,
+          content,
+          type,
+          path: filePath
+        }
+      })
 
       // Generate download URL
       const url = `/api/files/download?userId=${userId}&filename=${encodeURIComponent(filename)}`
@@ -189,7 +416,7 @@ export class FilesystemTool {
     const { userId, type } = params
 
     // Generate user directory path
-    const userDir = path.join(this.baseDir, 'user-files', userId)
+    const userDir = path.join(this.baseDir, userId)
 
     try {
       // Check if directory exists
@@ -220,7 +447,7 @@ export class FilesystemTool {
 
           fileInfos.push({
             filename: file,
-            path: path.join('user-files', userId, file),
+            path: path.join(userId, file),
             type: fileType,
             size: stats.size,
             createdAt: stats.birthtime
@@ -287,7 +514,9 @@ export class FilesystemTool {
       '.html': 'code',
       '.css': 'code',
       '.md': 'note',
-      '.txt': 'note'
+      '.txt': 'note',
+      '.docx': 'note',
+      '.doc': 'note'
     }
 
     return typeMap[ext.toLowerCase()] || 'example'

@@ -113,11 +113,61 @@ Add these variables to your `.env` file:
 }
 ```
 
+### 3. Puppeteer Server
+
+**Purpose**: Enables browser automation for visual testing and page interaction
+
+**Package**: `@modelcontextprotocol/server-puppeteer`
+
+**Tools Available**:
+- `puppeteer_navigate` - Navigate to a URL
+- `puppeteer_screenshot` - Take a screenshot of the page
+- `puppeteer_click` - Click on an element
+- `puppeteer_fill` - Fill in a form field
+- `puppeteer_select` - Select an option from a dropdown
+- `puppeteer_hover` - Hover over an element
+- `puppeteer_evaluate` - Execute JavaScript in the page context
+
+**Use Cases**:
+- Visual regression testing of UI components
+- Analyze page layout and styling issues
+- Test responsive design across different viewports
+- Verify button positions and element alignment
+- Debug CSS and layout problems
+- Take screenshots for documentation
+
+**Features**:
+- Runs in headless Chrome browser
+- Supports screenshots and visual inspection
+- Can interact with page elements
+- Execute custom JavaScript for testing
+- No additional configuration required
+
+**Configuration**:
+```json
+{
+  "name": "puppeteer",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+  "disabled": false
+}
+```
+
+**Example Usage**:
+```
+"Open http://localhost:3000 and take a screenshot"
+"Navigate to the homepage and click the login button"
+"Check if the submit button is visible on the form"
+"Take a screenshot of the dashboard page"
+```
+
 ## Setup Instructions
 
 ### 1. Install Dependencies
 
 MCP servers are automatically installed via `npx` when first used. No manual installation required.
+
+**Note**: Puppeteer will download Chromium (~200MB) on first use. This is automatic but requires internet connectivity.
 
 ### 2. Configure Environment Variables
 
@@ -148,9 +198,10 @@ npm run dev
 
 Look for these log messages:
 ```
-[MCP] Initializing 2 servers...
+[MCP] Initializing 3 servers...
 [MCP] ✓ Server initialized: filesystem
 [MCP] ✓ Server initialized: brave-search
+[MCP] ✓ Server initialized: puppeteer
 [MCP] Initialization complete
 ```
 
@@ -167,6 +218,13 @@ console.log('Hello, World!');"
 In the AI chat, try:
 ```
 "What are the new features in React 19?"
+```
+
+#### Test Browser Automation
+In the AI chat, try:
+```
+"Open http://localhost:3000 and take a screenshot"
+"Navigate to the homepage and check if the login button is visible"
 ```
 
 ## Server Management
@@ -259,6 +317,22 @@ If a server fails, you can reconnect it from the Settings page without restartin
    ```bash
    npm install -g @modelcontextprotocol/server-filesystem
    npm install -g @modelcontextprotocol/server-brave-search
+   npm install -g @modelcontextprotocol/server-puppeteer
+   ```
+
+### Puppeteer Browser Issues
+
+**Symptoms**: Puppeteer fails to start, browser not found, screenshot errors
+
+**Solutions**:
+1. Puppeteer downloads Chromium automatically on first run
+2. Ensure you have sufficient disk space (200-300MB for Chromium)
+3. Check internet connectivity for initial download
+4. If behind a proxy, configure npm proxy settings
+5. For Windows: Ensure you have Visual C++ Redistributable installed
+6. Try manual Chromium download:
+   ```bash
+   npx puppeteer browsers install chrome
    ```
 
 ## Advanced Configuration
