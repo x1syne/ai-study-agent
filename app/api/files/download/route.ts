@@ -112,15 +112,22 @@ export async function GET(request: NextRequest) {
     
     // Check if file is Word document (stored as base64)
     const isWordDoc = ext === 'docx' || ext === 'doc'
-    let fileContent: string | Buffer = file.content
     
     if (isWordDoc) {
-      // Decode base64 to binary buffer
-      fileContent = Buffer.from(file.content, 'base64')
+      // Decode base64 to binary buffer for Word documents
+      const buffer = Buffer.from(file.content, 'base64')
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-cache'
+        }
+      })
     }
     
-    // Return file content from database
-    return new NextResponse(fileContent, {
+    // Return text file content from database
+    return new NextResponse(file.content, {
       status: 200,
       headers: {
         'Content-Type': contentType,
