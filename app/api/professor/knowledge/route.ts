@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { 
   indexPublication, 
   indexAllPublications,
+  indexScientificArticles,
   searchProfessorKnowledge,
   OSTROUKH_PUBLICATIONS,
   getProfessorContext
@@ -133,7 +134,10 @@ export async function PUT() {
     // 1. Индексируем базовые публикации (абстракты)
     const basicIndexed = await indexAllPublications()
     
-    // 2. Индексируем расширенный контент из глав
+    // 2. Индексируем научные статьи из открытого доступа
+    const articlesIndexed = await indexScientificArticles()
+    
+    // 3. Индексируем расширенный контент из глав
     const extendedContent = getAllContentForIndexing()
     let extendedIndexed = 0
     
@@ -159,8 +163,9 @@ export async function PUT() {
     
     return NextResponse.json({
       success: true,
-      message: `Проиндексировано: ${basicIndexed} базовых + ${extendedIndexed} расширенных чанков`,
+      message: `Проиндексировано: ${basicIndexed} базовых + ${articlesIndexed} научных статей + ${extendedIndexed} расширенных чанков`,
       basicIndexed,
+      articlesIndexed,
       extendedIndexed,
       totalPublications: OSTROUKH_PUBLICATIONS.length,
       totalChapters: extendedContent.length

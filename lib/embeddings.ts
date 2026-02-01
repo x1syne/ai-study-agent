@@ -69,44 +69,48 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   if (cached) return cached
   
   try {
-    // Используем бесплатный HuggingFace Inference API
-    const response = await fetch(
-      'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // HuggingFace позволяет ограниченное использование без ключа
-          ...(process.env.HUGGINGFACE_API_KEY && {
-            'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`
-          })
-        },
-        body: JSON.stringify({
-          inputs: text.slice(0, 512), // Ограничиваем длину
-          options: { wait_for_model: true }
-        })
+    // Пробуем использовать HuggingFace API (может не работать)
+    if (process.env.HUGGINGFACE_API_KEY) {
+      try {
+        const response = await fetch(
+          'https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`
+            },
+            body: JSON.stringify({
+              inputs: text.slice(0, 512),
+              options: { wait_for_model: true }
+            })
+          }
+        )
+
+        if (response.ok) {
+          const embedding = await response.json()
+          
+          let result: number[]
+          if (Array.isArray(embedding) && Array.isArray(embedding[0])) {
+            result = embedding[0]
+          } else {
+            result = embedding
+          }
+          
+          await cacheSet(key, result, { ttl: CACHE_TTL.EMBEDDINGS })
+          return result
+        }
+      } catch (hfError) {
+        console.warn('[Embeddings] HuggingFace API failed, using fallback')
       }
-    )
-
-    if (!response.ok) {
-      console.error('[Embeddings] HuggingFace API error:', response.status)
-      return generateSimpleEmbedding(text)
-    }
-
-    const embedding = await response.json()
-    
-    // API возвращает массив массивов, берём первый
-    let result: number[]
-    if (Array.isArray(embedding) && Array.isArray(embedding[0])) {
-      result = embedding[0]
-    } else {
-      result = embedding
     }
     
-    // Кэшируем результат
+    // Fallback: используем простые эмбеддинги
+    console.log('[Embeddings] Using simple embeddings (fallback)')
+    const result = generateSimpleEmbedding(text)
     await cacheSet(key, result, { ttl: CACHE_TTL.EMBEDDINGS })
-    
     return result
+    
   } catch (error) {
     console.error('[Embeddings] Error generating embedding:', error)
     return generateSimpleEmbedding(text)
