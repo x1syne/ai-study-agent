@@ -38,9 +38,18 @@ export default function SchedulePage() {
 
   useEffect(() => {
     fetch('/api/goals').then(res => res.json()).then(data => {
-      setGoals(data)
-      if (data.length > 0) setSelectedGoal(data[0].id)
-    }).catch(console.error)
+      // Проверяем что data это массив
+      if (Array.isArray(data)) {
+        setGoals(data)
+        if (data.length > 0) setSelectedGoal(data[0].id)
+      } else {
+        console.error('Goals API returned non-array:', data)
+        setGoals([])
+      }
+    }).catch(err => {
+      console.error('Failed to fetch goals:', err)
+      setGoals([])
+    })
     const savedCustom = localStorage.getItem('customEvents')
     if (savedCustom) setCustomEvents(JSON.parse(savedCustom))
     const savedSchedule = localStorage.getItem('studySchedule')
@@ -109,7 +118,7 @@ export default function SchedulePage() {
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         <Card><CardContent className="p-5 space-y-4">
           <div className="flex items-center gap-2 text-[var(--color-text-secondary)]"><Clock className="w-4 h-4" />Настройки</div>
-          <div><label className="text-xs text-[var(--color-text-secondary)] mb-1 block">Курс</label><select value={selectedGoal} onChange={e => setSelectedGoal(e.target.value)} className="w-full bg-[#1a1a2e] border border-[var(--color-border)] rounded-xl px-4 py-3 text-white">{goals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
+          <div><label className="text-xs text-[var(--color-text-secondary)] mb-1 block">Курс</label><select value={selectedGoal} onChange={e => setSelectedGoal(e.target.value)} className="w-full bg-[#1a1a2e] border border-[var(--color-border)] rounded-xl px-4 py-3 text-white">{Array.isArray(goals) && goals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
           <div><label className="text-xs text-[var(--color-text-secondary)] mb-1 block">Дней в неделю</label><div className="grid grid-cols-7 gap-1">{[1,2,3,4,5,6,7].map(d => <button key={d} onClick={() => setPreferences(p => ({...p, daysPerWeek: d}))} className={`py-2 rounded-lg text-sm ${preferences.daysPerWeek === d ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface)]'}`}>{d}</button>)}</div></div>
           <div><label className="text-xs text-[var(--color-text-secondary)] mb-1 block">Минут в день</label><div className="grid grid-cols-4 gap-1">{[30,45,60,90].map(m => <button key={m} onClick={() => setPreferences(p => ({...p, minutesPerDay: m}))} className={`py-2 rounded-lg text-sm ${preferences.minutesPerDay === m ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface)]'}`}>{m}</button>)}</div></div>
           <div><label className="text-xs text-[var(--color-text-secondary)] mb-1 block">Время</label><div className="grid grid-cols-3 gap-1">{[{v:'morning',l:'🌅'},{v:'afternoon',l:'☀️'},{v:'evening',l:'🌙'}].map(t => <button key={t.v} onClick={() => setPreferences(p => ({...p, preferredTime: t.v as 'morning'|'afternoon'|'evening'}))} className={`py-2 rounded-lg text-lg ${preferences.preferredTime === t.v ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-surface)]'}`}>{t.l}</button>)}</div></div>
