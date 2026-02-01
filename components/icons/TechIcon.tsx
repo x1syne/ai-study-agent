@@ -12,9 +12,6 @@ import {
   SiMongodb,
   SiDocker,
   SiKubernetes,
-  SiAmazon,
-  SiGooglecloud,
-  SiMicrosoftazure,
   SiLinux,
   SiUbuntu,
   SiWindows,
@@ -68,6 +65,7 @@ import {
   SiConfluence,
 } from 'react-icons/si'
 import { IconType } from 'react-icons'
+import { IconCloud } from '@tabler/icons-react'
 
 // Маппинг названий технологий на иконки
 const techIconMap: Record<string, IconType> = {
@@ -131,10 +129,10 @@ const techIconMap: Record<string, IconType> = {
   'k8s': SiKubernetes,
   'jenkins': SiJenkins,
   
-  // Cloud
-  'aws': SiAmazon,
-  'gcp': SiGooglecloud,
-  'azure': SiMicrosoftazure,
+  // Cloud - используем Tabler иконки для облачных сервисов
+  'aws': IconCloud as any,
+  'gcp': IconCloud as any,
+  'azure': IconCloud as any,
   'firebase': SiFirebase,
   'supabase': SiSupabase,
   'vercel': SiVercel,
