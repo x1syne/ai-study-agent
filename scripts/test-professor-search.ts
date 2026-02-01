@@ -34,7 +34,7 @@ async function testSearch(query: string) {
     results.forEach((result, i) => {
       const meta = result.metadata as Record<string, unknown>
       console.log(`   ${i + 1}. ${meta.title || 'Без названия'}`)
-      console.log(`      Релевантность: ${(result.similarity * 100).toFixed(1)}%`)
+      console.log(`      Релевантность: ${((result.similarity || 0) * 100).toFixed(1)}%`)
       console.log(`      Фрагмент: ${result.content.slice(0, 150)}...`)
       console.log()
     })
