@@ -228,7 +228,16 @@ export async function POST(request: NextRequest) {
     // Поиск в базе знаний профессора Остроуха (если выбран этот персонаж)
     let professorContext = ''
     if (characterId === 'ostroukh') {
-      professorContext = await getProfessorContext(message)
+      // Проверяем, спрашивают ли про расписание
+      const scheduleKeywords = ['расписание', 'пара', 'занятие', 'лекция', 'практика', 'когда у тебя', 'где ты', 'аудитория']
+      const isScheduleQuery = scheduleKeywords.some(keyword => message.toLowerCase().includes(keyword))
+      
+      if (isScheduleQuery) {
+        const { getOstroukhScheduleContext } = await import('@/lib/ai/professor-knowledge')
+        professorContext = await getOstroukhScheduleContext(message)
+      } else {
+        professorContext = await getProfessorContext(message)
+      }
     }
 
     // Requirement 4.2, 4.5: Include memory context in AI prompts
