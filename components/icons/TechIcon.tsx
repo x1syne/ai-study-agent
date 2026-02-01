@@ -12,7 +12,7 @@ import {
   SiMongodb,
   SiDocker,
   SiKubernetes,
-  SiAws,
+  SiAmazon,
   SiGooglecloud,
   SiMicrosoftazure,
   SiLinux,
@@ -132,7 +132,7 @@ const techIconMap: Record<string, IconType> = {
   'jenkins': SiJenkins,
   
   // Cloud
-  'aws': SiAws,
+  'aws': SiAmazon,
   'gcp': SiGooglecloud,
   'azure': SiMicrosoftazure,
   'firebase': SiFirebase,
