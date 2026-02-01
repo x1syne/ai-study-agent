@@ -14,15 +14,11 @@ import {
   SiKubernetes,
   SiLinux,
   SiUbuntu,
-  SiWindows,
-  SiApple,
   SiAndroid,
   SiSwift,
   SiKotlin,
-  SiJava,
   SiCplusplus,
   SiC,
-  SiCsharp,
   SiPhp,
   SiRuby,
   SiGo,
@@ -51,7 +47,6 @@ import {
   SiPrettier,
   SiJest,
   SiCypress,
-  SiPlaywright,
   SiStorybook,
   SiFigma,
   SiAdobephotoshop,
@@ -65,7 +60,12 @@ import {
   SiConfluence,
 } from 'react-icons/si'
 import { IconType } from 'react-icons'
-import { IconCloud } from '@tabler/icons-react'
+import { 
+  IconCloud, 
+  IconBrandWindows, 
+  IconBrandApple,
+  IconCode
+} from '@tabler/icons-react'
 
 // Маппинг названий технологий на иконки
 const techIconMap: Record<string, IconType> = {
@@ -73,12 +73,12 @@ const techIconMap: Record<string, IconType> = {
   'python': SiPython,
   'javascript': SiJavascript,
   'typescript': SiTypescript,
-  'java': SiJava,
+  'java': IconCode as any, // Используем общую иконку кода
   'c++': SiCplusplus,
   'cpp': SiCplusplus,
   'c': SiC,
-  'c#': SiCsharp,
-  'csharp': SiCsharp,
+  'c#': IconCode as any, // Используем общую иконку кода
+  'csharp': IconCode as any,
   'php': SiPhp,
   'ruby': SiRuby,
   'go': SiGo,
@@ -129,7 +129,7 @@ const techIconMap: Record<string, IconType> = {
   'k8s': SiKubernetes,
   'jenkins': SiJenkins,
   
-  // Cloud - используем Tabler иконки для облачных сервисов
+  // Cloud
   'aws': IconCloud as any,
   'gcp': IconCloud as any,
   'azure': IconCloud as any,
@@ -141,9 +141,9 @@ const techIconMap: Record<string, IconType> = {
   // OS
   'linux': SiLinux,
   'ubuntu': SiUbuntu,
-  'windows': SiWindows,
-  'macos': SiApple,
-  'ios': SiApple,
+  'windows': IconBrandWindows as any,
+  'macos': IconBrandApple as any,
+  'ios': IconBrandApple as any,
   'android': SiAndroid,
   
   // Tools
@@ -153,7 +153,7 @@ const techIconMap: Record<string, IconType> = {
   'prettier': SiPrettier,
   'jest': SiJest,
   'cypress': SiCypress,
-  'playwright': SiPlaywright,
+  'playwright': IconCode as any, // Используем общую иконку
   'storybook': SiStorybook,
   
   // Design
