@@ -10,7 +10,7 @@ import {
   getOrCreateState 
 } from '@/lib/ai/characters'
 import { searchArxiv, formatArxivForContext, shouldSearchArxiv, extractSearchQuery } from '@/lib/arxiv'
-import { getProfessorContext } from '@/lib/ai/professor-knowledge'
+import { getProfessorContext, getOstroukhScheduleContext } from '@/lib/ai/professor-knowledge'
 import { getCheckpointer } from '@/lib/ai/checkpointer'
 import { buildPromptContext } from '@/lib/ai/context-builder'
 import { getSummarizer } from '@/lib/ai/summarizer'
@@ -233,7 +233,6 @@ export async function POST(request: NextRequest) {
       const isScheduleQuery = scheduleKeywords.some(keyword => message.toLowerCase().includes(keyword))
       
       if (isScheduleQuery) {
-        const { getOstroukhScheduleContext } = await import('@/lib/ai/professor-knowledge')
         professorContext = await getOstroukhScheduleContext(message)
       } else {
         professorContext = await getProfessorContext(message)
