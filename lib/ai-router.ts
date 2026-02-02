@@ -172,7 +172,7 @@ async function generateGroq(
         max_tokens: options.maxTokens ?? 4096,
         response_format: options.json ? { type: 'json_object' } : undefined,
         tools: options.tools,
-        tool_choice: options.tool_choice,
+        tool_choice: options.tool_choice as any,
       })
       
       const res = await Promise.race([requestPromise, timeoutPromise])
