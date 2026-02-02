@@ -760,3 +760,20 @@ ${pubInfo}
   
   return context
 }
+
+/**
+ * олучить расписание профессора строуха
+ */
+export async function getOstroukhScheduleContext(query: string): Promise<string> {
+  const { getOstroukhSchedule, formatScheduleForChat, getCurrentOrNextLesson } = await import('../madi/schedule-api')
+  const today = new Date()
+  const lowerQuery = query.toLowerCase()
+  let targetDate = today
+  if (lowerQuery.includes('завтра')) {
+    targetDate = new Date(today)
+    targetDate.setDate(today.getDate() + 1)
+  }
+  const schedule = await getOstroukhSchedule(targetDate)
+  if (!schedule) return 'асписание временно недоступно.'
+  return formatScheduleForChat(schedule)
+}
