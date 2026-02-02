@@ -3,6 +3,8 @@
  * Модуль для получения расписания занятий МАДИ
  */
 
+import { MADIParser, ParsedSchedule, type MADIParserConfig } from './madi-parser'
+
 export interface ScheduleLesson {
   time: string;           // Время пары (например, "9:00-10:30")
   subject: string;        // Название предмета
@@ -30,9 +32,71 @@ export interface WeekSchedule {
 export async function getOstroukhSchedule(date?: Date): Promise<DaySchedule | null> {
   const targetDate = date || new Date();
   
-  // Пока используем статическое расписание
-  // TODO: Интегрировать с реальным API МАДИ когда будет доступен
+  // Инициализация MADIParser если enabled
+  const parserEnabled = process.env.USE_MADI_PARSER === 'true'
+  
+  if (parserEnabled) {
+    try {
+      // Создаем конфигурацию парсера из environment variables
+      const config: MADIParserConfig = {
+        enabled: true,
+        cacheTTL: parseInt(process.env.MADI_CACHE_TTL || '3600', 10),
+        requestTimeout: parseInt(process.env.MADI_REQUEST_TIMEOUT || '10000', 10),
+        fallbackToStatic: process.env.MADI_FALLBACK_TO_STATIC !== 'false',
+        baseUrl: process.env.MADI_BASE_URL || 'https://www.madi.ru/tplan'
+      }
+      
+      // Инициализируем парсер
+      const parser = new MADIParser(config)
+      
+      console.log('[Schedule API] Attempting to fetch schedule from MADI parser')
+      
+      // Попытка парсинга с сайта MADI
+      const parsedSchedule = await parser.getProfessorSchedule('Остроух А.В.', targetDate)
+      
+      if (parsedSchedule) {
+        console.log(`[Schedule API] Successfully fetched schedule from MADI parser (source: ${parsedSchedule.source})`)
+        
+        // Трансформация ParsedSchedule в DaySchedule
+        const daySchedule = transformParsedScheduleToDaySchedule(parsedSchedule)
+        
+        return daySchedule
+      }
+      
+      console.log('[Schedule API] MADI parser returned null, falling back to static data')
+    } catch (error) {
+      console.error('[Schedule API] Error fetching schedule from MADI parser:', error)
+      console.log('[Schedule API] Falling back to static data')
+    }
+  }
+  
+  // Fallback на статические данные
   return getStaticOstroukhSchedule(targetDate);
+}
+
+/**
+ * Трансформация ParsedSchedule в DaySchedule
+ * 
+ * @param parsedSchedule - Расписание из парсера MADI
+ * @returns Расписание в формате DaySchedule для совместимости с существующим API
+ */
+export function transformParsedScheduleToDaySchedule(parsedSchedule: ParsedSchedule): DaySchedule {
+  // Преобразуем ParsedLesson[] в ScheduleLesson[]
+  const lessons: ScheduleLesson[] = parsedSchedule.lessons.map(lesson => ({
+    time: lesson.time,
+    subject: lesson.subject,
+    type: lesson.type,
+    room: lesson.room,
+    building: lesson.building,
+    professor: parsedSchedule.professorName,
+    group: lesson.group
+  }))
+  
+  return {
+    date: parsedSchedule.date,
+    dayOfWeek: parsedSchedule.dayOfWeek,
+    lessons
+  }
 }
 
 /**

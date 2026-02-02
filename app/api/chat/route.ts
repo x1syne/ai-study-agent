@@ -22,6 +22,7 @@ import { FilesystemTool } from '@/lib/mcp/tools/filesystem'
 import * as path from 'path'
 import { SearchTool } from '@/lib/mcp/tools/search'
 import { MCPClient } from '@/lib/mcp/mcp-client'
+import { getAvailableTools, executeTool } from '@/lib/ai/tools-registry'
 
 // Обёртка для совместимости
 async function generateCompletion(system: string, user: string, opts?: { json?: boolean; temperature?: number; maxTokens?: number }) {
@@ -312,11 +313,64 @@ export async function POST(request: NextRequest) {
           response = 'Не удалось проанализировать изображение. Попробуйте ещё раз или опишите содержимое текстом.'
         }
       } else {
-        response = await generateCompletion(
+        // Get available tools for this character
+        const tools = getAvailableTools(characterId)
+        
+        // Generate with tools support
+        const result = await generateWithRouter(
+          'chat',
           character.systemPrompt,
           prompt,
-          { temperature: dynamicTemperature }
+          { 
+            temperature: dynamicTemperature,
+            tools: tools.length > 0 ? tools : undefined,
+            tool_choice: tools.length > 0 ? 'auto' : undefined
+          }
         )
+        
+        // Handle tool calls if any
+        if (result.tool_calls && result.tool_calls.length > 0) {
+          console.log('[Chat] AI requested tool calls:', result.tool_calls.length)
+          
+          // Execute all tool calls
+          const toolResults = await Promise.all(
+            result.tool_calls.map(async (toolCall) => {
+              try {
+                const args = JSON.parse(toolCall.function.arguments)
+                const toolResult = await executeTool(toolCall.function.name, args)
+                return {
+                  role: 'tool' as const,
+                  tool_call_id: toolCall.id,
+                  name: toolCall.function.name,
+                  content: toolResult
+                }
+              } catch (error) {
+                console.error(`[Chat] Tool execution failed:`, error)
+                return {
+                  role: 'tool' as const,
+                  tool_call_id: toolCall.id,
+                  name: toolCall.function.name,
+                  content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }
+              }
+            })
+          )
+          
+          // Generate final response with tool results
+          const toolResultsText = toolResults.map(r => `${r.name}: ${r.content}`).join('\n\n')
+          const finalPrompt = `${prompt}\n\n[Tool Results]:\n${toolResultsText}\n\nИспользуй результаты инструментов для формирования ответа студенту.`
+          
+          const finalResult = await generateWithRouter(
+            'chat',
+            character.systemPrompt,
+            finalPrompt,
+            { temperature: dynamicTemperature }
+          )
+          
+          response = finalResult.content
+        } else {
+          response = result.content
+        }
       }
     } catch (aiError: unknown) {
       console.error('AI generation error:', aiError)

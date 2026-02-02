@@ -53,12 +53,29 @@ export interface GenerateOptions {
   temperature?: number
   maxTokens?: number
   json?: boolean
+  tools?: Array<{
+    type: 'function'
+    function: {
+      name: string
+      description: string
+      parameters: Record<string, any>
+    }
+  }>
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }
 }
 
 export interface GenerateResult {
   content: string
   provider: string
   latencyMs: number
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
+  }>
 }
 
 // Конфигурация
@@ -92,7 +109,7 @@ async function generateGroq(
   system: string,
   user: string,
   options: GenerateOptions
-): Promise<string> {
+): Promise<{ content: string; tool_calls?: any[] }> {
   console.log('[Groq] Starting generation...')
   
   // Прокси для России
@@ -154,13 +171,18 @@ async function generateGroq(
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
         response_format: options.json ? { type: 'json_object' } : undefined,
+        tools: options.tools,
+        tool_choice: options.tool_choice,
       })
       
       const res = await Promise.race([requestPromise, timeoutPromise])
-      const content = res.choices[0]?.message?.content
-      if (content) {
-        console.log(`[Groq] Success with ${model}:`, content.length, 'chars')
-        return content
+      const message = res.choices[0]?.message
+      const content = message?.content || ''
+      const tool_calls = message?.tool_calls
+      
+      if (content || tool_calls) {
+        console.log(`[Groq] Success with ${model}:`, content?.length || 0, 'chars', tool_calls?.length || 0, 'tool calls')
+        return { content, tool_calls }
       }
     } catch (e: any) {
       const msg = e?.message || ''
@@ -322,7 +344,7 @@ async function generateGemini(
 
 // === ГЛАВНЫЙ РОУТЕР ===
 
-type ProviderFn = (s: string, u: string, o: GenerateOptions) => Promise<string>
+type ProviderFn = (s: string, u: string, o: GenerateOptions) => Promise<{ content: string; tool_calls?: any[] } | string>
 
 const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
   groq: { fn: generateGroq, rateLimit: 30 },
@@ -368,14 +390,23 @@ export async function generateWithRouter(
       console.log(`[AI Router] Trying ${name}...`)
       
       // Оборачиваем в retry для обработки временных ошибок
-      const content = await withAIRetry(
+      const result = await withAIRetry(
         () => provider.fn(systemPrompt, userPrompt, options),
         `AI Router ${name}`
       )
       
-      if (content) {
+      // Обрабатываем результат (может быть строкой или объектом с tool_calls)
+      const content = typeof result === 'string' ? result : result.content
+      const tool_calls = typeof result === 'object' ? result.tool_calls : undefined
+      
+      if (content || tool_calls) {
         console.log(`[AI Router] Success with ${name} in ${Date.now() - startTime}ms`)
-        return { content, provider: name, latencyMs: Date.now() - startTime }
+        return { 
+          content: content || '', 
+          provider: name, 
+          latencyMs: Date.now() - startTime,
+          tool_calls 
+        }
       }
     } catch (e: any) {
       const errorMsg = e?.message || String(e)
