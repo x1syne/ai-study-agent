@@ -4,6 +4,28 @@ import { getCurrentUser } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
+// GET /api/session/time - Get current session time
+export async function GET() {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const stats = await prisma.userStats.findUnique({
+      where: { userId: user.id },
+      select: { totalMinutes: true },
+    })
+
+    return NextResponse.json({ 
+      totalMinutes: stats?.totalMinutes || 0 
+    })
+  } catch (error) {
+    console.error('Error fetching session time:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 // POST /api/session/time - Update total session time
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +58,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error updating session time:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    // Log more details for debugging
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      })
+    }
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
