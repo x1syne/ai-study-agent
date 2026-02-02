@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
+import { useEffect, useState, useRef } from 'react'
 
 interface ProgressProps {
   value: number
@@ -10,6 +11,8 @@ interface ProgressProps {
   className?: string
   color?: 'primary' | 'success' | 'warning' | 'danger'
   variant?: 'primary' | 'success' | 'warning' | 'danger'
+  animated?: boolean
+  glow?: boolean
 }
 
 export function Progress({ 
@@ -19,11 +22,64 @@ export function Progress({
   showLabel,
   className,
   color = 'primary',
-  variant
+  variant,
+  animated = false,
+  glow = false
 }: ProgressProps) {
   // variant is an alias for color
   const effectiveColor = variant || color
   const percentage = Math.min(Math.max((value / max) * 100, 0), 100)
+  
+  // Count-up animation state
+  const [displayValue, setDisplayValue] = useState(animated ? 0 : percentage)
+  const [isComplete, setIsComplete] = useState(false)
+  const animationFrameRef = useRef<number>()
+  const startTimeRef = useRef<number>()
+  const startValueRef = useRef(0)
+
+  // Count-up animation effect
+  useEffect(() => {
+    if (!animated) {
+      setDisplayValue(percentage)
+      setIsComplete(percentage >= 100)
+      return
+    }
+
+    const duration = 1000 // 1 second for count-up
+    startValueRef.current = displayValue
+    const targetValue = percentage
+
+    const animate = (currentTime: number) => {
+      if (!startTimeRef.current) {
+        startTimeRef.current = currentTime
+      }
+
+      const elapsed = currentTime - startTimeRef.current
+      const progress = Math.min(elapsed / duration, 1)
+      
+      // Smooth easing function
+      const easeOutCubic = 1 - Math.pow(1 - progress, 3)
+      const currentValue = startValueRef.current + (targetValue - startValueRef.current) * easeOutCubic
+
+      setDisplayValue(currentValue)
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate)
+      } else {
+        setDisplayValue(targetValue)
+        setIsComplete(targetValue >= 100)
+        startTimeRef.current = undefined
+      }
+    }
+
+    animationFrameRef.current = requestAnimationFrame(animate)
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [percentage, animated])
 
   const sizes = {
     sm: 'h-1',
@@ -38,21 +94,40 @@ export function Progress({
     danger: 'from-red-500 to-pink-500',
   }
 
+  const glowColors = {
+    primary: 'shadow-[0_0_20px_rgba(6,182,212,0.5)]',
+    success: 'shadow-[0_0_20px_rgba(34,197,94,0.5)]',
+    warning: 'shadow-[0_0_20px_rgba(249,115,22,0.5)]',
+    danger: 'shadow-[0_0_20px_rgba(239,68,68,0.5)]',
+  }
+
   return (
     <div className={cn('w-full', className)}>
       {showLabel && (
         <div className="flex justify-between text-sm mb-1">
           <span className="text-slate-400">Прогресс</span>
-          <span className="text-white font-medium">{Math.round(percentage)}%</span>
+          <span className={cn(
+            'font-medium transition-all duration-150',
+            animated && 'animate-count-up',
+            isComplete ? 'text-green-400' : 'text-white'
+          )}>
+            {Math.round(displayValue)}%
+          </span>
         </div>
       )}
       <div className={cn('bg-slate-700 rounded-full overflow-hidden', sizes[size])}>
         <div
           className={cn(
-            'h-full bg-gradient-to-r transition-all duration-500 ease-out',
-            colors[effectiveColor]
+            'h-full bg-gradient-to-r transition-all ease-out',
+            animated ? 'duration-1000' : 'duration-500',
+            colors[effectiveColor],
+            glow && glowColors[effectiveColor],
+            isComplete && 'animate-pulse-success'
           )}
-          style={{ width: `${percentage}%` }}
+          style={{ 
+            width: `${displayValue}%`,
+            willChange: animated ? 'width' : 'auto'
+          }}
         />
       </div>
     </div>

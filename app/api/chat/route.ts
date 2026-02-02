@@ -230,7 +230,12 @@ export async function POST(request: NextRequest) {
     let professorContext = ''
     if (characterId === 'ostroukh') {
       // Проверяем, спрашивают ли про расписание
-      const scheduleKeywords = ['расписание', 'пара', 'занятие', 'лекция', 'практика', 'когда у тебя', 'где ты', 'аудитория']
+      const scheduleKeywords = [
+        'расписание', 'пара', 'занятие', 'лекция', 'практика', 
+        'когда у тебя', 'где ты', 'аудитория', 'работаешь', 
+        'неделя', 'завтра', 'сегодня', 'понедельник', 'вторник', 
+        'среда', 'четверг', 'пятница'
+      ]
       const isScheduleQuery = scheduleKeywords.some(keyword => message.toLowerCase().includes(keyword))
       
       if (isScheduleQuery) {

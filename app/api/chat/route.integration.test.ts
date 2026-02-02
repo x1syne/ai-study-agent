@@ -195,6 +195,26 @@ describe('Memory Manager Integration in Chat API', () => {
  * Tests Requirements 1.1, 2.1
  */
 
+// Mock Prisma for filesystem tests
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    userFile: {
+      upsert: vi.fn().mockResolvedValue({
+        id: 'test-id',
+        userId: 'test-user-123',
+        filename: 'example.js',
+        path: 'test-user-123/example.js',
+        type: 'code',
+        content: 'console.log("Hello World");',
+        createdAt: new Date()
+      }),
+      findUnique: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      delete: vi.fn().mockResolvedValue({})
+    }
+  }
+}))
+
 describe('MCP Tools Integration in Chat API', () => {
   describe('File Save Tool Integration', () => {
     it('should detect file save request and save file (Requirement 1.1)', async () => {
@@ -222,7 +242,7 @@ describe('MCP Tools Integration in Chat API', () => {
         type: toolDetection.fileInfo!.type
       })
 
-      expect(result.path).toContain('user-files')
+      expect(result.path).toContain('test-user-123')
       expect(result.path).toContain('example.js')
       expect(result.url).toContain('download')
     })

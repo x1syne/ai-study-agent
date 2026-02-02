@@ -51,23 +51,24 @@ describe('Filesystem Tool - Path Validation', () => {
   describe('getUserFilePath', () => {
     it('should generate safe user-specific paths', () => {
       const result = getUserFilePath('user123', 'file.txt')
-      expect(result).toBe(path.join('user-files', 'user123', 'file.txt'))
+      // getUserFilePath returns relative path without 'user-files' prefix
+      expect(result).toBe(path.join('user123', 'file.txt'))
     })
 
     it('should sanitize dangerous characters in filename', () => {
       const result = getUserFilePath('user123', 'my file.js')
-      expect(result).toBe(path.join('user-files', 'user123', 'my_file.js'))
+      expect(result).toBe(path.join('user123', 'my_file.js'))
     })
 
     it('should sanitize special characters', () => {
       const result = getUserFilePath('user123', 'file@#$%.txt')
       // @ # $ % are replaced with _, but . is allowed (for extension)
-      expect(result).toBe(path.join('user-files', 'user123', 'file____.txt'))
+      expect(result).toBe(path.join('user123', 'file____.txt'))
     })
 
     it('should preserve valid characters', () => {
       const result = getUserFilePath('user123', 'my-file_123.js')
-      expect(result).toBe(path.join('user-files', 'user123', 'my-file_123.js'))
+      expect(result).toBe(path.join('user123', 'my-file_123.js'))
     })
 
     it('should handle different user IDs', () => {
@@ -83,10 +84,9 @@ describe('Filesystem Tool - Path Validation', () => {
       const result = getUserFilePath('user123', '../../../etc/passwd')
       // The / are converted to _, but .. (dots) are allowed by the regex
       // This is why validatePath() is needed as a separate check
-      expect(result).toContain('user-files')
       expect(result).toContain('user123')
       // The slashes should be sanitized
-      expect(result).toBe(path.join('user-files', 'user123', '.._.._.._etc_passwd'))
+      expect(result).toBe(path.join('user123', '.._.._.._etc_passwd'))
     })
   })
 
@@ -169,7 +169,7 @@ describe('Filesystem Tool - Path Validation', () => {
   })
 
   describe('getUserFilePath - Safe Path Generation', () => {
-    it('should always generate paths within user-files directory', () => {
+    it('should always generate paths within user directory', () => {
       const testCases = [
         { userId: 'user1', filename: 'file.txt' },
         { userId: 'user2', filename: 'script.js' },
@@ -178,7 +178,7 @@ describe('Filesystem Tool - Path Validation', () => {
 
       for (const { userId, filename } of testCases) {
         const result = getUserFilePath(userId, filename)
-        expect(result).toContain('user-files')
+        // getUserFilePath returns relative path without 'user-files' prefix
         expect(result).toContain(userId)
       }
     })

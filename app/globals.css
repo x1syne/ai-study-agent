@@ -7,13 +7,13 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #10101a;
-  --color-bg-secondary: #1a1a26;
-  --color-bg-card: #1f1f2c;
+  --color-bg: #0a0a12;
+  --color-bg-secondary: #12121c;
+  --color-bg-card: #1a1a26;
   --color-primary: #06b6d4;
   --color-primary-dark: #0891b2;
   --color-text: #ffffff;
-  --color-text-secondary: #a3a3a3;
+  --color-text-secondary: #a8a8b3;
   --color-border: #2d2d3a;
 }
 
@@ -343,7 +343,7 @@ body {
   --color-surface: #f0f0f0;
   --color-card: #ffffff;
   --color-text: #1a1a2e;
-  --color-text-secondary: #64748b;
+  --color-text-secondary: #5a5a6e;
   --color-border: #e2e8f0;
 }
 
@@ -668,3 +668,410 @@ body {
 * {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+
+/* ==================== CSS 2026 CORE SYSTEM ==================== */
+
+/* === Multi-layer Background System === */
+:root {
+  --bg-deep: #050508;
+  --bg-background: #0a0a12;
+  --bg-surface: #12121c;
+  --bg-overlay: #1a1a26;
+  
+  /* === Glassmorphism === */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 16px;
+  --glass-saturate: 180%;
+  
+  /* === Primary Colors with Variants === */
+  --primary-50: #ecfeff;
+  --primary-500: #06b6d4;
+  --primary-600: #0891b2;
+  --primary-glow: rgba(6, 182, 212, 0.5);
+  
+  /* === Shadows & Elevation === */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.2);
+  --shadow-glow: 0 0 20px var(--primary-glow);
+  
+  /* === Animation Timings === */
+  --duration-fast: 0.15s;
+  --duration-normal: 0.3s;
+  --duration-slow: 0.6s;
+  --easing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* === Fluid Typography === */
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+  --text-sm: clamp(0.875rem, 0.8rem + 0.375vw, 1rem);
+  --text-base: clamp(1rem, 0.9rem + 0.5vw, 1.125rem);
+  --text-lg: clamp(1.125rem, 1rem + 0.625vw, 1.25rem);
+  --text-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
+  --text-3xl: clamp(1.875rem, 1.5rem + 1.875vw, 2.5rem);
+  --text-4xl: clamp(2.25rem, 1.8rem + 2.25vw, 3rem);
+}
+
+/* === Glassmorphism Utilities === */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+}
+
+.glass-subtle {
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-blur: 12px;
+}
+
+.glass-medium {
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-blur: 16px;
+}
+
+.glass-intense {
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+}
+
+
+.glass-glow {
+  box-shadow: 
+    0 0 20px var(--primary-glow),
+    inset 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.glass-glow-hover:hover {
+  box-shadow: 
+    0 0 30px var(--primary-glow),
+    0 0 60px rgba(6, 182, 212, 0.3),
+    inset 0 0 30px rgba(255, 255, 255, 0.08);
+  transition: box-shadow var(--duration-normal) var(--easing-smooth);
+}
+
+/* === Animated Gradient Borders === */
+@property --gradient-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.animated-border {
+  position: relative;
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+.animated-border::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    var(--gradient-angle),
+    var(--primary-500),
+    var(--primary-600),
+    var(--primary-500)
+  );
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rotate-gradient 3s linear infinite;
+}
+
+@keyframes rotate-gradient {
+  to {
+    --gradient-angle: 360deg;
+  }
+}
+
+/* === Fluid Typography === */
+.text-fluid-xs { font-size: var(--text-xs); }
+.text-fluid-sm { font-size: var(--text-sm); }
+.text-fluid-base { font-size: var(--text-base); }
+.text-fluid-lg { font-size: var(--text-lg); }
+.text-fluid-xl { font-size: var(--text-xl); }
+.text-fluid-2xl { font-size: var(--text-2xl); }
+.text-fluid-3xl { font-size: var(--text-3xl); }
+.text-fluid-4xl { font-size: var(--text-4xl); }
+
+
+/* === Animation Primitives === */
+.stagger-children > * {
+  opacity: 0;
+  animation: fade-in-up var(--duration-normal) var(--easing-smooth) forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.35s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.4s; }
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px var(--primary-glow);
+  }
+  50% {
+    box-shadow: 0 0 40px var(--primary-glow), 0 0 60px rgba(6, 182, 212, 0.3);
+  }
+}
+
+@keyframes pulse-success {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(34, 197, 94, 0.7), 0 0 60px rgba(34, 197, 94, 0.4);
+    filter: brightness(1.2);
+  }
+}
+
+.animate-pulse-success {
+  animation: pulse-success 1.5s ease-in-out infinite;
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-count-up {
+  animation: count-up var(--duration-fast) var(--easing-smooth);
+}
+
+
+/* === 3D Transform Utilities === */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+  20%, 40%, 60%, 80% { transform: translateX(10px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s;
+}
+
+@keyframes ripple {
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 0.6s ease-out;
+}
+
+/* === Reduced Motion Support === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01s !important;
+    scroll-behavior: auto !important;
+  }
+  
+  /* Keep functional transitions */
+  *:focus-visible {
+    transition-duration: 0.15s !important;
+  }
+  
+  /* Disable stagger animations */
+  .stagger-children > * {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  
+  /* Disable shimmer */
+  .shimmer {
+    animation: none !important;
+  }
+}
+
+/* === Focus Mode with :has() === */
+@media (min-width: 1024px) {
+  .focus-mode-container:has(.focus-mode-item:hover) .focus-mode-item:not(:hover) {
+    opacity: 0.4;
+    filter: blur(2px);
+    transition: opacity var(--duration-normal) var(--easing-smooth),
+                filter var(--duration-normal) var(--easing-smooth);
+  }
+  
+  .focus-mode-container .focus-mode-item {
+    transition: opacity var(--duration-normal) var(--easing-smooth),
+                filter var(--duration-normal) var(--easing-smooth);
+    /* Preserve interactivity for all elements */
+    pointer-events: auto;
+  }
+  
+  /* Ensure focused item is fully visible */
+  .focus-mode-container .focus-mode-item:hover {
+    opacity: 1;
+    filter: blur(0);
+    z-index: 10;
+    position: relative;
+  }
+}
+
+/* === Container Query Support === */
+.container {
+  container-type: inline-size;
+}
+
+@container (min-width: 400px) {
+  .text-container-lg {
+    font-size: clamp(1rem, 3cqw, 1.5rem);
+  }
+}
+
+/* Container-responsive card layouts */
+@container (max-width: 400px) {
+  .container .practicum-card {
+    flex-direction: column;
+  }
+  
+  .container .practicum-card .card-image {
+    width: 100%;
+  }
+  
+  .container .practicum-card {
+    padding: 1rem;
+  }
+  
+  /* Vertical layout for narrow containers */
+  .container .practicum-card > * {
+    width: 100%;
+  }
+}
+
+@container (min-width: 400px) and (max-width: 800px) {
+  .container .practicum-card {
+    padding: 1.25rem;
+  }
+  
+  /* Typography adjustments */
+  .container .practicum-card h3 {
+    font-size: clamp(1rem, 2.5cqw, 1.25rem);
+  }
+  
+  .container .practicum-card p {
+    font-size: clamp(0.875rem, 2cqw, 1rem);
+  }
+}
+
+@container (min-width: 800px) {
+  .container .practicum-card {
+    padding: 1.5rem;
+  }
+  
+  .container .practicum-card .card-details {
+    display: block;
+  }
+  
+  /* Show additional details in wide containers */
+  .container .practicum-card .card-extra-info {
+    display: flex;
+  }
+  
+  /* Larger typography for wide containers */
+  .container .practicum-card h3 {
+    font-size: clamp(1.25rem, 3cqw, 1.5rem);
+  }
+}
+
+/* === Hover Media Query Support === */
+@media (hover: hover) {
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    transition: transform var(--duration-normal) var(--easing-smooth);
+  }
+  
+  .hover-scale:hover {
+    transform: scale(1.02);
+    transition: transform var(--duration-normal) var(--easing-smooth);
+  }
+}
+
+/* === Pointer Events for Decorative Elements === */
+.decorative {
+  pointer-events: none;
+}
+
+/* === Will-change Optimization === */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-opacity {
+  will-change: opacity;
+}
+
+/* Remove will-change after animation */
+.animation-complete {
+  will-change: auto;
+}
+
+/* ==================== END CSS 2026 CORE SYSTEM ==================== */

@@ -11,6 +11,30 @@ export async function getOstroukhScheduleContext(query: string): Promise<string>
   const today = new Date()
   const lowerQuery = query.toLowerCase()
   
+  // Если спрашивают про всю неделю
+  if (lowerQuery.includes('неделя') || lowerQuery.includes('недел')) {
+    const { getWeekSchedule } = await import('../madi/schedule-api')
+    const weekSchedule = await getWeekSchedule()
+    
+    let response = '📅 **Расписание на неделю:**\n\n'
+    weekSchedule.days.forEach(day => {
+      if (day.lessons.length > 0) {
+        response += `**${day.dayOfWeek}** (${day.date}):\n`
+        day.lessons.forEach(lesson => {
+          const emoji = lesson.type === 'lecture' ? '📚' : lesson.type === 'practice' ? '💻' : '🔬'
+          response += `  ${emoji} ${lesson.time} - ${lesson.subject}\n`
+          response += `     📍 ${lesson.room}${lesson.building ? `, ${lesson.building}` : ''}\n`
+          if (lesson.group) {
+            response += `     👥 ${lesson.group}\n`
+          }
+        })
+        response += '\n'
+      }
+    })
+    
+    return response
+  }
+  
   let targetDate = today
   
   // Определяем день недели из запроса
