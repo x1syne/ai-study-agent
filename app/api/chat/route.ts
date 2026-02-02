@@ -10,7 +10,8 @@ import {
   getOrCreateState 
 } from '@/lib/ai/characters'
 import { searchArxiv, formatArxivForContext, shouldSearchArxiv, extractSearchQuery } from '@/lib/arxiv'
-import { getProfessorContext, getOstroukhScheduleContext } from '@/lib/ai/professor-knowledge'
+import { getProfessorContext } from '@/lib/ai/professor-knowledge'
+import { getOstroukhScheduleContext } from '@/lib/ai/professor-schedule'
 import { getCheckpointer } from '@/lib/ai/checkpointer'
 import { buildPromptContext } from '@/lib/ai/context-builder'
 import { getSummarizer } from '@/lib/ai/summarizer'
