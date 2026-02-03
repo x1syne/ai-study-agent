@@ -43,7 +43,7 @@ export async function getOstroukhSchedule(date?: Date): Promise<DaySchedule | nu
         cacheTTL: parseInt(process.env.MADI_CACHE_TTL || '3600', 10),
         requestTimeout: parseInt(process.env.MADI_REQUEST_TIMEOUT || '10000', 10),
         fallbackToStatic: process.env.MADI_FALLBACK_TO_STATIC !== 'false',
-        baseUrl: process.env.MADI_BASE_URL || 'https://www.madi.ru/tplan'
+        baseUrl: process.env.MADI_BASE_URL || 'https://raspisanie.madi.ru/tplan'
       }
       
       // Инициализируем парсер
@@ -101,12 +101,17 @@ export function transformParsedScheduleToDaySchedule(parsedSchedule: ParsedSched
 
 /**
  * Статическое расписание профессора Остроуха
- * (на основе типичного расписания кафедры АСУ МАДИ)
+ * ВНИМАНИЕ: Это ТЕСТОВЫЕ данные для разработки!
+ * Для получения реального расписания включите USE_MADI_PARSER=true в .env
+ * 
+ * Группы и аудитории ниже — примерные, для демонстрации структуры.
  */
 function getStaticOstroukhSchedule(date: Date): DaySchedule {
   const dayOfWeek = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
   const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
   
+  // ВАЖНО: Это статические тестовые данные
+  // Реальное расписание может отличаться
   const schedule: Record<number, ScheduleLesson[]> = {
     1: [ // Понедельник
       {
@@ -116,7 +121,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '301',
         building: 'Главный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-41'
+        group: 'Группа 1' // Примерное название
       },
       {
         time: '10:45-12:15',
@@ -125,7 +130,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '301',
         building: 'Главный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-31'
+        group: 'Группа 2' // Примерное название
       }
     ],
     2: [ // Вторник
@@ -136,7 +141,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '215',
         building: 'Лабораторный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-41'
+        group: 'Группа 1' // Примерное название
       }
     ],
     3: [ // Среда
@@ -147,7 +152,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '405',
         building: 'Главный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-21'
+        group: 'Группа 3' // Примерное название
       },
       {
         time: '14:15-15:45',
@@ -166,7 +171,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '215',
         building: 'Лабораторный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-41'
+        group: 'Группа 1' // Примерное название
       },
       {
         time: '12:30-14:00',
@@ -175,7 +180,7 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
         room: '215',
         building: 'Лабораторный корпус',
         professor: 'Остроух А.В.',
-        group: 'АСУ-31'
+        group: 'Группа 2' // Примерное название
       }
     ],
     5: [ // Пятница
@@ -269,6 +274,9 @@ export function formatScheduleForChat(schedule: DaySchedule): string {
       text += '\n';
     }
   });
+  
+  // Добавляем предупреждение о статических данных
+  text += `\n\n⚠️ _Примечание: Это тестовые данные. Для актуального расписания включите парсер MADI (USE_MADI_PARSER=true)_`;
 
   return text;
 }

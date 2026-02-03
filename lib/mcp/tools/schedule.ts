@@ -25,7 +25,7 @@ export class ScheduleTool {
           cacheTTL: parseInt(process.env.MADI_CACHE_TTL || '3600', 10),
           requestTimeout: parseInt(process.env.MADI_REQUEST_TIMEOUT || '10000', 10),
           fallbackToStatic: process.env.MADI_FALLBACK_TO_STATIC !== 'false',
-          baseUrl: process.env.MADI_BASE_URL || 'https://www.madi.ru/tplan'
+          baseUrl: process.env.MADI_BASE_URL || 'https://raspisanie.madi.ru/tplan'
         })
       : null
   }
@@ -198,7 +198,7 @@ export class ScheduleTool {
       }
     }
     
-    return 'Я работаю с группами АСУ-21, АСУ-31, АСУ-41.'
+    return 'Для получения актуального списка групп нужно проверить расписание на сайте МАДИ. Статические данные могут быть неточными.'
   }
 
   /**
