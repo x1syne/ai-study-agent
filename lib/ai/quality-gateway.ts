@@ -3,13 +3,14 @@
  * 
  * Единая точка входа для:
  * - Валидации теории и заданий
- * - Применения fallback при низком качестве
+ * - Retry при низком качестве (до N попыток)
+ * - Применения fallback как последней меры
  * - Логирования метрик качества
  * - Принятия решения о кэшировании
  */
 
 import { validateTheoryContent, validateTasks, type ValidationResult } from './validators/content-validator'
-import { getFallbackTheory, getFallbackTasks, isFallbackContent } from './fallback-content'
+import { getFallbackTheory, getFallbackTasks } from './fallback-content'
 import type { Domain } from './domain-prompts'
 
 // ==================== ТИПЫ ====================
@@ -30,6 +31,7 @@ export interface QualityMetrics {
   usedFallback: boolean
   theoryFallback: boolean
   tasksFallback: boolean
+  retryCount: number
 }
 
 export interface QualityGatewayResult {
@@ -43,41 +45,145 @@ export interface QualityGatewayResult {
   }
 }
 
+/**
+ * Callback для повторной генерации контента.
+ * Gateway вызывает его, если качество ниже SERVE порога.
+ * Возвращает новый контент / задания, или null если retry невозможен.
+ */
+export interface RetryCallback {
+  retryTheory?: () => Promise<string | null>
+  retryTasks?: () => Promise<any[] | null>
+}
+
 // ==================== КОНФИГУРАЦИЯ ====================
 
+/** Теория весит 70 % общей оценки */
+const THEORY_WEIGHT = 0.7
+const TASKS_WEIGHT = 1 - THEORY_WEIGHT
+
+/** Максимальное количество retry */
+const MAX_RETRIES = 1
+
 /**
- * Пороги качества для разных действий
+ * Пороги качества для разных действий.
+ * Подняты по сравнению с предыдущей версией — мы хотим высокий уровень.
  */
 export const QUALITY_THRESHOLDS = {
-  // Минимальный score для кэширования
-  CACHE_THEORY: 50,
-  CACHE_TASKS: 40,
-  
-  // Минимальный score для отдачи пользователю (ниже — fallback)
-  SERVE_THEORY: 30,
-  SERVE_TASKS: 25,
-  
-  // Минимальный общий score для "passed"
-  OVERALL_PASS: 45
+  /** Минимальный score для кэширования */
+  CACHE_THEORY: 60,
+  CACHE_TASKS: 50,
+
+  /** Минимальный score для отдачи пользователю (ниже — retry, потом fallback) */
+  SERVE_THEORY: 45,
+  SERVE_TASKS: 35,
+
+  /** Минимальный общий score для "passed" */
+  OVERALL_PASS: 55,
 } as const
 
 // ==================== ОСНОВНАЯ ФУНКЦИЯ ====================
 
 /**
- * Пропускает контент через Quality Gateway
- * 
- * @param input - Контент для проверки
- * @returns Проверенный контент с метриками качества
+ * Пропускает контент через Quality Gateway.
+ * Поддерживает retry: если score < SERVE порога и передан callback — повторная генерация.
  */
-export function processContentThroughGateway(input: QualityGatewayInput): QualityGatewayResult {
-  const { content, tasks, topicName, courseName, domain = 'GENERAL' } = input
+export async function processContentThroughGateway(
+  input: QualityGatewayInput,
+  retry?: RetryCallback,
+): Promise<QualityGatewayResult> {
+  const { topicName, courseName, domain = 'GENERAL' } = input
   const issues: string[] = []
-  
-  // 1. Валидация теории
-  const theoryValidation = validateTheoryContent(content, domain)
-  let finalContent = content
+  let retryCount = 0
+
+  // ---------- Теория ----------
+  let currentContent = input.content
+  let theoryValidation = validateTheoryContent(currentContent, domain)
   let theoryFallback = false
-  
+
+  if (theoryValidation.score < QUALITY_THRESHOLDS.SERVE_THEORY && retry?.retryTheory) {
+    retryCount++
+    console.log(`[Quality Gateway] Theory score ${theoryValidation.score} < ${QUALITY_THRESHOLDS.SERVE_THEORY}, retrying...`)
+    const retried = await retry.retryTheory()
+    if (retried) {
+      currentContent = retried
+      theoryValidation = validateTheoryContent(currentContent, domain)
+      issues.push(`[Retry] Теория перегенерирована (было ${input.content.length} → ${currentContent.length} символов)`)
+    }
+  }
+
+  if (theoryValidation.score < QUALITY_THRESHOLDS.SERVE_THEORY) {
+    currentContent = getFallbackTheory(topicName, courseName, domain)
+    theoryFallback = true
+    issues.push(`Теория заменена на fallback (score: ${theoryValidation.score})`)
+  } else if (!theoryValidation.isValid) {
+    issues.push(...theoryValidation.issues.map(i => `[Теория] ${i}`))
+  }
+
+  // ---------- Задания ----------
+  let currentTasks = input.tasks
+  let tasksValidation = validateTasks(currentTasks)
+  let tasksFallback = false
+
+  if (tasksValidation.score < QUALITY_THRESHOLDS.SERVE_TASKS && retry?.retryTasks) {
+    retryCount++
+    console.log(`[Quality Gateway] Tasks score ${tasksValidation.score} < ${QUALITY_THRESHOLDS.SERVE_TASKS}, retrying...`)
+    const retried = await retry.retryTasks()
+    if (retried) {
+      currentTasks = retried
+      tasksValidation = validateTasks(currentTasks)
+      issues.push(`[Retry] Задания перегенерированы (было ${input.tasks.length} → ${currentTasks.length} шт.)`)
+    }
+  }
+
+  if (tasksValidation.score < QUALITY_THRESHOLDS.SERVE_TASKS) {
+    currentTasks = getFallbackTasks(topicName, domain)
+    tasksFallback = true
+    issues.push(`Задания заменены на fallback (score: ${tasksValidation.score})`)
+  } else if (!tasksValidation.isValid) {
+    issues.push(...tasksValidation.issues.map(i => `[Задания] ${i}`))
+  }
+
+  // ---------- Общий score ----------
+  const overallScore = Math.round(
+    (theoryValidation.score * THEORY_WEIGHT) + (tasksValidation.score * TASKS_WEIGHT)
+  )
+
+  const quality: QualityMetrics = {
+    theoryScore: theoryValidation.score,
+    tasksScore: tasksValidation.score,
+    overallScore,
+    passed: overallScore >= QUALITY_THRESHOLDS.OVERALL_PASS,
+    usedFallback: theoryFallback || tasksFallback,
+    theoryFallback,
+    tasksFallback,
+    retryCount,
+  }
+
+  return {
+    content: currentContent,
+    tasks: currentTasks,
+    quality,
+    issues,
+    validation: {
+      theory: theoryValidation,
+      tasks: tasksValidation,
+    },
+  }
+}
+
+/**
+ * Синхронная обёртка для обратной совместимости (без retry).
+ * Используйте `processContentThroughGateway` с await для retry-логики.
+ */
+export function processContentThroughGatewaySync(input: QualityGatewayInput): QualityGatewayResult {
+  const { topicName, courseName, domain = 'GENERAL' } = input
+  const issues: string[] = []
+
+  // Теория
+  const theoryValidation = validateTheoryContent(input.content, domain)
+  let finalContent = input.content
+  let theoryFallback = false
+
   if (theoryValidation.score < QUALITY_THRESHOLDS.SERVE_THEORY) {
     finalContent = getFallbackTheory(topicName, courseName, domain)
     theoryFallback = true
@@ -86,11 +192,11 @@ export function processContentThroughGateway(input: QualityGatewayInput): Qualit
     issues.push(...theoryValidation.issues.map(i => `[Теория] ${i}`))
   }
 
-  // 2. Валидация заданий
-  const tasksValidation = validateTasks(tasks)
-  let finalTasks = tasks
+  // Задания
+  const tasksValidation = validateTasks(input.tasks)
+  let finalTasks = input.tasks
   let tasksFallback = false
-  
+
   if (tasksValidation.score < QUALITY_THRESHOLDS.SERVE_TASKS) {
     finalTasks = getFallbackTasks(topicName, domain)
     tasksFallback = true
@@ -99,31 +205,28 @@ export function processContentThroughGateway(input: QualityGatewayInput): Qualit
     issues.push(...tasksValidation.issues.map(i => `[Задания] ${i}`))
   }
 
-  // 3. Расчёт общего score (теория важнее — 70%)
   const overallScore = Math.round(
-    (theoryValidation.score * 0.7) + (tasksValidation.score * 0.3)
+    (theoryValidation.score * THEORY_WEIGHT) + (tasksValidation.score * TASKS_WEIGHT)
   )
-
-  // 4. Формируем метрики
-  const quality: QualityMetrics = {
-    theoryScore: theoryValidation.score,
-    tasksScore: tasksValidation.score,
-    overallScore,
-    passed: overallScore >= QUALITY_THRESHOLDS.OVERALL_PASS,
-    usedFallback: theoryFallback || tasksFallback,
-    theoryFallback,
-    tasksFallback
-  }
 
   return {
     content: finalContent,
     tasks: finalTasks,
-    quality,
+    quality: {
+      theoryScore: theoryValidation.score,
+      tasksScore: tasksValidation.score,
+      overallScore,
+      passed: overallScore >= QUALITY_THRESHOLDS.OVERALL_PASS,
+      usedFallback: theoryFallback || tasksFallback,
+      theoryFallback,
+      tasksFallback,
+      retryCount: 0,
+    },
     issues,
     validation: {
       theory: theoryValidation,
-      tasks: tasksValidation
-    }
+      tasks: tasksValidation,
+    },
   }
 }
 
@@ -134,22 +237,24 @@ export function processContentThroughGateway(input: QualityGatewayInput): Qualit
  */
 export function logQualityMetrics(
   topicName: string,
-  result: QualityGatewayResult
+  result: QualityGatewayResult,
 ): void {
   const { quality, issues } = result
-  
+
   const statusEmoji = quality.passed ? '✅' : quality.usedFallback ? '⚠️' : '❌'
-  
-  console.log(`\n[Quality Gateway] ${statusEmoji} Topic: "${topicName}"`)
+  const retryInfo = quality.retryCount > 0 ? ` (retries: ${quality.retryCount})` : ''
+
+  console.log(`\n[Quality Gateway] ${statusEmoji} Topic: "${topicName}"${retryInfo}`)
   console.log(`  Theory:  ${quality.theoryScore}/100 ${quality.theoryFallback ? '(FALLBACK)' : ''}`)
   console.log(`  Tasks:   ${quality.tasksScore}/100 ${quality.tasksFallback ? '(FALLBACK)' : ''}`)
   console.log(`  Overall: ${quality.overallScore}/100 (${quality.passed ? 'PASS' : 'FAIL'})`)
-  
+
   if (issues.length > 0) {
+    const MAX_DISPLAYED_ISSUES = 5
     console.log(`  Issues (${issues.length}):`)
-    issues.slice(0, 5).forEach(issue => console.log(`    - ${issue}`))
-    if (issues.length > 5) {
-      console.log(`    ... and ${issues.length - 5} more`)
+    issues.slice(0, MAX_DISPLAYED_ISSUES).forEach(issue => console.log(`    - ${issue}`))
+    if (issues.length > MAX_DISPLAYED_ISSUES) {
+      console.log(`    ... and ${issues.length - MAX_DISPLAYED_ISSUES} more`)
     }
   }
   console.log('')
@@ -163,12 +268,15 @@ export function formatQualityForResponse(result: QualityGatewayResult): {
   passed: boolean
   fallback: boolean
   issues: string[]
+  retryCount: number
 } {
+  const MAX_ISSUES_IN_RESPONSE = 10
   return {
     score: result.quality.overallScore,
     passed: result.quality.passed,
     fallback: result.quality.usedFallback,
-    issues: result.issues.slice(0, 10) // Ограничиваем для response
+    issues: result.issues.slice(0, MAX_ISSUES_IN_RESPONSE),
+    retryCount: result.quality.retryCount,
   }
 }
 
@@ -182,10 +290,10 @@ export function shouldCacheContent(result: QualityGatewayResult): {
   cacheTasks: boolean
 } {
   return {
-    cacheTheory: result.quality.theoryScore >= QUALITY_THRESHOLDS.CACHE_THEORY && 
+    cacheTheory: result.quality.theoryScore >= QUALITY_THRESHOLDS.CACHE_THEORY &&
                  !result.quality.theoryFallback,
-    cacheTasks: result.quality.tasksScore >= QUALITY_THRESHOLDS.CACHE_TASKS && 
-                !result.quality.tasksFallback
+    cacheTasks: result.quality.tasksScore >= QUALITY_THRESHOLDS.CACHE_TASKS &&
+                !result.quality.tasksFallback,
   }
 }
 
@@ -199,11 +307,11 @@ export function quickQualityCheck(content: string, tasks: any[]): {
 } {
   const theoryValidation = validateTheoryContent(content)
   const tasksValidation = validateTasks(tasks)
-  
+
   return {
     theoryOk: theoryValidation.isValid,
     tasksOk: tasksValidation.isValid,
-    overallOk: theoryValidation.isValid && tasksValidation.isValid
+    overallOk: theoryValidation.isValid && tasksValidation.isValid,
   }
 }
 
@@ -212,24 +320,32 @@ export function quickQualityCheck(content: string, tasks: any[]): {
  */
 export function getQualityRecommendations(result: QualityGatewayResult): string[] {
   const recommendations: string[] = []
-  
+
   if (result.quality.theoryScore < 50) {
     recommendations.push('Увеличить длину генерируемого контента (maxTokens)')
     recommendations.push('Добавить больше примеров в промпт')
   }
-  
+
   if (result.quality.theoryScore < 70 && result.quality.theoryScore >= 50) {
     recommendations.push('Улучшить структуру контента (больше заголовков)')
   }
-  
+
   if (result.quality.tasksScore < 50) {
     recommendations.push('Увеличить количество генерируемых заданий')
     recommendations.push('Добавить валидацию типов заданий в промпт')
   }
-  
+
   if (result.validation.theory.issues.some(i => i.includes('повтор'))) {
     recommendations.push('Уменьшить temperature для более разнообразного контента')
   }
-  
+
+  if (result.validation.tasks.issues.some(i => i.includes('explanation'))) {
+    recommendations.push('Требовать explanation в промпте для каждого задания')
+  }
+
+  if (result.validation.tasks.issues.some(i => i.includes('одного типа'))) {
+    recommendations.push('Указать в промпте разнообразие типов: single, multiple, text, code')
+  }
+
   return recommendations
 }

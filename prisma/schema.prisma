@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ==================== ПОЛЬЗОВАТЕЛИ ====================
@@ -451,4 +452,71 @@ model RagCache {
   
   @@map("rag_cache")
   @@index([expiresAt])
+}
+
+// ==================== РАСПИСАНИЕ МАДИ ====================
+
+model Professor {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  departments String[]
+  schedules   Schedule[]
+  exams       Exam[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Schedule {
+  id           String    @id @default(cuid())
+  professorId  String
+  professor    Professor @relation(fields: [professorId], references: [id])
+  date         DateTime
+  dayOfWeek    String
+  lessons      ScheduleLesson[]
+  source       String
+  lastSyncAt   DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  @@unique([professorId, date])
+  @@index([professorId, date])
+}
+
+model ScheduleLesson {
+  id                 String    @id @default(cuid())
+  scheduleId         String
+  schedule           Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  time               String
+  subject            String
+  type               String
+  room               String
+  building           String?
+  group              String?
+  subgroup           String?
+  periodicity        String?
+  onlineLink         String?
+  notes              String?
+  isDistanceLearning Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  @@index([scheduleId])
+}
+
+model Exam {
+  id                 String    @id @default(cuid())
+  professorId        String
+  professor          Professor @relation(fields: [professorId], references: [id])
+  date               DateTime
+  time               String
+  subject            String
+  type               String
+  room               String
+  building           String?
+  group              String?
+  isDistanceLearning Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  @@index([professorId, date])
 }

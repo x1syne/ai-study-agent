@@ -273,27 +273,21 @@ export class TheoryStateMachine {
   private async executeValidate(): Promise<void> {
     console.log('[StateMachine] Validating content...')
 
-    // Validate that we have content
-    const hasContent = this.state.sections.length > 0 && 
+    const hasContent = this.state.sections.length > 0 &&
                       this.state.sections.some(s => s.content.length > 100)
 
     if (!hasContent) {
       console.warn('[StateMachine] Validation failed: insufficient content')
       this.state.errors.push('Validation failed: insufficient content')
-      
-      // Requirements: 7.3 - transition back to generate on validation failure
-      if (this.state.retryCount < this.maxRetries) {
-        this.state.retryCount++
-        await this.transition('generate')
-      } else {
-        await this.transition('retry')
-      }
+
+      // Используем единый retry-механизм (validate → retry → generate),
+      // чтобы избежать прямого цикла validate → generate → validate
+      this.state.retryCount++
+      await this.transition('retry')
       return
     }
 
     console.log('[StateMachine] Validation successful')
-
-    // Transition to complete
     await this.transition('complete')
   }
 

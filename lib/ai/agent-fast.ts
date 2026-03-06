@@ -11,7 +11,7 @@
  * 7. Fallback контент при ошибках
  */
 
-import { generateWithRouter } from '@/lib/ai-router'
+import { generateWithRouter, generateImage } from '@/lib/ai-router'
 import { 
   getCachedLesson,
   getCachedTasks,
@@ -19,7 +19,7 @@ import {
   setCachedLessonSmart, setCachedTasksSmart
 } from '@/lib/ai-cache'
 import { getFullRAGContext, getDomainRAGContext } from '@/lib/rag'
-import { getFallbackTheory, getFallbackTasks } from './fallback-content'
+import { getFallbackTheory, getFallbackTasks, isFallbackContent } from './fallback-content'
 import { 
   detectDomain, 
   getConfigForTopic,
@@ -156,6 +156,171 @@ export async function analyzeTopicFast(
   }
 }
 
+
+// === ГЕНЕРАЦИЯ ИЛЛЮСТРАЦИЙ ===
+
+/** Максимальное количество изображений на урок */
+const MAX_IMAGES_PER_LESSON = 4
+/** Минимальная длина секции (символов) для генерации иллюстрации */
+const MIN_SECTION_LENGTH_FOR_IMAGE = 300
+
+/**
+ * Обогащает markdown-контент AI-сгенерированными иллюстрациями.
+ * Выбирает до MAX_IMAGES_PER_LESSON ключевых секций (## заголовков),
+ * генерирует для них изображения через NVIDIA FLUX.1 и вставляет
+ * base64-картинки прямо в markdown.
+ */
+export async function enrichContentWithImages(
+  markdown: string,
+  analysis: TopicAnalysis | { topic: string; domain: DomainType }
+): Promise<string> {
+  // Проверяем наличие API-ключа — если нет, просто возвращаем контент как есть
+  if (!process.env.NVIDIA_IMAGE_API_KEY && !process.env.NVIDIA_API_KEY) {
+    console.log('[Images] No NVIDIA API key configured, skipping image generation')
+    return markdown
+  }
+
+  console.log('[Images] Enriching content with illustrations...')
+
+  // Разбиваем markdown на секции по ## заголовкам
+  const sectionRegex = /^## (.+)$/gm
+  const sections: { title: string; index: number }[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = sectionRegex.exec(markdown)) !== null) {
+    sections.push({ title: match[1].trim(), index: match.index })
+  }
+
+  if (sections.length === 0) {
+    console.log('[Images] No sections found, skipping')
+    return markdown
+  }
+
+  // Приоритетно берём секции где визуализация полезна (таблицы, код, формулы, кейсы),
+  // затем добираем равномерно
+  const VISUAL_KEYWORDS = /кейс|пример|концеп|основ|ключев|работает|метод|алгоритм|схем|структур|архитект|модел|диаграм|визуал|таблиц|сравнен|тип|классифик/i
+  const visualSections = sections.filter(s => VISUAL_KEYWORDS.test(s.title))
+  const otherSections = sections.filter(s => !VISUAL_KEYWORDS.test(s.title))
+
+  // Сначала визуальные, потом равномерно из остальных
+  const selected = [...visualSections]
+  if (selected.length < MAX_IMAGES_PER_LESSON) {
+    const step = Math.max(1, Math.floor(otherSections.length / (MAX_IMAGES_PER_LESSON - selected.length)))
+    for (let i = 0; i < otherSections.length && selected.length < MAX_IMAGES_PER_LESSON; i += step) {
+      selected.push(otherSections[i])
+    }
+  }
+  const selectedSections = selected.slice(0, MAX_IMAGES_PER_LESSON)
+
+  // Генерируем изображения параллельно
+  const imageResults = await Promise.allSettled(
+    selectedSections.map(async (section) => {
+      // LLM генерирует осмысленный визуальный промпт для FLUX.1
+      const imagePrompt = await buildImagePrompt(analysis.topic, section.title, analysis.domain)
+      console.log(`[Images] Generating for "${section.title}": "${imagePrompt.slice(0, 100)}..."`)
+
+      const result = await generateImage(imagePrompt, {
+        width: 1024,
+        height: 768, // 4:3 — поддерживается FLUX.1 API
+      })
+      return { section, image: result.image }
+    })
+  )
+
+  // Логируем ошибки генерации изображений
+  imageResults.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`[Images] Failed to generate image for "${selectedSections[i]?.title}": ${r.reason}`)
+    }
+  })
+
+  // Вставляем изображения в markdown (идём с конца, чтобы не сбивать индексы)
+  let enriched = markdown
+  const successfulImages = imageResults
+    .map((r, i) => r.status === 'fulfilled' ? r.value : null)
+    .filter(Boolean) as { section: { title: string; index: number }; image: string }[]
+
+  // Сортируем по позиции в тексте (с конца)
+  successfulImages.sort((a, b) => b.section.index - a.section.index)
+
+  for (const { section, image } of successfulImages) {
+    // Находим конец строки заголовка
+    const headingEnd = enriched.indexOf('\n', section.index)
+    if (headingEnd === -1) continue
+
+    const imageMarkdown = `\n\n![Иллюстрация: ${section.title}](data:image/jpeg;base64,${image})\n`
+    enriched = enriched.slice(0, headingEnd + 1) + imageMarkdown + enriched.slice(headingEnd + 1)
+  }
+
+  console.log(`[Images] Successfully added ${successfulImages.length}/${selectedSections.length} illustrations`)
+  return enriched
+}
+
+/** Строгий запрет на текст — FLUX.1 генерирует нечитаемые надписи */
+const NO_TEXT_DIRECTIVE = 'Absolutely no text, no letters, no labels, no watermarks, no writing, no numbers, no captions anywhere in the image.'
+
+/** Системный промпт для LLM, которая генерирует промпты для FLUX.1 */
+const IMAGE_PROMPT_SYSTEM = `You are an expert at writing prompts for the FLUX.1 image generation model.
+Your task: given an educational topic and section title, produce ONE short English prompt (2-3 sentences max) that describes a vivid, concrete visual scene illustrating the concept.
+
+Rules:
+- Describe ONLY visual objects, colors, composition, lighting — things a camera could capture.
+- NEVER include any text, letters, labels, watermarks, numbers or captions in the description.
+- Use concrete nouns ("glass flask with blue liquid", not "chemistry concept").
+- Mention art style: photorealistic, 3D render, flat vector, watercolor, etc.
+- Output ONLY the prompt text, nothing else.`
+
+/**
+ * Генерирует промпт для FLUX.1 через быструю LLM.
+ * Если LLM недоступна — fallback на шаблонный промпт.
+ */
+async function buildImagePrompt(topic: string, sectionTitle: string, domain: DomainType): Promise<string> {
+  try {
+    const userPrompt = `Topic: "${topic}"
+Section: "${sectionTitle}"
+Domain: ${domain}
+
+Write a FLUX.1 image prompt for this section.`
+
+    const result = await generateWithRouter(
+      'fast',
+      IMAGE_PROMPT_SYSTEM,
+      userPrompt,
+      { temperature: 0.9, maxTokens: 200 }
+    )
+
+    const aiPrompt = result.content.trim()
+    if (aiPrompt.length < 20) throw new Error('Prompt too short')
+
+    console.log(`[Images] AI-generated prompt for "${sectionTitle}": "${aiPrompt.slice(0, 100)}..."`)
+    // Добавляем запрет на текст как страховку — LLM может забыть
+    return `${aiPrompt} ${NO_TEXT_DIRECTIVE}`
+  } catch (e: any) {
+    console.warn(`[Images] Failed to generate AI prompt for "${sectionTitle}": ${e.message}, using fallback`)
+    return buildImagePromptFallback(topic, sectionTitle, domain)
+  }
+}
+
+/** Шаблонный fallback-промпт, если LLM недоступна */
+function buildImagePromptFallback(topic: string, sectionTitle: string, domain: DomainType): string {
+  const domainVisuals: Record<DomainType, string> = {
+    physics: 'photorealistic physics laboratory, light rays through prisms, pendulums, magnetic field lines',
+    math: '3D colorful geometric shapes floating in space, golden ratio spiral, abstract mathematical surfaces',
+    chemistry: 'glass flasks with colorful glowing liquids, molecular models, crystal structures',
+    programming: 'futuristic holographic interface, glowing circuit board, data stream visualization',
+    biology: 'detailed cell cross-section, DNA helix, vivid ecosystem diorama',
+    history: 'oil painting of ancient architecture, historical artifacts, sepia toned scene',
+    economics: 'golden coins stacked in rising columns, miniature cityscape, stock charts as 3D ribbons',
+    languages: 'vintage typewriter, open books, world map with cultural symbols',
+    psychology: 'transparent human head with glowing brain, neural pathways, abstract thought clouds',
+    law: 'marble scales of justice, ancient scroll with wax seal, courthouse columns',
+    medicine: 'anatomical heart model, stethoscope, medical lab with microscope',
+    art: 'artist palette with oil paints, canvas on easel, sculpture gallery',
+    general: 'glowing lightbulb above an open book, magnifying glass, educational tools'
+  }
+  const visual = domainVisuals[domain] || domainVisuals.general
+  return `Concept illustration about "${sectionTitle}" related to "${topic}". ${visual}. Soft lighting, muted colors, high detail. ${NO_TEXT_DIRECTIVE}`
+}
 
 // Результат генерации секции с информацией о провайдере и retry
 interface SectionResult {
@@ -649,6 +814,13 @@ export async function runLessonAgentFast(
   // Requirements: 3.4 - логирование статистики retry
   console.log(`[Fast Agent] Retry statistics: ${retryStats.retried}/${retryStats.total} sections retried, ${retryStats.failed} failed`)
   
+  // Обогащаем контент AI-иллюстрациями (пропускаем для fallback-контента)
+  if (!isFallbackContent(content)) {
+    content = await enrichContentWithImages(content, analysis)
+  } else {
+    console.log('[Fast Agent] Skipping image enrichment for fallback content')
+  }
+
   // Умное кэширование с валидацией
   const lessonCacheResult = setCachedLessonSmart(topic, courseName, content, analysis.domain)
   const tasksCacheResult = setCachedTasksSmart(topic, courseName, tasks)
@@ -835,6 +1007,13 @@ export async function runLessonAgentWithStateMachine(
     analysis = await analyzeTopicFast(topic, courseName, normalizedDomain)
     content = getFallbackTheory(topic, courseName, analysis.domainEnum || 'GENERAL')
     usedFallback = true
+  }
+
+  // Enrich content with AI-generated illustrations (пропускаем для fallback)
+  if (!isFallbackContent(content)) {
+    content = await enrichContentWithImages(content, analysis)
+  } else {
+    console.log('[Fast Agent] Skipping image enrichment for fallback content')
   }
 
   // Generate tasks in parallel

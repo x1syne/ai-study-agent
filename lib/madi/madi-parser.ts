@@ -36,6 +36,7 @@ export interface ParsedLesson {
   room: string
   building?: string
   group?: string
+  periodicity?: string // Еженедельно, Числитель, Знаменатель, 1 раз в месяц
   isDistanceLearning?: boolean
 }
 
@@ -419,7 +420,7 @@ export class MADIParser {
       const departments = parseDepartmentPage(html, professorName)
       
       if (departments && departments.length > 0) {
-        // Сохраняем в кэш
+        // Сохраняем в кэш 
         this.cache.set(cacheKey, departments, this.config.cacheTTL, 'department')
         console.log(`[MADI Parser] Successfully parsed ${departments.length} departments for ${professorName}`)
         console.log(`[MADI Parser] Cached ${departments.length} departments for ${professorName} (TTL: ${this.config.cacheTTL}s)`)
@@ -792,31 +793,91 @@ export async function fetchMADIPage(url: string, timeout: number): Promise<strin
   const startTime = Date.now()
   console.log(`[MADI Parser] Fetching page: ${url}`)
   
-  // Создаем AbortController для обработки таймаута
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => {
-    controller.abort()
-    console.error(`[MADI Parser] Request timeout after ${timeout}ms: ${url}`)
-  }, timeout)
-
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
+    // Пробуем использовать Playwright для JavaScript-рендеринга
+    const usePlaywright = process.env.USE_PLAYWRIGHT_FOR_MADI === 'true'
+    
+    if (usePlaywright) {
+      console.log('[MADI Parser] Using Playwright for JavaScript rendering...')
+      // TODO: Интеграция с Playwright MCP
+      // Пока используем обычный fetch
+    }
+    
+    // Используем undici для HTTP запроса
+    const { request } = await import('undici')
+    
+    const { statusCode, headers, body } = await request(url, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (MADI Schedule Bot/1.0)',
-      }
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+      },
+      // @ts-expect-error -- undici connect option for SSL bypass
+      connect: {
+        rejectUnauthorized: false
+      },
+      headersTimeout: timeout,
+      bodyTimeout: timeout
     })
 
     // Обработка HTTP ошибок (4xx, 5xx)
-    if (!response.ok) {
-      const errorMessage = `HTTP ${response.status}: ${response.statusText}`
+    if (statusCode >= 400) {
+      const errorMessage = `HTTP ${statusCode}`
       console.error(`[MADI Parser] HTTP error for ${url}: ${errorMessage}`)
       const error = new Error(errorMessage)
       monitoring.recordFailure(error, 'network', url)
       throw error
     }
 
-    const html = await response.text()
+    // Читаем body
+    let html = await body.text()
+    
+    // ВАЖНО: Сайт МАДИ использует loadArea() для динамической загрузки
+    // Если видим <script>loadArea(8,1)</script>, значит нужен JavaScript рендеринг
+    if (html.includes('loadArea(')) {
+      console.warn('[MADI Parser] Page uses dynamic JavaScript loading (loadArea)')
+      console.warn('[MADI Parser] Consider enabling USE_PLAYWRIGHT_FOR_MADI=true for full rendering')
+      
+      // Пытаемся загрузить контент напрямую через AJAX endpoint
+      const taskMatch = url.match(/task=(\d+)/)
+      if (taskMatch) {
+        const task = taskMatch[1]
+        const prepMatch = url.match(/prep=([^&]+)/)
+        const prep = prepMatch ? decodeURIComponent(prepMatch[1]) : ''
+        
+        // Пробуем загрузить через content_loader.php (предполагаемый AJAX endpoint)
+        const ajaxUrl = `${url.split('/r/')[0]}/r/content_loader.php?task=${task}&prep=${encodeURIComponent(prep)}`
+        console.log(`[MADI Parser] Trying AJAX endpoint: ${ajaxUrl}`)
+        
+        try {
+          const ajaxResponse = await request(ajaxUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            // @ts-expect-error -- undici connect option for SSL bypass
+            connect: {
+              rejectUnauthorized: false
+            },
+            headersTimeout: timeout,
+            bodyTimeout: timeout
+          })
+          
+          if (ajaxResponse.statusCode === 200) {
+            const ajaxHtml = await ajaxResponse.body.text()
+            if (ajaxHtml.length > html.length) {
+              console.log('[MADI Parser] AJAX endpoint returned more content, using it')
+              html = ajaxHtml
+            }
+          }
+        } catch (ajaxError) {
+          console.warn('[MADI Parser] AJAX endpoint failed, using original HTML')
+        }
+      }
+    }
+    
     const responseTime = Date.now() - startTime
     console.log(`[MADI Parser] Successfully fetched page: ${url} (${html.length} bytes, ${responseTime}ms)`)
     monitoring.recordSuccess(responseTime)
@@ -824,7 +885,7 @@ export async function fetchMADIPage(url: string, timeout: number): Promise<strin
     return html
   } catch (error) {
     // Обработка ошибки таймаута
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && (error.name === 'HeadersTimeoutError' || error.name === 'BodyTimeoutError')) {
       const timeoutError = new Error(`Request timeout after ${timeout}ms`)
       monitoring.recordFailure(timeoutError, 'timeout', url)
       throw timeoutError
@@ -832,14 +893,12 @@ export async function fetchMADIPage(url: string, timeout: number): Promise<strin
     
     // Записываем другие ошибки в мониторинг
     if (error instanceof Error) {
+      console.error(`[MADI Parser] Fetch error: ${error.message}`)
       monitoring.recordFailure(error, 'network', url)
     }
     
     // Пробрасываем другие ошибки
     throw error
-  } finally {
-    // Очищаем таймер в любом случае
-    clearTimeout(timeoutId)
   }
 }
 
@@ -937,6 +996,28 @@ export function inferLessonType(subject: string): 'lecture' | 'practice' | 'lab'
   }
   
   if (lowerSubject.includes('лабораторная') || lowerSubject.includes('лаб.')) {
+    return 'lab'
+  }
+  
+  // Default to lecture if no specific type is found
+  return 'lecture'
+}
+
+/**
+ * Определить тип занятия из колонки "Вид занятий" (реальная структура МАДИ)
+ */
+export function inferLessonTypeFromText(lessonTypeText: string): 'lecture' | 'practice' | 'lab' {
+  const lowerText = lessonTypeText.toLowerCase()
+  
+  if (lowerText.includes('лекц')) {
+    return 'lecture'
+  }
+  
+  if (lowerText.includes('практ') || lowerText.includes('семинар')) {
+    return 'practice'
+  }
+  
+  if (lowerText.includes('лаборатор')) {
     return 'lab'
   }
   
@@ -1338,20 +1419,19 @@ export function parseSchedulePage(
     // Загружаем HTML в cheerio
     const $ = cheerio.load(html)
     
-    // Ищем таблицу расписания
-    const scheduleTable = $(SELECTORS.scheduleTable).first()
+    // Ищем таблицу расписания - реальная структура МАДИ
+    const scheduleTable = $('table[border="1"]').first()
     
     if (scheduleTable.length === 0) {
       console.warn('[MADI Parser] Schedule table not found in HTML')
       return null
     }
     
-    // Извлекаем строки таблицы (пропускаем заголовок)
-    const rows = scheduleTable.find(SELECTORS.scheduleRow).slice(1)
+    // Извлекаем строки таблицы
+    const rows = scheduleTable.find('tr')
     
     if (rows.length === 0) {
       console.log('[MADI Parser] No schedule rows found - empty schedule')
-      // Возвращаем пустое расписание (выходной день)
       return {
         professorName,
         date: date.toISOString().split('T')[0],
@@ -1362,53 +1442,63 @@ export function parseSchedulePage(
     }
     
     const lessons: ParsedLesson[] = []
+    let currentDay = ''
     
     // Парсим каждую строку
-    rows.each((_, row) => {
+    rows.each((index, row) => {
       try {
         const $row = $(row)
+        const cells = $row.find('td')
         
-        // Извлекаем данные из ячеек
-        const dayOfWeek = $row.find(SELECTORS.dayOfWeek).text().trim()
-        const time = $row.find(SELECTORS.lessonTime).text().trim()
-        const subject = $row.find(SELECTORS.lessonSubject).text().trim()
-        const roomInfo = $row.find(SELECTORS.lessonRoom).text().trim()
-        const group = $row.find(SELECTORS.lessonGroup).text().trim()
+        // Пропускаем заголовки и пустые строки
+        if (cells.length === 0) return
         
-        // Пропускаем строки без времени или предмета (могут быть пустые строки)
-        if (!time || !subject) {
+        // Проверяем, это строка с днём недели (заголовок дня)
+        const firstCellText = $(cells[0]).text().trim()
+        if (firstCellText.match(/^(Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье)$/i)) {
+          currentDay = firstCellText
+          console.log(`[MADI Parser] Found day header: ${currentDay}`)
           return
         }
         
-        // Парсим информацию об аудитории и корпусе
-        const { room, building } = parseRoomInfo(roomInfo)
-        
-        // Определяем тип занятия
-        const type = inferLessonType(subject)
-        
-        // Создаем объект занятия
-        const lesson: ParsedLesson = {
-          time,
-          subject,
-          type,
-          room
+        // Реальная структура таблицы МАДИ:
+        // Время занятий | Группа | Наименование дисциплины | Вид занятий | Периодичность занятий | Аудитория
+        if (cells.length >= 6) {
+          const time = $(cells[0]).text().trim()
+          const group = $(cells[1]).text().trim()
+          const subject = $(cells[2]).text().trim()
+          const lessonTypeText = $(cells[3]).text().trim()
+          const periodicity = $(cells[4]).text().trim()
+          const roomInfo = $(cells[5]).text().trim()
+          
+          // Пропускаем строки без времени или предмета
+          if (!time || !subject || time === 'Время занятий') {
+            return
+          }
+          
+          // Парсим информацию об аудитории и корпусе
+          const { room, building } = parseRoomInfo(roomInfo)
+          
+          // Определяем тип занятия из колонки "Вид занятий"
+          const type = inferLessonTypeFromText(lessonTypeText)
+          
+          // Создаем объект занятия
+          const lesson: ParsedLesson = {
+            time,
+            subject,
+            type,
+            room,
+            group: group || undefined,
+            building: building || undefined,
+            periodicity: periodicity || undefined
+          }
+          
+          lessons.push(lesson)
+          
+          console.log(`[MADI Parser] Parsed lesson: ${time} - ${subject} (${type}) - Группа: ${group} - ${periodicity}`)
         }
-        
-        // Добавляем опциональные поля только если они не пустые
-        if (building) {
-          lesson.building = building
-        }
-        
-        if (group) {
-          lesson.group = group
-        }
-        
-        lessons.push(lesson)
-        
-        console.log(`[MADI Parser] Parsed lesson: ${time} - ${subject} (${type})`)
       } catch (error) {
         console.error('[MADI Parser] Error parsing lesson row:', error)
-        // Продолжаем парсинг остальных строк
       }
     })
     

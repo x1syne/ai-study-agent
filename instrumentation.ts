@@ -1,3 +1,5 @@
+
+
 /**
  * Instrumentation file for Next.js
  * 
@@ -30,19 +32,8 @@ export async function register() {
       throw new Error(errorMessage)
     }
     
-    // Test Groq API connection (non-blocking)
-    try {
-      console.log('[Startup] Testing Groq API connection...')
-      const groqConnected = await validator.testGroqConnection()
-      
-      if (groqConnected) {
-        console.log('✅ Groq API connection successful')
-      } else {
-        console.warn('⚠️  Groq API connection test failed - check your GROQ_API_KEY')
-      }
-    } catch (error) {
-      console.warn('⚠️  Groq API connection test failed:', error instanceof Error ? error.message : String(error))
-    }
+    // Skip Groq direct test in Russia (403 Forbidden) — NVIDIA proxy is primary
+    console.log('[Startup] Groq direct test skipped (use NVIDIA proxy or Supabase proxy)')
     
     console.log('[Startup] Configuration validation complete\n')
   }

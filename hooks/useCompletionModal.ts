@@ -55,12 +55,15 @@ export function useCompletionModal({
   /**
    * Handle confirm action - mark as complete and navigate
    * Requirements: 2.5
+   * Навигация происходит мгновенно, отметка "готово" — в фоне (fire-and-forget)
    */
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(() => {
     if (pendingTopicId) {
-      // Mark current topic as complete
-      await onMarkComplete()
-      // Navigate to the new topic
+      // Fire-and-forget: отметка "готово" в фоне, не блокируем навигацию
+      Promise.resolve(onMarkComplete()).catch(e =>
+        console.error('[CompletionModal] Background mark-complete failed:', e)
+      )
+      // Навигация — мгновенно
       onNavigate(pendingTopicId)
     }
     // Close modal and reset state

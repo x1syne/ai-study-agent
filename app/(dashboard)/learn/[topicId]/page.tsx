@@ -1,12 +1,12 @@
-'use client'
+    'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { ArrowLeft, BookOpen, Code, CheckCircle, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui'
-import { TheoryContent } from '@/components/learning/TheoryContent'
+import { TheoryContent, StreamingTheoryContent } from '@/components/learning/TheoryContent'
 import { CodeEditor } from '@/components/learning/CodeEditor'
 import { QuizQuestion } from '@/components/learning/QuizQuestion'
 import { VisualTask } from '@/components/learning/VisualTask'
@@ -76,6 +76,9 @@ export default function LearnPage() {
   const [taskResults, setTaskResults] = useState<TaskResult[]>([])
   const [savedAnswers, setSavedAnswers] = useState<Map<number, any>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [isLoadingImages, setIsLoadingImages] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isChangingTask, setIsChangingTask] = useState(false)
   const [theoryContent, setTheoryContent] = useState('')
@@ -88,6 +91,9 @@ export default function LearnPage() {
   const [currentTopicStatus, setCurrentTopicStatus] = useState<TopicStatus>('AVAILABLE')
 
   useEffect(() => { 
+    // AbortController — отменяет запрос при смене темы или двойном mount (StrictMode)
+    const abortController = new AbortController()
+
     // Сбрасываем состояние при смене темы
     setStep('theory')
     setTopic(null)
@@ -99,10 +105,15 @@ export default function LearnPage() {
     setTaskResults([])
     setSavedAnswers(new Map())
     setTheoryContent('')
+    setStreamingContent('')
+    setIsStreaming(false)
+    setIsLoadingImages(false)
     setLoadError(null)
-    
+
     // Загружаем новую тему
-    fetchLesson('theory') 
+    fetchTheoryStream(abortController.signal)
+
+    return () => { abortController.abort() }
   }, [params.topicId])
 
   // Fetch course structure for sidebar
@@ -177,43 +188,132 @@ export default function LearnPage() {
     } catch { return '' }
   }
 
+  /** Загрузка теории через SSE-стриминг (текст появляется по мере генерации) */
+  const fetchTheoryStream = async (signal?: AbortSignal) => {
+    setIsLoading(true)
+    setLoadError(null)
+    setStreamingContent('')
+    setIsStreaming(false)
+
+    try {
+      const res = await fetch(`/api/topics/${params.topicId}/lesson/stream`, { signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      const contentType = res.headers.get('content-type') || ''
+
+      // Если теория закэширована — бэкенд вернёт обычный JSON
+      if (contentType.includes('application/json')) {
+        const data = await res.json()
+        setTopic(data.topic)
+        const md = data.content || ''
+        setLesson({ id: data.lessonId, content: { markdown: md } })
+        setTheoryContent(md)
+        if (data.goalId) fetchCourseStructure(data.goalId)
+        setIsLoading(false)
+        return
+      }
+
+      // SSE-стрим — читаем чанки
+      setIsLoading(false)
+      setIsStreaming(true)
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let accumulated = ''
+      let lastFlush = 0
+      const FLUSH_INTERVAL = 300 // мс между обновлениями UI (тяжёлый рендер с LaTeX/таблицами)
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'start' && event.topic) {
+              setTopic(event.topic)
+              if (event.goalId) fetchCourseStructure(event.goalId)
+            } else if (event.type === 'chunk') {
+              accumulated += event.content
+              // Тротлим обновления UI — не чаще раз в 150мс
+              const now = Date.now()
+              if (now - lastFlush >= FLUSH_INTERVAL) {
+                setStreamingContent(accumulated)
+                lastFlush = now
+              }
+            } else if (event.type === 'images_loading') {
+              setIsLoadingImages(true)
+            } else if (event.type === 'images_done') {
+              setIsLoadingImages(false)
+            } else if (event.type === 'content_replace') {
+              accumulated = event.content
+              setStreamingContent(accumulated)
+              setIsLoadingImages(false)
+            } else if (event.type === 'done') {
+              setLesson({ id: event.lessonId, content: { markdown: accumulated } })
+              setTheoryContent(accumulated)
+              setIsStreaming(false)
+            } else if (event.type === 'error') {
+              throw new Error(event.message || 'Stream error')
+            }
+          } catch (parseError) {
+            // Логируем только если это не пустая строка
+            if (line.slice(6).trim()) {
+              console.warn('[Stream] Failed to parse SSE event:', line.slice(6, 80))
+            }
+          }
+        }
+      }
+
+      // Финальный flush остатка
+      setStreamingContent(accumulated)
+      setIsStreaming(false)
+    } catch (e: any) {
+      // Abort — штатная отмена, не показываем ошибку
+      if (e.name === 'AbortError') {
+        console.log('[Stream] Aborted (cleanup / topic change)')
+        return
+      }
+      console.error('[Stream] Failed:', e)
+      setLoadError(e.message || 'Ошибка загрузки теории')
+      setIsLoading(false)
+      setIsStreaming(false)
+    }
+  }
+
   const fetchLesson = async (type: string) => {
+    // Теория — через стриминг
+    if (type === 'theory') { return fetchTheoryStream() }
+
     setIsLoading(true)
     setLoadError(null)
     try {
       const tone = getContentTone()
       const toneParam = tone ? `&tone=${tone}` : ''
       const res = await fetch(`/api/topics/${params.topicId}/lesson?type=${type}${toneParam}`)
-      
+
       if (res.ok) {
         const data = await res.json()
         setTopic(data.topic)
-        
+
         // Update current topic status from progress
         if (data.progress?.status) {
           setCurrentTopicStatus(data.progress.status as TopicStatus)
         }
-        
+
         if (type === 'theory') {
           setLesson(data.lesson)
-          // Сохраняем теорию для AI помощи
           const content = data.lesson?.content
           if (content) {
             setTheoryContent(typeof content === 'string' ? content : (content.markdown || content.text || ''))
           }
-          
-          // Fetch course structure for sidebar after getting topic
-          // We need to get goalId from the topic's module
-          if (data.topic?.id) {
-            // Fetch the topic to get its module and goal
-            const topicRes = await fetch(`/api/topics/${params.topicId}/lesson?type=theory`)
-            if (topicRes.ok) {
-              const topicData = await topicRes.json()
-              // The goal ID should be available from the lesson endpoint
-              // We'll fetch it separately
-              fetchGoalIdFromTopic(params.topicId as string)
-            }
-          }
+          fetchGoalIdFromTopic(params.topicId as string)
         } else {
           setPracticeLesson(data.lesson)
           const tasks = data.lesson?.content?.tasks
@@ -296,22 +396,22 @@ export default function LearnPage() {
     }
   }
 
-  // Mark current topic as completed
+  // Mark current topic as completed (fire-and-forget — не блокирует навигацию)
   const markTopicComplete = useCallback(async () => {
+    // Оптимистичное обновление UI
+    setCurrentTopicStatus('COMPLETED')
+
     try {
-      // Submit with a passing score to mark as complete
+      // Submit в фоне
       await fetch(`/api/topics/${params.topicId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: 'manual_complete', score: 100 }),
       })
-      
-      // Update local state
-      setCurrentTopicStatus('COMPLETED')
-      
-      // Refresh course structure to update sidebar
+
+      // Sidebar обновим в фоне — не блокируем переход
       if (goalId) {
-        fetchCourseStructure(goalId)
+        fetchCourseStructure(goalId).catch(() => {})
       }
     } catch (e) {
       console.error('Failed to mark topic complete:', e)
@@ -331,8 +431,9 @@ export default function LearnPage() {
     onMarkComplete: markTopicComplete,
   })
 
-  const handleCompleteTheory = async () => {
-    try { await fetch(`/api/topics/${params.topicId}/lesson`, { method: 'POST' }) } catch (e) { console.error(e) }
+  const handleCompleteTheory = () => {
+    // Fire-and-forget: отметка теории в фоне, переход к практике мгновенный
+    fetch(`/api/topics/${params.topicId}/lesson`, { method: 'POST' }).catch(e => console.error(e))
     setStep('practice')
     fetchLesson('practice')
   }
@@ -509,6 +610,17 @@ export default function LearnPage() {
                     <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin" />
                     <span className="ml-3 text-[var(--color-text-secondary)]">AI генерирует материал...</span>
                   </div>
+                ) : isStreaming ? (
+                  /* Стриминг: полный рендер с таблицами, LaTeX, кодом и картинками */
+                  <>
+                    <StreamingTheoryContent content={streamingContent} />
+                    <div className="flex items-center gap-2 mt-4 py-3 px-4 bg-[var(--color-primary)]/10 rounded-lg">
+                      <Loader2 className="w-4 h-4 text-[var(--color-primary)] animate-spin" />
+                      <span className="text-sm text-[var(--color-text-secondary)]">
+                        {isLoadingImages ? 'Генерация иллюстраций...' : 'Генерация...'}
+                      </span>
+                    </div>
+                  </>
                 ) : lesson?.content ? (
                   <>
                     <TheoryContent 

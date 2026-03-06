@@ -110,98 +110,194 @@ function getStaticOstroukhSchedule(date: Date): DaySchedule {
   const dayOfWeek = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
   const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
   
-  // ВАЖНО: Это статические тестовые данные
-  // Реальное расписание может отличаться
+  // ВАЖНО: Это статические данные на основе скриншота расписания
+  // Реальное расписание может меняться
   const schedule: Record<number, ScheduleLesson[]> = {
     1: [ // Понедельник
       {
-        time: '9:00-10:30',
-        subject: 'Автоматизированные системы управления',
+        time: '18:50 - 20:20',
+        subject: 'Методы искусственного интеллекта',
         type: 'lecture',
-        room: '301',
-        building: 'Главный корпус',
+        room: '713п',
         professor: 'Остроух А.В.',
-        group: 'Группа 1' // Примерное название
+        group: '5БИТ1С'
       },
       {
-        time: '10:45-12:15',
-        subject: 'Системы искусственного интеллекта',
+        time: '20:30 - 22:00',
+        subject: 'Методы искусственного интеллекта',
         type: 'lecture',
-        room: '301',
-        building: 'Главный корпус',
+        room: '713п',
         professor: 'Остроух А.В.',
-        group: 'Группа 2' // Примерное название
+        group: '5БИТ1С'
       }
     ],
     2: [ // Вторник
       {
-        time: '12:30-14:00',
-        subject: 'Робототехника и мехатроника',
-        type: 'practice',
-        room: '215',
-        building: 'Лабораторный корпус',
+        time: '09:55 - 11:25',
+        subject: 'Технологии разработки Интернет-приложений',
+        type: 'lecture',
+        room: '713п',
         professor: 'Остроух А.В.',
-        group: 'Группа 1' // Примерное название
+        group: '2ОАСУ1'
+      },
+      {
+        time: '09:55 - 11:25',
+        subject: 'Технологии разработки Интернет-приложений',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '2ОАСУ2'
+      },
+      {
+        time: '09:55 - 11:25',
+        subject: 'Технологии разработки Интернет-приложений',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '2ОАСУ3'
+      },
+      {
+        time: '12:20 - 13:50',
+        subject: 'Квантовые компьютеры, алгоритмы и вычисления',
+        type: 'lab',
+        room: '617п',
+        professor: 'Остроух А.В.',
+        group: '3б1ТС1'
+      },
+      {
+        time: '12:20 - 13:50',
+        subject: 'Квантовые компьютеры, алгоритмы и вычисления',
+        type: 'practice',
+        room: '617п',
+        professor: 'Остроух А.В.',
+        group: '3б1ТС1'
+      },
+      {
+        time: '13:55 - 15:25',
+        subject: 'Квантовые компьютеры, алгоритмы и вычисления',
+        type: 'lab',
+        room: '617п',
+        professor: 'Остроух А.В.',
+        group: '3б1ТС1'
+      },
+      {
+        time: '13:55 - 15:25',
+        subject: 'Квантовые компьютеры, алгоритмы и вычисления',
+        type: 'practice',
+        room: '617п',
+        professor: 'Остроух А.В.',
+        group: '3б1ТС1'
       }
     ],
     3: [ // Среда
       {
-        time: '9:00-10:30',
-        subject: 'Математический анализ',
+        time: '17:15 - 18:45',
+        subject: 'Квантовые алгоритмы и вычисления',
         type: 'lecture',
-        room: '405',
-        building: 'Главный корпус',
+        room: '713п',
         professor: 'Остроух А.В.',
-        group: 'Группа 3' // Примерное название
+        group: '1МБД'
       },
       {
-        time: '14:15-15:45',
-        subject: 'Консультации по научной работе',
-        type: 'practice',
-        room: '312',
-        building: 'Кафедра АСУ',
-        professor: 'Остроух А.В.'
+        time: '18:50 - 20:20',
+        subject: 'Инновационные технологии',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '1МБД'
       }
     ],
     4: [ // Четверг
       {
-        time: '10:45-12:15',
-        subject: 'Автоматизированные системы управления',
-        type: 'practice',
-        room: '215',
-        building: 'Лабораторный корпус',
+        time: '08:15 - 09:45',
+        subject: 'Методы искусственного интеллекта',
+        type: 'lab',
+        room: '620п',
         professor: 'Остроух А.В.',
-        group: 'Группа 1' // Примерное название
+        group: '4б1ТС1'
       },
       {
-        time: '12:30-14:00',
-        subject: 'Системы искусственного интеллекта',
+        time: '09:55 - 11:25',
+        subject: 'Методы искусственного интеллекта',
         type: 'lab',
-        room: '215',
-        building: 'Лабораторный корпус',
+        room: '620п',
         professor: 'Остроух А.В.',
-        group: 'Группа 2' // Примерное название
+        group: '4б1ТС1'
+      },
+      {
+        time: '11:35 - 13:05',
+        subject: 'Методы искусственного интеллекта',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '4б1ТС2'
+      },
+      {
+        time: '11:35 - 13:05',
+        subject: 'Методы искусственного интеллекта',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '4б1ТС2'
+      },
+      {
+        time: '13:55 - 15:25',
+        subject: 'Квантовые компьютеры, алгоритмы и вычисления',
+        type: 'lecture',
+        room: '713п',
+        professor: 'Остроух А.В.',
+        group: '3б1ТС3'
+      },
+      {
+        time: '15:35 - 17:05',
+        subject: 'Квантовые алгоритмы и вычисления',
+        type: 'lab',
+        room: '620п',
+        professor: 'Остроух А.В.',
+        group: '1МБД'
+      },
+      {
+        time: '17:15 - 18:45',
+        subject: 'Квантовые алгоритмы и вычисления',
+        type: 'lab',
+        room: '620п',
+        professor: 'Остроух А.В.',
+        group: '1МБД'
       }
     ],
     5: [ // Пятница
       {
-        time: '9:00-10:30',
-        subject: 'Научный семинар кафедры',
-        type: 'lecture',
-        room: '312',
-        building: 'Кафедра АСУ',
-        professor: 'Остроух А.В.'
+        time: '15:35 - 17:05',
+        subject: 'Квантовые алгоритмы и вычисления',
+        type: 'practice',
+        room: '620п',
+        professor: 'Остроух А.В.',
+        group: '1МБД'
+      },
+      {
+        time: '17:15 - 18:45',
+        subject: 'Квантовые алгоритмы и вычисления',
+        type: 'practice',
+        room: '620п',
+        professor: 'Остроух А.В.',
+        group: '1МБД'
       }
     ]
   };
 
   const dateStr = date.toISOString().split('T')[0];
-  
   return {
     date: dateStr,
     dayOfWeek: dayNames[dayOfWeek],
-    lessons: schedule[dayOfWeek] || []
+    lessons: schedule[dayOfWeek] || [],
   };
+}
+
+/**
+ * Получить расписание на конкретный день
+ */
+export async function getDaySchedule(date: Date = new Date()): Promise<DaySchedule> {
+  return getStaticOstroukhSchedule(date);
 }
 
 /**

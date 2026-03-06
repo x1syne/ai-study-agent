@@ -5,6 +5,8 @@ import {
   ReactFlow,
   Node,
   Edge,
+  Handle,
+  Position,
   Background,
   Controls,
   useNodesState,
@@ -84,6 +86,10 @@ function ModuleNode({ data }: {
   
   return (
     <div className="relative group">
+      {/* React Flow handles for edge connections */}
+      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-0 !h-0" />
+
       {/* Внешнее свечение */}
       <div 
         className={`absolute -inset-4 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${

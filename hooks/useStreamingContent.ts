@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 
+
 interface StreamingState {
   content: string
   isStreaming: boolean
@@ -30,6 +31,9 @@ export function useStreamingContent(options: UseStreamingContentOptions = {}) {
   })
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Refs для коллбэков — избегаем пересоздания startStreaming при смене options
+  const optionsRef = useRef(options)
+  optionsRef.current = options
 
   const startStreaming = useCallback(async (topicId: string) => {
     // Отменяем предыдущий запрос если есть
@@ -68,7 +72,7 @@ export function useStreamingContent(options: UseStreamingContentOptions = {}) {
           error: null,
           lessonId: data.lessonId,
         })
-        options.onComplete?.(data.content, data.lessonId)
+      optionsRef.current.onComplete?.(data.content, data.lessonId)
         return
       }
 
@@ -106,7 +110,7 @@ export function useStreamingContent(options: UseStreamingContentOptions = {}) {
                   ...prev,
                   content: fullContent,
                 }))
-                options.onChunk?.(parsed.content)
+                optionsRef.current.onChunk?.(parsed.content)
                 break
 
               case 'done':
@@ -116,14 +120,17 @@ export function useStreamingContent(options: UseStreamingContentOptions = {}) {
                   isComplete: true,
                   lessonId: parsed.lessonId,
                 }))
-                options.onComplete?.(fullContent, parsed.lessonId)
+                optionsRef.current.onComplete?.(fullContent, parsed.lessonId)
                 break
 
               case 'error':
                 throw new Error(parsed.message)
             }
           } catch (e) {
-            // Игнорируем ошибки парсинга отдельных чанков
+            // Логируем ошибки парсинга (кроме пустых)
+            if (data.trim()) {
+              console.warn('[useStreamingContent] Parse error for:', data.slice(0, 60))
+            }
           }
         }
       }
@@ -136,9 +143,9 @@ export function useStreamingContent(options: UseStreamingContentOptions = {}) {
         isStreaming: false,
         error: errorMessage,
       }))
-      options.onError?.(errorMessage)
+      optionsRef.current.onError?.(errorMessage)
     }
-  }, [options])
+  }, []) // Пустой массив зависимостей — коллбэки читаются из ref
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {

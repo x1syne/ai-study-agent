@@ -6,15 +6,15 @@ import { SYSTEM_PROMPTS } from '@/lib/ai/prompts'
 import { getFullRAGContext } from '@/lib/rag'
 // Используем оптимизированный агент с параллельной генерацией и state machine
 import { runLessonAgentFast as runLessonAgent, runLessonAgentWithStateMachine } from '@/lib/ai/agent-fast'
+import { getFallbackTheory } from '@/lib/ai/fallback-content'
 import type { Domain } from '@/lib/ai/domain-prompts'
 import { 
-  getDomainPracticePrompt, 
-  buildUnifiedPracticePrompt, 
+  buildUnifiedPracticePrompt,
   validateDifficultyDistribution 
 } from '@/lib/ai/domain-prompts'
 // Quality Gateway для проверки качества контента
 import { 
-  processContentThroughGateway, 
+  processContentThroughGatewaySync,
   logQualityMetrics,
   formatQualityForResponse 
 } from '@/lib/ai/quality-gateway'
@@ -161,8 +161,8 @@ export async function GET(
             }
           )
           
-          // Пропускаем через Quality Gateway
-          const gatewayResult = processContentThroughGateway({
+          // Пропускаем через Quality Gateway (sync — без retry в этом route)
+          const gatewayResult = processContentThroughGatewaySync({
             content: agentResult.content,
             tasks: agentResult.tasks || [],
             topicName: topic.name,
@@ -194,7 +194,8 @@ export async function GET(
         }
       } catch (e) {
         console.error('AI generation failed:', e)
-        content = { markdown: getFallbackTheory(topic.name, topic.description, topic.module.goal.title) }
+        const goalDomainFallback = topic.module.goal.domain as Domain
+        content = { markdown: getFallbackTheory(topic.name, topic.module.goal.title, goalDomainFallback) }
       }
     } else if (lessonType === 'practice') {
       const theoryLesson = await prisma.lesson.findFirst({ where: { topicId: topic.id, type: 'THEORY' } })
@@ -207,7 +208,9 @@ export async function GET(
         content = await generatePracticeTasks(topic.name, topic.module.goal.title, goalDomain)
       }
     } else {
-      content = await generateOtherTask(topic.name, topic.module.goal.title)
+      // Любой другой тип — генерируем как практику
+      const goalDomain = topic.module.goal.domain as Domain
+      content = await generatePracticeTasks(topic.name, topic.module.goal.title, goalDomain)
     }
 
     const lesson = await prisma.lesson.create({
@@ -277,47 +280,45 @@ function getTheoryPrompt(topicName: string, courseTitle: string, context: string
   return base + contextPart + structure
 }
 
-function getFallbackTheory(name: string, description: string | null, courseTitle: string): string {
-  return '# ' + name + '\n\n## Введение\n' + (description || 'Добро пожаловать в изучение темы!') + '\n\nЭта тема является частью курса "' + courseTitle + '".\n\n## Основные понятия\nВ рамках данной темы вы изучите ключевые концепции.\n\n---\n*Полная версия генерируется AI.*'
-}
+// getFallbackTheory импортирован из @/lib/ai/fallback-content (единый источник)
+
+/** Максимальный размер теории, передаваемой в промпт (не обрезаем слишком агрессивно) */
+const MAX_THEORY_EXCERPT_LENGTH = 12000
 
 async function generatePracticeFromTheory(topicName: string, courseTitle: string, theoryContent: string, domain: Domain = 'GENERAL') {
   try {
-    const theoryExcerpt = theoryContent.slice(0, 8000)
-    
-    // Unified practice prompt - single source of truth from domain-prompts.ts
+    const theoryExcerpt = theoryContent.slice(0, MAX_THEORY_EXCERPT_LENGTH)
+
+    // Unified practice prompt — single source of truth from domain-prompts.ts
     const prompt = buildUnifiedPracticePrompt(domain, topicName, courseTitle, theoryExcerpt)
-    
-    console.log('[Practice] Generating tasks for domain:', domain)
+
+    console.log(`[Practice] Generating tasks for topic="${topicName}", domain=${domain}, theoryLen=${theoryExcerpt.length}`)
     const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.7, maxTokens: 12000 })
     const content = JSON.parse(response)
-    
-    if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
-    
-    // Validate and fix tasks
+
+    if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks count: ' + (content.tasks?.length || 0))
+
+    // Validate, deduplicate, check distribution
     const validatedTasks = validateAndFixTasks(content.tasks)
-    
-    // Deduplicate tasks
     const uniqueTasks = deduplicateTasks(validatedTasks)
-    
-    // Validate difficulty distribution
+
     const distribution = validateDifficultyDistribution(uniqueTasks)
     console.log('[Practice] Distribution:', distribution.distribution, 'Total:', distribution.total)
-    
     if (!distribution.isValid) {
       console.warn('[Practice] Distribution issues:', distribution.issues)
     }
-    
-    console.log('[Practice] Generated ' + content.tasks.length + ' tasks, validated: ' + validatedTasks.length + ', unique: ' + uniqueTasks.length)
-    
+
+    console.log(`[Practice] Raw=${content.tasks.length}, validated=${validatedTasks.length}, unique=${uniqueTasks.length}`)
+
     if (uniqueTasks.length < 3) {
-      throw new Error('Not enough valid tasks after validation')
+      throw new Error('Not enough valid tasks after validation: ' + uniqueTasks.length)
     }
-    
+
     return { tasks: uniqueTasks }
   } catch (e) {
-    console.error('Practice from theory failed:', e)
-    return generatePracticeTasks(topicName, courseTitle)
+    console.error('[Practice] Practice from theory failed:', e)
+    // Fallback: генерация без теории, но с domain
+    return generatePracticeTasks(topicName, courseTitle, domain)
   }
 }
 
@@ -414,16 +415,21 @@ function validateAndFixTasks(tasks: any[]): any[] {
   }).filter(Boolean)
 }
 
+/** Минимальная длина нормализованной строки для сравнения дубликатов */
+const DEDUP_SLICE_LENGTH = 80
+
 /**
- * Remove duplicate tasks based on question similarity
+ * Remove duplicate tasks based on question similarity.
+ * Uses longer slice (80 chars) to avoid false positives on questions
+ * that start the same way but ask different things.
  */
 function deduplicateTasks(tasks: any[]): any[] {
   const seenQuestions = new Set<string>()
   return tasks.filter((task: any) => {
     if (!task.question) return false
-    const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, 40)
+    const normalized = task.question.toLowerCase().replace(/[^а-яa-z0-9]/g, '').slice(0, DEDUP_SLICE_LENGTH)
     if (seenQuestions.has(normalized)) {
-      console.log('[Practice] Removed duplicate:', task.question.slice(0, 50))
+      console.log('[Practice] Removed duplicate:', task.question.slice(0, 60))
       return false
     }
     seenQuestions.add(normalized)
@@ -431,57 +437,46 @@ function deduplicateTasks(tasks: any[]): any[] {
   })
 }
 
+/**
+ * Fallback practice generation (without theory content).
+ * Uses buildUnifiedPracticePrompt with empty theory — so the same
+ * topic-binding rules apply. Domain is always passed.
+ */
 async function generatePracticeTasks(topicName: string, courseTitle: string, domain: Domain = 'GENERAL') {
   try {
-    // Requirement 1: Use domain-specific practice prompt
-    const domainPractice = getDomainPracticePrompt(domain)
-    const taskTypesStr = domainPractice.taskTypes.join(', ')
-    
-    const prompt = `Создай 10 практических заданий СТРОГО по теме: "${topicName}"
-Курс: "${courseTitle}"
-Домен: ${domain}
+    // Reuse unified prompt even without theory — keeps topic-binding logic
+    const prompt = buildUnifiedPracticePrompt(domain, topicName, courseTitle, '')
 
-КРИТИЧЕСКИ ВАЖНО:
-- Задания должны быть ТОЛЬКО по теме "${topicName}"
-- НЕ добавляй другие темы (если тема "Задание 12 ЕГЭ" - только про это задание)
-- Изучи что входит в эту тему и создай задания по этому материалу
-- Предпочтительные типы заданий для этого домена: ${taskTypesStr}
-
-СТРУКТУРА:
-- 3 задания easy (базовое понимание)
-- 4 задания medium (применение)
-- 3 задания hard (сложные случаи)
-
-${domainPractice.systemPrompt}
-
-ПРИМЕР ЗАДАНИЯ:
-${domainPractice.exampleTasks}
-
-Верни JSON: { "tasks": [...] }`
-
-    const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.6, maxTokens: 8000 })
+    console.log(`[Practice] Fallback generation for topic="${topicName}", domain=${domain}`)
+    const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.6, maxTokens: 12000 })
     const content = JSON.parse(response)
-    if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks')
-    return content
+
+    if (!content.tasks || content.tasks.length < 3) throw new Error('Invalid tasks count: ' + (content.tasks?.length || 0))
+
+    const validatedTasks = validateAndFixTasks(content.tasks)
+    const uniqueTasks = deduplicateTasks(validatedTasks)
+
+    console.log(`[Practice] Fallback: raw=${content.tasks.length}, validated=${validatedTasks.length}, unique=${uniqueTasks.length}`)
+
+    if (uniqueTasks.length < 3) throw new Error('Not enough valid tasks: ' + uniqueTasks.length)
+
+    return { tasks: uniqueTasks }
   } catch (e) {
-    console.error('Practice generation failed:', e)
+    console.error('[Practice] Fallback generation failed:', e)
     return {
       tasks: [{
         id: 1, type: 'single', difficulty: 'easy',
-        question: `Какой ключевой навык проверяется в теме "${topicName}"?`,
-        options: ['Понимание базовых концепций', 'Применение формул', 'Анализ данных', 'Все перечисленное'],
-        correctAnswer: 3, hint: 'Подумай о комплексном подходе', explanation: `Тема "${topicName}" требует комплексного понимания материала.`
+        question: `Какое утверждение о теме "${topicName}" является верным?`,
+        options: [
+          `Это раздел курса "${courseTitle}"`,
+          'Эта тема не связана с курсом',
+          'Эта тема устарела',
+          'Тема не имеет практического применения'
+        ],
+        correctAnswer: 0,
+        hint: 'Подумай о связи темы с курсом',
+        explanation: `Тема "${topicName}" является частью курса "${courseTitle}".`
       }]
     }
-  }
-}
-
-async function generateOtherTask(topicName: string, courseTitle: string) {
-  try {
-    const prompt = 'Создай задание по теме "' + topicName + '" для курса "' + courseTitle + '"'
-    const response = await generateCompletion(SYSTEM_PROMPTS.taskGeneration, prompt, { json: true, temperature: 0.8 })
-    return JSON.parse(response)
-  } catch {
-    return { taskType: 'quiz', title: 'Практика: ' + topicName, description: 'Ответьте на вопрос' }
   }
 }

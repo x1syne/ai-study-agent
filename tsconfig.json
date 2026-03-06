@@ -22,5 +22,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "ai-study-agent-main"]
+  "exclude": ["node_modules", "ai-study-agent-main", "supabase/functions", "scripts", "superpowers-temp"]
 }
