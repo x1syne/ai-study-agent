@@ -1,0 +1,522 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ==================== ПОЛЬЗОВАТЕЛИ ====================
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  username        String?   @unique
+  firstName       String?
+  lastName        String?
+  name            String?
+  country         String?
+  avatar          String?
+  googleId        String?   @unique
+  telegramId      String?   @unique
+  
+  preferredStyle  LearningStyle @default(BALANCED)
+  dailyGoalMinutes Int       @default(30)
+  timezone        String    @default("Europe/Moscow")
+  
+  goals           Goal[]
+  progress        TopicProgress[]
+  reviews         ReviewCard[]
+  stats           UserStats?
+  achievements    Achievement[]
+  chatMessages    ChatMessage[]
+  sessions        ConversationSession[]
+  preferences     UserPreferences?
+  files           UserFile[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum LearningStyle {
+  THEORY_FIRST
+  PRACTICE_FIRST
+  BALANCED
+}
+
+model UserStats {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  totalMinutes    Int       @default(0)
+  totalLessons    Int       @default(0)
+  totalTasks      Int       @default(0)
+  correctAnswers  Int       @default(0)
+  
+  totalXP         Int       @default(0)
+  level           Int       @default(1)
+  
+  dailyChallengeCompleted Boolean @default(false)
+  dailyChallengeDate      DateTime?
+  
+  lastActiveDate  DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
+// ==================== ЦЕЛИ ====================
+
+model Goal {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title           String
+  skill           String
+  description     String?
+  targetDate      DateTime?
+  status          GoalStatus @default(ACTIVE)
+  domain          Domain     @default(GENERAL)
+  
+  modules         Module[]
+  roadmap         Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  ABANDONED
+}
+
+enum Domain {
+  PHYSICS
+  MATHEMATICS
+  PROGRAMMING
+  CHEMISTRY
+  BIOLOGY
+  HISTORY
+  LANGUAGES
+  ECONOMICS
+  ARTS
+  MEDICINE
+  LAW
+  ENGINEERING
+  GENERAL
+}
+
+// ==================== МОДУЛИ ====================
+
+model Module {
+  id              String    @id @default(cuid())
+  goalId          String
+  goal            Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  icon            String    @default("📚")
+  order           Int       @default(0)
+  
+  topics          Topic[]
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([goalId, order])
+}
+
+
+// ==================== ГРАФ ЗНАНИЙ ====================
+
+model Topic {
+  id              String    @id @default(cuid())
+  moduleId        String
+  module          Module    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  
+  slug            String
+  name            String
+  description     String?
+  icon            String?
+  
+  positionX       Float     @default(0)
+  positionY       Float     @default(0)
+  
+  estimatedMinutes Int      @default(30)
+  difficulty      Difficulty @default(MEDIUM)
+  order           Int       @default(0)
+  
+  prerequisiteIds String[]  @default([])
+  
+  lessons         Lesson[]
+  progress        TopicProgress[]
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([moduleId, slug])
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+model TopicProgress {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId         String
+  topic           Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  
+  status          TopicStatus @default(LOCKED)
+  masteryLevel    Int       @default(0)
+  
+  diagnosisScore  Int?
+  diagnosisDate   DateTime?
+  
+  theoryCompleted Boolean   @default(false)
+  practiceScore   Int?
+  
+  timeSpentMinutes Int      @default(0)
+  
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, topicId])
+}
+
+enum TopicStatus {
+  LOCKED
+  AVAILABLE
+  IN_PROGRESS
+  COMPLETED
+  MASTERED
+}
+
+// ==================== УРОКИ ====================
+
+model Lesson {
+  id              String    @id @default(cuid())
+  topicId         String
+  topic           Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  userId          String?
+  
+  type            LessonType
+  order           Int       @default(0)
+  title           String?
+  
+  content         Json
+  
+  difficulty      Difficulty @default(MEDIUM)
+  hints           String[]  @default([])
+  solution        String?
+  
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+enum LessonType {
+  THEORY
+  PRACTICE
+  QUIZ
+  CODING
+  FILL_BLANK
+}
+
+// ==================== ЗАДАНИЯ ====================
+
+model TaskSubmission {
+  id              String    @id @default(cuid())
+  userId          String
+  lessonId        String
+  
+  code            String
+  isCorrect       Boolean   @default(false)
+  score           Int       @default(0)
+  feedback        String?
+  
+  createdAt       DateTime  @default(now())
+}
+
+// ==================== SPACED REPETITION ====================
+
+model ReviewCard {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  front           String
+  back            String
+  topicSlug       String
+  
+  easeFactor      Float     @default(2.5)
+  interval        Int       @default(1)
+  repetitions     Int       @default(0)
+  
+  nextReviewDate  DateTime  @default(now())
+  lastReviewDate  DateTime?
+  
+  createdAt       DateTime  @default(now())
+}
+
+
+// ==================== ЧАТ И ПЕРСИСТЕНТНОСТЬ ДИАЛОГОВ ====================
+
+// Сессия диалога с персонажем
+model ConversationSession {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterId     String
+  
+  title           String?
+  summary         String?   @db.Text
+  summaryUpdatedAt DateTime?
+  
+  messageCount    Int       @default(0)
+  lastMessageAt   DateTime?
+  
+  isArchived      Boolean   @default(false)
+  
+  messages        ChatMessage[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId, characterId])
+  @@index([userId, lastMessageAt])
+}
+
+model ChatMessage {
+  id              String    @id @default(cuid())
+  sessionId       String?
+  session         ConversationSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role            MessageRole
+  content         String    @db.Text
+  topicSlug       String?
+  characterId     String    @default("default")
+  
+  metadata        Json?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([sessionId, createdAt])
+  @@index([userId, characterId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// Предпочтения пользователя для персонализации
+model UserPreferences {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  detailLevel     DetailLevel @default(BALANCED)
+  explanationStyle ExplanationStyle @default(MIXED)
+  
+  favoriteTopics  String[]  @default([])
+  avoidTopics     String[]  @default([])
+  
+  customInstructions String? @db.Text
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+enum DetailLevel {
+  BRIEF
+  BALANCED
+  DETAILED
+}
+
+enum ExplanationStyle {
+  THEORETICAL
+  PRACTICAL
+  MIXED
+  EXAMPLES_FIRST
+}
+
+// ==================== ДОСТИЖЕНИЯ ====================
+
+model Achievement {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type            AchievementType
+  unlockedAt      DateTime  @default(now())
+  
+  @@unique([userId, type])
+}
+
+enum AchievementType {
+  FIRST_LESSON
+  FIRST_TOPIC
+  FIRST_GOAL
+  STREAK_3
+  STREAK_7
+  STREAK_30
+  STREAK_100
+  TASKS_10
+  TASKS_50
+  TASKS_100
+  CARDS_10
+  CARDS_50
+  CARDS_100
+  PERFECT_QUIZ
+  SPEED_LEARNER
+  NIGHT_OWL
+  EARLY_BIRD
+  XP_100
+  XP_500
+  XP_1000
+  XP_5000
+  LEVEL_5
+  LEVEL_10
+  DAILY_CHALLENGE_7
+}
+
+// ==================== ШАБЛОНЫ ====================
+
+model SkillTemplate {
+  id              String    @id @default(cuid())
+  slug            String    @unique
+  name            String
+  description     String
+  icon            String
+  category        String
+  
+  topicsTemplate  Json
+  diagnosisQuestions Json
+  
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+}
+
+// ==================== MCP INTEGRATION ====================
+
+model UserFile {
+  id        String   @id @default(cuid())
+  userId    String
+  filename  String
+  path      String
+  type      String   // 'code', 'note', 'example'
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, filename])
+  @@index([userId])
+}
+
+// ==================== RAG / VECTOR SEARCH ====================
+
+// Таблица документов для векторного поиска
+// Использует pgvector расширение для хранения эмбеддингов
+// Индексы для vector и tsvector создаются через SQL (см. setup-vector-db.sql)
+model Document {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content     String   @db.Text
+  metadata    Json     @default("{}")
+  // vector(384) - не поддерживается Prisma напрямую, управляется через SQL
+  embedding   Unsupported("vector(384)")?
+  contentHash String?  @map("content_hash")
+  // tsvector - не поддерживается Prisma напрямую, управляется через триггер
+  fts         Unsupported("tsvector")?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@map("documents")
+}
+
+// Таблица кэша для RAG запросов
+model RagCache {
+  key       String   @id
+  data      Json
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  
+  @@map("rag_cache")
+  @@index([expiresAt])
+}
+
+// ==================== РАСПИСАНИЕ МАДИ ====================
+
+model Professor {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  departments String[]
+  schedules   Schedule[]
+  exams       Exam[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Schedule {
+  id           String    @id @default(cuid())
+  professorId  String
+  professor    Professor @relation(fields: [professorId], references: [id])
+  date         DateTime
+  dayOfWeek    String
+  lessons      ScheduleLesson[]
+  source       String
+  lastSyncAt   DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  @@unique([professorId, date])
+  @@index([professorId, date])
+}
+
+model ScheduleLesson {
+  id                 String    @id @default(cuid())
+  scheduleId         String
+  schedule           Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  time               String
+  subject            String
+  type               String
+  room               String
+  building           String?
+  group              String?
+  subgroup           String?
+  periodicity        String?
+  onlineLink         String?
+  notes              String?
+  isDistanceLearning Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  @@index([scheduleId])
+}
+
+model Exam {
+  id                 String    @id @default(cuid())
+  professorId        String
+  professor          Professor @relation(fields: [professorId], references: [id])
+  date               DateTime
+  time               String
+  subject            String
+  type               String
+  room               String
+  building           String?
+  group              String?
+  isDistanceLearning Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  @@index([professorId, date])
+}
