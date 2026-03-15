@@ -846,23 +846,61 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
 
 // ============================================================
 // StreamingTheoryContent — полный рендер во время стриминга
-// (таблицы, LaTeX, код, картинки — всё сразу, без TTS/интерактивных блоков)
+// (таблицы, LaTeX, код, картинки, YouTube — всё сразу, без TTS/интерактивных блоков)
 // ============================================================
 
 export function StreamingTheoryContent({ content }: { content: string }) {
   const components = useMarkdownComponents()
   const sanitized = useMemo(() => sanitizeLatexContent(content), [content])
+  
+  // Парсим специальные блоки (YouTube, callout и т.д.)
+  const parts = useMemo(() => parseInteractiveBlocks(sanitized), [sanitized])
 
   return (
     <div className="markdown-content">
-      <ReactMarkdown
-        urlTransform={allowDataUrlTransform}
-        remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
-        components={components}
-      >
-        {sanitized}
-      </ReactMarkdown>
+      {parts.map((part, index) => {
+        if (typeof part === 'string') {
+          return (
+            <ReactMarkdown
+              key={index}
+              urlTransform={allowDataUrlTransform}
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
+              components={components}
+            >
+              {part}
+            </ReactMarkdown>
+          )
+        }
+
+        const anyPart = part as { type: string; data: any }
+        const data = anyPart.data
+
+        // Рендерим специальные блоки
+        if (anyPart.type === 'youtube') return <YouTubeEmbed key={index} data={data} />
+        
+        if (anyPart.type === 'callout' && data && typeof data.content === 'string') {
+          return <CalloutBlock key={index} type={data.type || 'info'} content={data.content} />
+        }
+        
+        if (anyPart.type === 'accordion' && data && typeof data.title === 'string') {
+          return <AccordionBlock key={index} title={data.title} content={data.content || ''} />
+        }
+        
+        if (anyPart.type === 'timeline' && Array.isArray(data)) {
+          return <TimelineBlock key={index} events={data} />
+        }
+        
+        if (anyPart.type === 'chart' && data) {
+          return <ChartBlock key={index} data={data} />
+        }
+        
+        if (anyPart.type === 'mermaid' && typeof data === 'string') {
+          return <MermaidDiagram key={index} chart={data} />
+        }
+
+        return null
+      })}
     </div>
   )
 }
