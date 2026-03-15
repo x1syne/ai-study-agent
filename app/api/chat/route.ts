@@ -117,11 +117,11 @@ export async function POST(request: NextRequest) {
       sessionId = session.id
     }
 
-    // Анализируем сообщение на предмет предпочтений
-    const preferenceUpdates = analyzeMessageForPreferences(message)
-    if (preferenceUpdates) {
-      await updateUserPreferences(user.id, preferenceUpdates)
-    }
+    // ОПТИМИЗАЦИЯ: Отключено для ускорения (не критично для чата)
+    // const preferenceUpdates = analyzeMessageForPreferences(message)
+    // if (preferenceUpdates) {
+    //   await updateUserPreferences(user.id, preferenceUpdates)
+    // }
 
     // Process attached files
     let fileContext = ''
@@ -161,9 +161,12 @@ export async function POST(request: NextRequest) {
     // Requirement 4.2: Get context from MemoryManager
     const memoryContext = memoryManager.getContext(threadId)
 
-    // Requirements 1.1, 2.1: Detect tool needs
-    const toolDetection = detectToolNeeds(message)
-    console.log('[Chat] Tool detection:', toolDetection)
+    // ОПТИМИЗАЦИЯ: Tool detection только для основного чата (не для Остроуха)
+    let toolDetection = { needsFileSave: false, needsSearch: false, fileInfo: null, searchQuery: null }
+    if (characterId !== 'ostroukh') {
+      toolDetection = detectToolNeeds(message)
+      console.log('[Chat] Tool detection:', toolDetection)
+    }
 
     // Сохраняем сообщение пользователя через Checkpointer (для персистентности)
     const userMessage = await checkpointer.saveMessage({
@@ -187,25 +190,25 @@ export async function POST(request: NextRequest) {
 
     // Get current learning context (universal, not just programming)
     let context = 'Свободный диалог на любые темы'
+    
+    // ОПТИМИЗАЦИЯ: Отключено для ускорения (не критично для чата)
+    // let courseContext = ''
+    // const userGoals = await prisma.goal.findMany({
+    //   where: { userId: user.id },
+    //   include: { 
+    //     modules: {
+    //       include: { topics: true },
+    //       orderBy: { order: 'asc' }
+    //     }
+    //   },
+    //   take: 5,
+    // })
+    // if (userGoals.length > 0) {
+    //   courseContext = '\n📚 Твои курсы:\n' + userGoals.map(g => 
+    //     `- ${g.title}: ${g.modules.flatMap(m => m.topics.map(t => t.name)).join(', ')}`
+    //   ).join('\n')
+    // }
     let courseContext = ''
-    
-    // Получаем контекст из курса пользователя
-    const userGoals = await prisma.goal.findMany({
-      where: { userId: user.id },
-      include: { 
-        modules: {
-          include: { topics: true },
-          orderBy: { order: 'asc' }
-        }
-      },
-      take: 5,
-    })
-    
-    if (userGoals.length > 0) {
-      courseContext = '\n📚 Твои курсы:\n' + userGoals.map(g => 
-        `- ${g.title}: ${g.modules.flatMap(m => m.topics.map(t => t.name)).join(', ')}`
-      ).join('\n')
-    }
     
     if (topicSlug) {
       const topic = await prisma.topic.findFirst({
@@ -217,9 +220,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Поиск научных статей на arXiv если вопрос научный
+    // ОПТИМИЗАЦИЯ: arXiv поиск только для основного чата (не для Остроуха)
     let arxivContext = ''
-    if (shouldSearchArxiv(message)) {
+    if (characterId !== 'ostroukh' && shouldSearchArxiv(message)) {
       const searchQuery = extractSearchQuery(message)
       if (searchQuery) {
         const arxivResult = await searchArxiv(searchQuery, 3)
@@ -391,159 +394,138 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now()
     })
 
+    // ОПТИМИЗАЦИЯ: MCP tools только для основного чата (не для Остроуха)
     // Requirements 1.1, 2.1, 2.2: Execute MCP tools if needed
     const toolResults: Array<{ tool: string; result: any; error?: string }> = []
     
-    // Execute Filesystem Tool if needed
-    if (toolDetection.needsFileSave && toolDetection.fileInfo) {
-      try {
-        console.log('[Chat] Executing FilesystemTool...')
-        const userFilesDir = path.join(process.cwd(), 'user-files')
-        const filesystemTool = new FilesystemTool(new MCPClient([]), userFilesDir)
-        
-        // If content is empty, try to extract from AI response
-        let content = toolDetection.fileInfo.content
-        if (!content || content.trim() === '') {
-          const fileType = toolDetection.fileInfo.type
+    if (characterId !== 'ostroukh') {
+      // Execute Filesystem Tool if needed
+      if (toolDetection.needsFileSave && toolDetection.fileInfo) {
+        try {
+          console.log('[Chat] Executing FilesystemTool...')
+          const userFilesDir = path.join(process.cwd(), 'user-files')
+          const filesystemTool = new FilesystemTool(new MCPClient([]), userFilesDir)
           
-          // For code files, extract from code blocks
-          if (fileType === 'code') {
-            const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
-            const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
-            if (codeBlocks.length > 0) {
-              content = codeBlocks[0][1].trim()
-            }
-          } else {
-            // For text/note files, extract only the main content
-            // Remove AI's conversational parts (greetings, explanations, etc.)
+          // If content is empty, try to extract from AI response
+          let content = toolDetection.fileInfo.content
+          if (!content || content.trim() === '') {
+            const fileType = toolDetection.fileInfo.type
             
-            // Try to find content between markers or in code blocks first
-            const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
-            const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
-            
-            if (codeBlocks.length > 0) {
-              // If there are code blocks, use them (they contain the actual content)
-              content = codeBlocks.map(block => block[1]).join('\n\n').trim()
-            } else {
-              // Otherwise, try to extract structured content
-              // Remove common AI phrases and keep only the main information
-              const lines = response.split('\n')
-              const contentLines: string[] = []
-              let skipIntro = true
-              
-              for (const line of lines) {
-                const trimmed = line.trim()
-                
-                // Skip empty lines at the start
-                if (skipIntro && !trimmed) continue
-                
-                // Skip common AI intro phrases
-                if (skipIntro && (
-                  trimmed.match(/^(Конечно|Хорошо|Отлично|Вот|Держи|Пожалуйста|Sure|Here|Okay)/i) ||
-                  trimmed.match(/сохран[юи]/i) ||
-                  trimmed.match(/созда[мл]/i) ||
-                  trimmed.match(/файл/i) && trimmed.length < 50
-                )) {
-                  continue
-                }
-                
-                skipIntro = false
-                
-                // Skip file save confirmation messages
-                if (trimmed.match(/^✅.*Файл сохранён/)) continue
-                if (trimmed.match(/^❌.*Не удалось сохранить/)) continue
-                
-                contentLines.push(line)
+            // For code files, extract from code blocks
+            if (fileType === 'code') {
+              const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
+              const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
+              if (codeBlocks.length > 0) {
+                content = codeBlocks[0][1].trim()
               }
+            } else {
+              // For text/note files, extract only the main content
+              const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g
+              const codeBlocks = Array.from(response.matchAll(codeBlockPattern))
               
-              content = contentLines.join('\n').trim()
-              
-              // If content is still too conversational, try to extract just headings and paragraphs
-              if (content.length < 100 || content.match(/^(Я |Давай |Сейчас |Вот )/)) {
-                // Fallback: use the entire response but clean it up
-                content = response
-                  .replace(/^.*?(Конечно|Хорошо|Отлично|Вот|Держи).*?\n/i, '') // Remove intro
-                  .replace(/\n\n✅.*Файл сохранён.*[\s\S]*$/, '') // Remove file save confirmation
-                  .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove markdown links
-                  .trim()
+              if (codeBlocks.length > 0) {
+                content = codeBlocks.map(block => block[1]).join('\n\n').trim()
+              } else {
+                const lines = response.split('\n')
+                const contentLines: string[] = []
+                let skipIntro = true
+                
+                for (const line of lines) {
+                  const trimmed = line.trim()
+                  if (skipIntro && !trimmed) continue
+                  if (skipIntro && (
+                    trimmed.match(/^(Конечно|Хорошо|Отлично|Вот|Держи|Пожалуйста|Sure|Here|Okay)/i) ||
+                    trimmed.match(/сохран[юи]/i) ||
+                    trimmed.match(/созда[мл]/i) ||
+                    trimmed.match(/файл/i) && trimmed.length < 50
+                  )) {
+                    continue
+                  }
+                  skipIntro = false
+                  if (trimmed.match(/^✅.*Файл сохранён/)) continue
+                  if (trimmed.match(/^❌.*Не удалось сохранить/)) continue
+                  contentLines.push(line)
+                }
+                content = contentLines.join('\n').trim()
+                
+                if (content.length < 100 || content.match(/^(Я |Давай |Сейчас |Вот )/)) {
+                  content = response
+                    .replace(/^.*?(Конечно|Хорошо|Отлично|Вот|Держи).*?\n/i, '')
+                    .replace(/\n\n✅.*Файл сохранён.*[\s\S]*$/, '')
+                    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+                    .trim()
+                }
               }
             }
           }
-        }
-        
-        if (content && content.trim() !== '') {
-          const saveResult = await filesystemTool.saveFile({
-            userId: user.id,
-            filename: toolDetection.fileInfo.filename,
-            content: content,
-            type: toolDetection.fileInfo.type
-          })
           
+          if (content && content.trim() !== '') {
+            const saveResult = await filesystemTool.saveFile({
+              userId: user.id,
+              filename: toolDetection.fileInfo.filename,
+              content: content,
+              type: toolDetection.fileInfo.type
+            })
+            
+            toolResults.push({
+              tool: 'save_file',
+              result: saveResult
+            })
+            
+            response += `\n\n✅ Файл сохранён: [${toolDetection.fileInfo.filename}](${saveResult.url})`
+            console.log('[Chat] File saved:', saveResult.path)
+          } else {
+            console.warn('[Chat] No content to save for file:', toolDetection.fileInfo.filename)
+          }
+        } catch (error) {
+          console.error('[Chat] FilesystemTool error:', error)
           toolResults.push({
             tool: 'save_file',
-            result: saveResult
+            result: null,
+            error: error instanceof Error ? error.message : String(error)
           })
-          
-          // Add file save info to response
-          response += `\n\n✅ Файл сохранён: [${toolDetection.fileInfo.filename}](${saveResult.url})`
-          
-          console.log('[Chat] File saved:', saveResult.path)
-        } else {
-          console.warn('[Chat] No content to save for file:', toolDetection.fileInfo.filename)
+          response += `\n\n❌ Не удалось сохранить файл: ${error instanceof Error ? error.message : 'Unknown error'}`
         }
-      } catch (error) {
-        console.error('[Chat] FilesystemTool error:', error)
-        toolResults.push({
-          tool: 'save_file',
-          result: null,
-          error: error instanceof Error ? error.message : String(error)
-        })
-        
-        response += `\n\n❌ Не удалось сохранить файл: ${error instanceof Error ? error.message : 'Unknown error'}`
       }
-    }
-    
-    // Execute Search Tool if needed
-    if (toolDetection.needsSearch && toolDetection.searchQuery) {
-      try {
-        console.log('[Chat] Executing SearchTool...')
-        const braveApiKey = process.env.BRAVE_API_KEY || ''
-        
-        if (!braveApiKey) {
-          console.warn('[Chat] BRAVE_API_KEY not configured, skipping search')
-        } else {
-          const searchTool = new SearchTool(braveApiKey)
-          const searchResults = await searchTool.search({
-            query: toolDetection.searchQuery,
-            count: 5
-          })
+      
+      // Execute Search Tool if needed
+      if (toolDetection.needsSearch && toolDetection.searchQuery) {
+        try {
+          console.log('[Chat] Executing SearchTool...')
+          const braveApiKey = process.env.BRAVE_API_KEY || ''
           
+          if (!braveApiKey) {
+            console.warn('[Chat] BRAVE_API_KEY not configured, skipping search')
+          } else {
+            const searchTool = new SearchTool(braveApiKey)
+            const searchResults = await searchTool.search({
+              query: toolDetection.searchQuery,
+              count: 5
+            })
+            
+            toolResults.push({
+              tool: 'search',
+              result: searchResults
+            })
+            
+            if (searchResults.length > 0) {
+              response += `\n\n🔍 Результаты поиска по запросу "${toolDetection.searchQuery}":\n\n`
+              searchResults.forEach((result, index) => {
+                response += `${index + 1}. **[${result.title}](${result.url})**\n`
+                response += `   ${result.snippet}\n\n`
+              })
+            }
+            console.log('[Chat] Search completed:', searchResults.length, 'results')
+          }
+        } catch (error) {
+          console.error('[Chat] SearchTool error:', error)
           toolResults.push({
             tool: 'search',
-            result: searchResults
+            result: null,
+            error: error instanceof Error ? error.message : String(error)
           })
-          
-          // Format search results for response
-          if (searchResults.length > 0) {
-            response += `\n\n🔍 Результаты поиска по запросу "${toolDetection.searchQuery}":\n\n`
-            searchResults.forEach((result, index) => {
-              response += `${index + 1}. **[${result.title}](${result.url})**\n`
-              response += `   ${result.snippet}\n\n`
-            })
-          }
-          
-          console.log('[Chat] Search completed:', searchResults.length, 'results')
+          console.warn('[Chat] Search failed, continuing without search results')
         }
-      } catch (error) {
-        console.error('[Chat] SearchTool error:', error)
-        toolResults.push({
-          tool: 'search',
-          result: null,
-          error: error instanceof Error ? error.message : String(error)
-        })
-        
-        // Don't add error to response for search failures (graceful degradation)
-        console.warn('[Chat] Search failed, continuing without search results')
       }
     }
 
