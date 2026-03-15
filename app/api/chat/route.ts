@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     const memoryContext = memoryManager.getContext(threadId)
 
     // ОПТИМИЗАЦИЯ: Tool detection только для основного чата (не для Остроуха)
-    let toolDetection = { needsFileSave: false, needsSearch: false, fileInfo: null, searchQuery: null }
+    let toolDetection: any = { needsFileSave: false, needsSearch: false, fileInfo: null, searchQuery: null }
     if (characterId !== 'ostroukh') {
       toolDetection = detectToolNeeds(message)
       console.log('[Chat] Tool detection:', toolDetection)
