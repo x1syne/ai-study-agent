@@ -223,7 +223,7 @@ export default function GoalsPage() {
                   </button>
                 </div>
 
-                <Link href={`/goals/${goal.id}`} className="block p-5">
+                <Link href={`/graph?goalId=${goal.id}`} className="block p-5">
                   {/* Icon + title */}
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110"
