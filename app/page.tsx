@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Brain, Target, Zap, BarChart3, MessageSquare, Repeat, ChevronDown, Sparkles, Clock, Users } from 'lucide-react'
+import { Brain, Target, Zap, BarChart3, MessageSquare, Repeat, ChevronDown, Sparkles, Clock, Users, Calculator, Globe, Atom, Palette, TrendingUp, Languages, Music, Camera, Gamepad2, Dumbbell, Utensils, Bitcoin } from 'lucide-react'
 import { SiPython, SiJavascript, SiReact, SiMysql, SiGit, SiTypescript } from 'react-icons/si'
 
 const features = [
@@ -42,6 +42,18 @@ const popularSkills = [
   { name: 'SQL', Icon: SiMysql, color: 'from-orange-400 to-red-500' },
   { name: 'Git', Icon: SiGit, color: 'from-orange-500 to-red-600' },
   { name: 'TypeScript', Icon: SiTypescript, color: 'from-blue-400 to-blue-600' },
+  { name: 'Математика', Icon: Calculator, color: 'from-purple-400 to-pink-500' },
+  { name: 'Английский', Icon: Languages, color: 'from-green-400 to-emerald-500' },
+  { name: 'Физика', Icon: Atom, color: 'from-blue-400 to-cyan-500' },
+  { name: 'Дизайн', Icon: Palette, color: 'from-pink-400 to-rose-500' },
+  { name: 'Маркетинг', Icon: TrendingUp, color: 'from-orange-400 to-amber-500' },
+  { name: 'География', Icon: Globe, color: 'from-teal-400 to-green-500' },
+  { name: 'Музыка', Icon: Music, color: 'from-violet-400 to-purple-500' },
+  { name: 'Фотография', Icon: Camera, color: 'from-slate-400 to-gray-600' },
+  { name: 'Геймдев', Icon: Gamepad2, color: 'from-indigo-400 to-purple-600' },
+  { name: 'Фитнес', Icon: Dumbbell, color: 'from-red-400 to-orange-500' },
+  { name: 'Кулинария', Icon: Utensils, color: 'from-amber-400 to-yellow-500' },
+  { name: 'Криптовалюты', Icon: Bitcoin, color: 'from-yellow-500 to-orange-600' },
 ]
 
 export default function HomePage() {
