@@ -197,7 +197,7 @@ const YOUTUBE_EMBED_REGEX = /:::youtube\{id="([^"]+)"(?:\s+title="([^"]*)")?(?:\
  * Заменяет `:::video{query="..."}` на `:::youtube{id="..." title="..." channel="..."}`.
  */
 export async function enrichContentWithVideos(content: string): Promise<string> {
-  const matches = [...content.matchAll(VIDEO_QUERY_REGEX)]
+  const matches = Array.from(content.matchAll(VIDEO_QUERY_REGEX))
   if (matches.length === 0) return content
 
   let result = content
