@@ -5,124 +5,146 @@ import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  size?: 'sm' | 'md' | 'lg'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'outline'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   isLoading?: boolean
   leftIcon?: React.ReactNode
   rightIcon?: React.ReactNode
+  glow?: boolean
 }
 
-interface Ripple {
-  x: number
-  y: number
-  size: number
-  id: number
-}
+interface Ripple { x: number; y: number; size: number; id: number }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ 
-    className, 
-    variant = 'primary', 
-    size = 'md', 
-    isLoading, 
+  ({
+    className,
+    variant = 'primary',
+    size = 'md',
+    isLoading,
     leftIcon,
     rightIcon,
-    children, 
+    glow = false,
+    children,
     disabled,
     onClick,
-    ...props 
+    ...props
   }, ref) => {
     const [ripples, setRipples] = useState<Ripple[]>([])
     const rippleIdRef = useRef(0)
 
-    const variants = {
-      primary: 'bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:from-primary-600 hover:to-accent-600',
-      secondary: 'bg-slate-700/50 text-white border border-slate-600/50 hover:bg-slate-700',
-      ghost: 'text-slate-300 hover:text-white hover:bg-slate-800/50',
-      danger: 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30',
+    const base = [
+      'relative inline-flex items-center justify-center gap-2 font-semibold',
+      'rounded-xl transition-all duration-200 cursor-pointer select-none',
+      'overflow-hidden border border-transparent',
+      'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]',
+    ].join(' ')
+
+    const variants: Record<string, string> = {
+      primary: [
+        'text-white',
+        'bg-gradient-to-r from-[var(--color-primary)] to-[#4f46e5]',
+        'hover:from-[var(--color-primary-dark)] hover:to-[#4338ca]',
+        'hover:-translate-y-0.5',
+        glow ? 'shadow-glow-sm hover:shadow-glow-md' : 'shadow-md-dark hover:shadow-lg-dark',
+      ].join(' '),
+
+      accent: [
+        'text-white',
+        'bg-gradient-to-r from-[var(--color-accent)] to-[#22d3ee]',
+        'hover:from-[#0891b2] hover:to-[var(--color-accent)]',
+        'hover:-translate-y-0.5',
+        'shadow-md-dark hover:shadow-accent',
+      ].join(' '),
+
+      secondary: [
+        'text-[var(--color-text)] bg-[var(--color-bg-elevated)]',
+        'border-[var(--color-border-light)]',
+        'hover:bg-[var(--color-bg-hover)] hover:border-[var(--color-primary)]/40',
+        'hover:-translate-y-0.5',
+      ].join(' '),
+
+      outline: [
+        'text-[var(--color-primary-light)] bg-transparent',
+        'border-[var(--color-primary)]/40',
+        'hover:bg-[var(--color-primary)]/8 hover:border-[var(--color-primary)]/70',
+      ].join(' '),
+
+      ghost: [
+        'text-[var(--color-text-secondary)] bg-transparent border-transparent',
+        'hover:text-white hover:bg-white/5',
+      ].join(' '),
+
+      danger: [
+        'text-red-400 bg-red-500/10 border-red-500/25',
+        'hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-300',
+      ].join(' '),
     }
 
-    const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2',
-      lg: 'px-6 py-3 text-lg',
+    const sizes: Record<string, string> = {
+      xs: 'h-7  px-2.5 text-[11px] gap-1.5 rounded-lg',
+      sm: 'h-8  px-3.5 text-xs',
+      md: 'h-10 px-5   text-sm',
+      lg: 'h-12 px-7   text-[15px]',
     }
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (disabled || isLoading) return
-
-      const button = e.currentTarget
-      const rect = button.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const y = e.clientY - rect.top
-      const size = Math.max(rect.width, rect.height) * 2
-
-      const newRipple: Ripple = {
-        x,
-        y,
-        size,
-        id: rippleIdRef.current++
+      const btn  = e.currentTarget
+      const rect = btn.getBoundingClientRect()
+      const rpl: Ripple = {
+        x:    e.clientX - rect.left,
+        y:    e.clientY - rect.top,
+        size: Math.max(rect.width, rect.height) * 2,
+        id:   rippleIdRef.current++,
       }
-
-      setRipples(prev => [...prev, newRipple])
-
-      // Cleanup ripple after animation
-      setTimeout(() => {
-        setRipples(prev => prev.filter(r => r.id !== newRipple.id))
-      }, 600)
-
+      setRipples(p => [...p, rpl])
+      setTimeout(() => setRipples(p => p.filter(r => r.id !== rpl.id)), 600)
       onClick?.(e)
     }
 
     return (
       <button
         ref={ref}
-        className={cn(
-          'relative inline-flex items-center justify-center gap-2 font-medium rounded-lg overflow-hidden',
-          'focus:outline-none focus:ring-2 focus:ring-primary-500/50',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
-          'active:scale-95',
-          'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-          variants[variant],
-          sizes[size],
-          className
-        )}
+        className={cn(base, variants[variant], sizes[size], className)}
         disabled={disabled || isLoading}
         onClick={handleClick}
         {...props}
       >
-        {/* Ripple container */}
-        <span className="absolute inset-0 overflow-hidden pointer-events-none">
-          {ripples.map(ripple => (
-            <span
-              key={ripple.id}
-              className="absolute rounded-full bg-white/30 animate-ripple"
-              style={{
-                left: ripple.x,
-                top: ripple.y,
-                width: ripple.size,
-                height: ripple.size,
-                transform: 'translate(-50%, -50%) scale(0)',
-                animation: 'ripple 0.6s ease-out'
-              }}
-            />
-          ))}
-        </span>
+        {/* Shimmer overlay on primary */}
+        {(variant === 'primary' || variant === 'accent') && (
+          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+        )}
 
-        {/* Button content */}
-        <span className="relative z-10 inline-flex items-center justify-center gap-2">
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : leftIcon}
-          {children}
-          {!isLoading && rightIcon}
-        </span>
+        {/* Ripple effect */}
+        {ripples.map(r => (
+          <span
+            key={r.id}
+            className="absolute rounded-full bg-white/20 animate-[ripple_0.6s_ease-out_forwards] pointer-events-none"
+            style={{
+              left:   r.x - r.size / 2,
+              top:    r.y - r.size / 2,
+              width:  r.size,
+              height: r.size,
+            }}
+          />
+        ))}
+
+        {/* Content */}
+        {isLoading ? (
+          <Loader2 className="animate-spin" size={16} />
+        ) : (
+          <>
+            {leftIcon  && <span className="flex-shrink-0">{leftIcon}</span>}
+            {children}
+            {rightIcon && <span className="flex-shrink-0">{rightIcon}</span>}
+          </>
+        )}
       </button>
     )
   }
 )
 
 Button.displayName = 'Button'
-
 export { Button }
-
+export default Button

@@ -8,9 +8,9 @@ import { getFullRAGContext } from '@/lib/rag'
 import { runLessonAgentFast as runLessonAgent, runLessonAgentWithStateMachine } from '@/lib/ai/agent-fast'
 import { getFallbackTheory } from '@/lib/ai/fallback-content'
 import type { Domain } from '@/lib/ai/domain-prompts'
-import { 
+import {
   buildUnifiedPracticePrompt,
-  validateDifficultyDistribution 
+  validateDifficultyDistribution,
 } from '@/lib/ai/domain-prompts'
 // Quality Gateway для проверки качества контента
 import { 

@@ -20,6 +20,19 @@
 import Groq from 'groq-sdk'
 import { withAIRetry, isAIRetryableError } from './utils/retry'
 
+/**
+ * Удаляет блоки <think>...</think> из ответов моделей с режимом thinking
+ * (например, nvidia/llama-3.3-nemotron-super-49b-v1.5 с thinking: true)
+ */
+export function stripThinkingTags(content: string): string {
+  if (!content) return content
+  // Удаляем блоки <think>...</think> (включая вложенные пробелы/переносы строк)
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^\s+/, '') // обрезаем пробелы в начале
+    .trim()
+}
+
 // Типы
 export type TaskType = 'fast' | 'heavy' | 'chat' | 'agentic'
 // Grok использует OpenAI-совместимый API
@@ -427,8 +440,9 @@ async function generateNvidia(
       if (res.ok) {
         const data = await res.json()
         if (data.content || data.tool_calls) {
-          console.log(`[NVIDIA] Proxy success:`, data.content?.length || 0, 'chars')
-          return { content: data.content || '', tool_calls: data.tool_calls }
+          const cleaned = stripThinkingTags(data.content || '')
+          console.log(`[NVIDIA] Proxy success:`, cleaned.length, 'chars')
+          return { content: cleaned, tool_calls: data.tool_calls }
         }
       } else {
         console.warn(`[NVIDIA] Proxy failed with status:`, res.status)
@@ -483,11 +497,11 @@ async function generateNvidia(
 
     const data = await res.json()
     const message = data.choices?.[0]?.message
-    const content = message?.content || ''
+    const content = stripThinkingTags(message?.content || '')
     const tool_calls = message?.tool_calls
 
     if (content || tool_calls) {
-      console.log(`[NVIDIA] Success with ${model}:`, content?.length || 0, 'chars')
+      console.log(`[NVIDIA] Success with ${model}:`, content.length, 'chars')
       return { content, tool_calls }
     }
     throw new Error(`NVIDIA ${model}: empty response`)
@@ -535,7 +549,7 @@ async function generateNvidiaFallback(
     if (!res.ok) throw new Error(`NVIDIA fallback: ${await res.text()}`)
 
     const data = await res.json()
-    const content = data.choices?.[0]?.message?.content || ''
+    const content = stripThinkingTags(data.choices?.[0]?.message?.content || '')
     if (content) return { content }
     throw new Error('NVIDIA fallback: empty response')
   } catch (e: any) {

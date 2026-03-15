@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Network, Target, Sparkles, AlertTriangle, LayoutGrid, GitBranch } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
+import {
+  Network, Target, Sparkles, AlertTriangle,
+  LayoutGrid, GitBranch, BookOpen, CheckCircle2,
+  Loader2, Flame, Lock, Circle
+} from 'lucide-react'
 import { KnowledgeGraph } from '@/components/graph/KnowledgeGraph'
 import { ModuleGraph } from '@/components/graph/ModuleGraph'
 import { TopicDetails } from '@/components/graph/TopicDetails'
@@ -13,88 +16,57 @@ import { cn } from '@/lib/utils'
 
 type ViewMode = 'modules' | 'topics'
 
-// Error boundary wrapper for KnowledgeGraph
+/* ─── Safe wrappers ─── */
 function SafeKnowledgeGraph({ topics, onTopicClick, selectedTopicId }: {
   topics: Topic[]
-  onTopicClick: (topicId: string) => void
+  onTopicClick: (id: string) => void
   selectedTopicId?: string
 }) {
   const [hasError, setHasError] = useState(false)
-
-  if (hasError) {
-    return (
-      <div className="h-[400px] flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-          <p className="text-slate-400 mb-4">Не удалось загрузить граф</p>
-          <button 
-            onClick={() => setHasError(false)}
-            className="btn-practicum-outline text-sm"
-          >
-            Попробовать снова
-          </button>
-        </div>
-      </div>
-    )
-  }
-
+  if (hasError) return <GraphError onRetry={() => setHasError(false)} label="граф тем" />
   try {
-    return (
-      <KnowledgeGraph
-        topics={topics}
-        onTopicClick={onTopicClick}
-        selectedTopicId={selectedTopicId}
-      />
-    )
-  } catch (error) {
-    console.error('KnowledgeGraph render error:', error)
+    return <KnowledgeGraph topics={topics} onTopicClick={onTopicClick} selectedTopicId={selectedTopicId} />
+  } catch {
     setHasError(true)
     return null
   }
 }
 
-// Error boundary wrapper for ModuleGraph
 function SafeModuleGraph({ modules, onModuleClick, selectedModuleId, isLoadingTopics }: {
   modules: Module[]
-  onModuleClick: (moduleId: string) => void
+  onModuleClick: (id: string) => void
   selectedModuleId?: string
   isLoadingTopics?: boolean
 }) {
   const [hasError, setHasError] = useState(false)
-
-  if (hasError) {
-    return (
-      <div className="h-[400px] flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-          <p className="text-slate-400 mb-4">Не удалось загрузить граф модулей</p>
-          <button 
-            onClick={() => setHasError(false)}
-            className="btn-practicum-outline text-sm"
-          >
-            Попробовать снова
-          </button>
-        </div>
-      </div>
-    )
-  }
-
+  if (hasError) return <GraphError onRetry={() => setHasError(false)} label="граф модулей" />
   try {
-    return (
-      <ModuleGraph
-        modules={modules}
-        onModuleClick={onModuleClick}
-        selectedModuleId={selectedModuleId}
-        isLoadingTopics={isLoadingTopics}
-      />
-    )
-  } catch (error) {
-    console.error('ModuleGraph render error:', error)
+    return <ModuleGraph modules={modules} onModuleClick={onModuleClick} selectedModuleId={selectedModuleId} isLoadingTopics={isLoadingTopics} />
+  } catch {
     setHasError(true)
     return null
   }
 }
 
+function GraphError({ onRetry, label }: { onRetry: () => void; label: string }) {
+  return (
+    <div className="h-[460px] flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto">
+          <AlertTriangle className="w-8 h-8 text-amber-400" />
+        </div>
+        <p style={{ color: 'var(--color-text-secondary)' }}>Не удалось загрузить {label}</p>
+        <button onClick={onRetry}
+          className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
+          style={{ background: 'var(--color-primary)', color: '#fff' }}>
+          Попробовать снова
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Main page ─── */
 export default function GraphPage() {
   const router = useRouter()
   const [goals, setGoals] = useState<Goal[]>([])
@@ -119,66 +91,36 @@ export default function GraphPage() {
     finally { setIsLoading(false) }
   }
 
-  // Flatten topics from modules for the graph
   const allTopics = useMemo(() => {
     if (!selectedGoal) return []
-    
-    // If goal has modules, flatten topics from all modules
-    if (selectedGoal.modules && selectedGoal.modules.length > 0) {
-      return selectedGoal.modules.flatMap((mod: Module) => mod.topics || [])
-    }
-    
-    // Fallback to direct topics for backward compatibility
+    const mods = selectedGoal.modules ?? []
+    if (mods.length > 0)
+      return mods.flatMap((m: Module) => m.topics || [])
     return selectedGoal.topics || []
   }, [selectedGoal])
 
-  // Get modules for module graph
-  const allModules = useMemo(() => {
-    if (!selectedGoal?.modules) return []
-    return selectedGoal.modules
-  }, [selectedGoal])
+  const allModules = useMemo(() => selectedGoal?.modules ?? [], [selectedGoal])
 
   const handleTopicClick = (topicId: string) => {
-    if (!selectedGoal) return
     const topic = allTopics.find((t: Topic) => t.id === topicId)
-    if (topic) {
-      setSelectedTopic(topic)
-      setSelectedModule(null)
-      // Проверяем статус темы
-      const progress = Array.isArray(topic.progress) ? topic.progress[0] : topic.progress
-      const status = progress?.status || 'AVAILABLE'
-      
-      // Если тема доступна, можно сразу перейти к изучению
-      if (status === 'AVAILABLE' || status === 'IN_PROGRESS') {
-        console.log('Topic is available for learning:', topic.name)
-      } else if (status === 'LOCKED') {
-        console.log('Topic is locked:', topic.name)
-      }
-    }
+    if (topic) { setSelectedTopic(topic); setSelectedModule(null) }
   }
 
   const handleModuleClick = async (moduleId: string) => {
-    if (!selectedGoal) return
     const module = allModules.find((m: Module) => m.id === moduleId)
     if (module) {
-      setSelectedModule(module)
-      setSelectedTopic(null)
-      
-      // Если у модуля нет тем — они будут загружены/сгенерированы в ModuleTopics
-      if (!module.topics || module.topics.length === 0) {
+      setSelectedModule(module); setSelectedTopic(null)
+      if (!module.topics?.length) {
         setIsLoadingTopics(true)
-        // Загрузка происходит в компоненте ModuleTopics
         setTimeout(() => setIsLoadingTopics(false), 100)
       }
     }
   }
 
   const getGoalStats = (goal: Goal) => {
-    // Get topics from modules or direct topics
-    const topics = goal.modules && goal.modules.length > 0
-      ? goal.modules.flatMap((mod: Module) => mod.topics || [])
+    const topics = goal.modules?.length
+      ? goal.modules.flatMap((m: Module) => m.topics || [])
       : goal.topics || []
-    
     const total = topics.length
     const completed = topics.filter((t: Topic) => {
       const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
@@ -188,140 +130,184 @@ export default function GraphPage() {
       const p = Array.isArray(t.progress) ? t.progress[0] : t.progress
       return p?.status === 'IN_PROGRESS'
     }).length
-    
-    const modulesCount = goal.modules?.length || 0
-    
-    return { total, completed, inProgress, modulesCount, percent: total > 0 ? Math.round((completed / total) * 100) : 0 }
+    return {
+      total, completed, inProgress,
+      modulesCount: goal.modules?.length || 0,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    }
   }
 
+  /* ─── Loading ─── */
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-full border-2 border-[var(--color-primary)]/20" />
+            <Loader2 className="w-12 h-12 text-[var(--color-primary)] animate-spin absolute inset-0" />
+          </div>
+          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Загружаем карту знаний…</p>
+        </div>
       </div>
     )
   }
 
   const stats = selectedGoal ? getGoalStats(selectedGoal) : null
 
+  /* ─── LEGEND items ─── */
+  const LEGEND = [
+    { icon: <Lock className="w-3.5 h-3.5" />, color: '#64748b', label: 'Заблокировано' },
+    { icon: <Circle className="w-3.5 h-3.5" />, color: '#0ea5e9', label: 'Доступно' },
+    { icon: <Flame className="w-3.5 h-3.5" />, color: '#f97316', label: 'В процессе' },
+    { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: '#22c55e', label: 'Завершено' },
+    { icon: <Sparkles className="w-3.5 h-3.5" />, color: '#a855f7', label: 'Освоено' },
+  ]
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Hero */}
-      <div className="practicum-card-yellow p-6 sm:p-8 rounded-3xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+
+      {/* ── Hero ── */}
+      <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
+        style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(6,182,212,0.12) 100%)', border: '1px solid rgba(124,58,237,0.25)' }}>
+        {/* фоновые блики */}
+        <div className="absolute top-0 right-0 w-72 h-72 rounded-full opacity-20 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.4) 0%, transparent 70%)', transform: 'translate(30%,-30%)' }} />
+        <div className="absolute bottom-0 left-40 w-48 h-48 rounded-full opacity-10 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.5) 0%, transparent 70%)', transform: 'translateY(40%)' }} />
+
+        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-[#10101a]/20 rounded-2xl flex items-center justify-center">
-              <Network className="w-7 h-7 text-white" />
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.4)' }}>
+              <Network className="w-7 h-7" style={{ color: 'var(--color-primary)' }} />
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-white">Карта знаний</h1>
-              <p className="text-white/70">Визуализация твоего прогресса</p>
+              <p style={{ color: 'var(--color-text-secondary)' }}>Визуализация твоего прогресса</p>
             </div>
           </div>
+
           {stats && (
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">{stats.modulesCount}</p>
-                <p className="text-xs text-white/70">модулей</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">{stats.total}</p>
-                <p className="text-xs text-white/70">тем</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">{stats.percent}%</p>
-                <p className="text-xs text-white/70">прогресс</p>
-              </div>
+            <div className="flex items-center gap-6 flex-wrap">
+              {[
+                { value: stats.modulesCount, label: 'модулей', color: '#7c3aed' },
+                { value: stats.total, label: 'тем', color: '#06b6d4' },
+                { value: stats.completed, label: 'пройдено', color: '#22c55e' },
+                { value: `${stats.percent}%`, label: 'прогресс', color: '#f97316' },
+              ].map(s => (
+                <div key={s.label} className="text-center">
+                  <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{s.label}</p>
+                </div>
+              ))}
             </div>
           )}
         </div>
+
+        {/* прогресс-бар */}
+        {stats && stats.total > 0 && (
+          <div className="relative mt-5 h-1.5 rounded-full overflow-hidden"
+            style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${stats.percent}%`,
+                background: 'linear-gradient(90deg, #7c3aed, #06b6d4)',
+                boxShadow: '0 0 12px rgba(124,58,237,0.6)',
+              }} />
+          </div>
+        )}
       </div>
 
+      {/* ── Content ── */}
       {goals.length > 0 ? (
         <>
           {/* Goal selector + View mode toggle */}
-          {/* Requirement 7: Toggle positioned above graph card, not overlapping course list */}
-          <div className="flex flex-col gap-4">
-            {/* View mode toggle - positioned first/above */}
-            <div className="flex justify-end">
-              <div className="flex gap-2 bg-[var(--color-bg-secondary)] p-1 rounded-xl border border-[var(--color-border)]">
-                <button
-                  onClick={() => setViewMode('modules')}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                    viewMode === 'modules'
-                      ? 'bg-[var(--color-primary)] text-white'
-                      : 'text-[var(--color-text-secondary)] hover:text-white'
-                  )}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                  Модули
-                </button>
-                <button
-                  onClick={() => setViewMode('topics')}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                    viewMode === 'topics'
-                      ? 'bg-[var(--color-primary)] text-white'
-                      : 'text-[var(--color-text-secondary)] hover:text-white'
-                  )}
-                >
-                  <GitBranch className="w-4 h-4" />
-                  Все темы
-                </button>
-              </div>
-            </div>
-
-            {/* Goal selector - positioned below toggle */}
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            {/* Goal tabs */}
             {goals.length > 1 && (
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="flex gap-2 overflow-x-auto pb-1 flex-1">
                 {goals.map(goal => {
-                  const goalStats = getGoalStats(goal)
+                  const gs = getGoalStats(goal)
+                  const isSelected = selectedGoal?.id === goal.id
                   return (
-                    <button
-                      key={goal.id}
+                    <button key={goal.id}
                       onClick={() => { setSelectedGoal(goal); setSelectedTopic(null); setSelectedModule(null) }}
-                      className={cn(
-                        'flex items-center gap-3 px-5 py-3 rounded-xl border-2 transition-all whitespace-nowrap',
-                        selectedGoal?.id === goal.id
-                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-white'
-                          : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]/50'
-                      )}
-                    >
-                      <span className="font-medium">{goal.title}</span>
-                      <span className={cn('badge-practicum', goalStats.percent >= 80 && 'badge-practicum-success')}>
-                        {goalStats.percent}%
+                      className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm font-medium whitespace-nowrap transition-all duration-200"
+                      style={{
+                        background: isSelected ? 'rgba(124,58,237,0.15)' : 'var(--color-surface)',
+                        borderColor: isSelected ? 'rgba(124,58,237,0.6)' : 'var(--color-border)',
+                        color: isSelected ? '#fff' : 'var(--color-text-secondary)',
+                      }}>
+                      <BookOpen className="w-4 h-4" />
+                      <span>{goal.title}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-semibold"
+                        style={{
+                          background: gs.percent >= 80 ? 'rgba(34,197,94,0.15)' : 'rgba(124,58,237,0.15)',
+                          color: gs.percent >= 80 ? '#22c55e' : '#7c3aed',
+                        }}>
+                        {gs.percent}%
                       </span>
                     </button>
                   )
                 })}
               </div>
             )}
+
+            {/* View toggle */}
+            <div className="flex gap-1 p-1 rounded-xl flex-shrink-0"
+              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+              {([
+                { mode: 'modules' as ViewMode, icon: LayoutGrid, label: 'Модули' },
+                { mode: 'topics' as ViewMode, icon: GitBranch, label: 'Все темы' },
+              ]).map(({ mode, icon: Icon, label }) => (
+                <button key={mode} onClick={() => setViewMode(mode)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+                  style={{
+                    background: viewMode === mode ? 'var(--color-primary)' : 'transparent',
+                    color: viewMode === mode ? '#fff' : 'var(--color-text-secondary)',
+                  }}>
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Graph and details */}
+          {/* Graph + Details */}
           <div className="grid lg:grid-cols-3 gap-6">
+            {/* Graph card */}
             <div className="lg:col-span-2">
-              <Card className="overflow-hidden">
-                <div className="h-1 bg-[var(--color-primary)]" />
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-[var(--color-primary)]" />
-                      {selectedGoal?.title}
-                    </div>
-                    {stats && (
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 progress-practicum">
-                          <div className="progress-practicum-fill" style={{ width: `${stats.percent}%` }} />
-                        </div>
-                        <span className="text-sm text-[var(--color-text-secondary)]">{stats.percent}%</span>
+              <div className="rounded-2xl overflow-hidden"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                {/* top accent */}
+                <div className="h-0.5" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))' }} />
+                
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4"
+                  style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                    <span className="font-semibold text-white">{selectedGoal?.title}</span>
+                  </div>
+                  {stats && (
+                    <div className="flex items-center gap-3">
+                      <div className="h-1.5 w-24 rounded-full overflow-hidden"
+                        style={{ background: 'var(--color-bg-secondary)' }}>
+                        <div className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${stats.percent}%`,
+                            background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))',
+                          }} />
                       </div>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {/* Module Graph View */}
+                      <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                        {stats.percent}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Graph body */}
+                <div>
                   {viewMode === 'modules' && selectedGoal && allModules.length > 0 && (
                     <SafeModuleGraph
                       modules={allModules}
@@ -330,8 +316,6 @@ export default function GraphPage() {
                       isLoadingTopics={isLoadingTopics}
                     />
                   )}
-                  
-                  {/* Topics Graph View */}
                   {viewMode === 'topics' && selectedGoal && allTopics.length > 0 && (
                     <SafeKnowledgeGraph
                       topics={allTopics}
@@ -339,33 +323,22 @@ export default function GraphPage() {
                       selectedTopicId={selectedTopic?.id}
                     />
                   )}
-                  
-                  {/* Empty state for modules */}
                   {viewMode === 'modules' && selectedGoal && allModules.length === 0 && (
-                    <div className="h-[400px] flex items-center justify-center">
-                      <div className="text-center">
-                        <LayoutGrid className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-                        <p className="text-slate-400">Модули ещё не созданы</p>
-                      </div>
-                    </div>
+                    <EmptyGraphState icon={<LayoutGrid className="w-10 h-10" />} text="Модули ещё не созданы" />
                   )}
-                  
-                  {/* Empty state for topics */}
                   {viewMode === 'topics' && selectedGoal && allTopics.length === 0 && (
-                    <div className="h-[400px] flex items-center justify-center">
-                      <div className="text-center">
-                        <Network className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-                        <p className="text-slate-400">Темы ещё не созданы</p>
-                        <p className="text-xs text-slate-500 mt-2">Кликни на модуль для генерации тем</p>
-                      </div>
-                    </div>
+                    <EmptyGraphState
+                      icon={<Network className="w-10 h-10" />}
+                      text="Темы ещё не созданы"
+                      sub="Кликни на модуль для генерации тем"
+                    />
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
 
+            {/* Right panel */}
             <div className="space-y-4">
-              {/* Module Topics Panel */}
               {selectedModule && (
                 <ModuleTopics
                   moduleId={selectedModule.id}
@@ -374,8 +347,7 @@ export default function GraphPage() {
                   onClose={() => setSelectedModule(null)}
                 />
               )}
-              
-              {/* Topic Details Panel */}
+
               {selectedTopic && !selectedModule && (
                 <TopicDetails
                   topic={selectedTopic}
@@ -383,68 +355,113 @@ export default function GraphPage() {
                   onStartLesson={() => router.push(`/learn/${selectedTopic.id}`)}
                 />
               )}
-              
-              {/* Default state */}
+
               {!selectedTopic && !selectedModule && (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      {viewMode === 'modules' ? (
-                        <LayoutGrid className="w-8 h-8 text-[var(--color-primary)]" />
-                      ) : (
-                        <Network className="w-8 h-8 text-[var(--color-primary)]" />
-                      )}
-                    </div>
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {viewMode === 'modules' ? 'Выбери модуль' : 'Выбери тему'}
-                    </h3>
-                    <p className="text-sm text-[var(--color-text-secondary)]">
-                      {viewMode === 'modules' 
-                        ? 'Кликни на модуль для просмотра тем' 
-                        : 'Кликни на узел графа для деталей'}
-                    </p>
-                  </CardContent>
-                </Card>
+                <div className="rounded-2xl p-8 text-center"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                    style={{ background: 'rgba(124,58,237,0.1)' }}>
+                    {viewMode === 'modules'
+                      ? <LayoutGrid className="w-7 h-7" style={{ color: 'var(--color-primary)' }} />
+                      : <Network className="w-7 h-7" style={{ color: 'var(--color-primary)' }} />}
+                  </div>
+                  <h3 className="font-semibold text-white mb-1">
+                    {viewMode === 'modules' ? 'Выбери модуль' : 'Выбери тему'}
+                  </h3>
+                  <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    {viewMode === 'modules'
+                      ? 'Кликни на узел модуля для просмотра тем'
+                      : 'Кликни на узел графа для деталей'}
+                  </p>
+                </div>
               )}
-              
+
               {/* Legend */}
-              <Card>
-                <CardHeader><CardTitle className="text-sm">Легенда</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {[
-                    { color: 'bg-slate-500', label: 'Заблокировано' },
-                    { color: 'bg-cyan-500', label: 'Доступно' },
-                    { color: 'bg-orange-500', label: 'В процессе' },
-                    { color: 'bg-green-500', label: 'Завершено' },
-                  ].map(item => (
+              <div className="rounded-2xl p-5"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-4"
+                  style={{ color: 'var(--color-text-secondary)' }}>Легенда</p>
+                <div className="space-y-3">
+                  {LEGEND.map(item => (
                     <div key={item.label} className="flex items-center gap-3">
-                      <div className={cn('w-4 h-4 rounded-full', item.color)} />
-                      <span className="text-sm text-[var(--color-text-secondary)]">{item.label}</span>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: `${item.color}20`, color: item.color }}>
+                        {item.icon}
+                      </div>
+                      <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{item.label}</span>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
+
+              {/* Stats mini */}
+              {stats && (
+                <div className="rounded-2xl p-5"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-4"
+                    style={{ color: 'var(--color-text-secondary)' }}>Прогресс</p>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Завершено', value: stats.completed, total: stats.total, color: '#22c55e' },
+                      { label: 'В процессе', value: stats.inProgress, total: stats.total, color: '#f97316' },
+                    ].map(item => (
+                      <div key={item.label}>
+                        <div className="flex justify-between text-xs mb-1.5">
+                          <span style={{ color: 'var(--color-text-secondary)' }}>{item.label}</span>
+                          <span className="font-medium text-white">{item.value} / {item.total}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden"
+                          style={{ background: 'var(--color-bg-secondary)' }}>
+                          <div className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: item.total > 0 ? `${(item.value / item.total) * 100}%` : '0%',
+                              background: item.color,
+                              boxShadow: `0 0 8px ${item.color}80`,
+                            }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
       ) : (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="w-24 h-24 bg-[var(--color-bg-secondary)] rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <Target className="w-12 h-12 text-[var(--color-text-secondary)]" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Создай первый курс</h3>
-            <p className="text-[var(--color-text-secondary)] mb-6">
-              Карта знаний появится после создания курса
-            </p>
-            <button onClick={() => router.push('/goals/new')} className="btn-practicum">
-              <Sparkles className="w-5 h-5 mr-2 inline" />
-              Создать курс
-            </button>
-          </CardContent>
-        </Card>
+        /* ── Empty state ── */
+        <div className="rounded-3xl p-16 text-center"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
+            style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.15))', border: '1px solid rgba(124,58,237,0.2)' }}>
+            <Target className="w-12 h-12" style={{ color: 'var(--color-primary)' }} />
+          </div>
+          <h3 className="text-xl font-bold text-white mb-3">Создай первый курс</h3>
+          <p className="mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+            Карта знаний появится после создания курса
+          </p>
+          <button onClick={() => router.push('/goals/new')}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:opacity-90"
+            style={{ background: 'var(--color-primary)', color: '#fff' }}>
+            <Sparkles className="w-4 h-4" />
+            Создать курс
+          </button>
+        </div>
       )}
     </div>
   )
 }
 
+function EmptyGraphState({ icon, text, sub }: { icon: React.ReactNode; text: string; sub?: string }) {
+  return (
+    <div className="h-[460px] flex items-center justify-center">
+      <div className="text-center space-y-3">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto"
+          style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary)' }}>
+          {icon}
+        </div>
+        <p className="font-medium text-white">{text}</p>
+        {sub && <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{sub}</p>}
+      </div>
+    </div>
+  )
+}

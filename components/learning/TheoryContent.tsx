@@ -499,47 +499,171 @@ function YouTubeEmbed({ data }: { data: YouTubeEmbedData }) {
 // Парсинг интерактивных и видео-блоков из контента
 // ============================================================
 
-/** Regex для интерактивных блоков: ```interactive:quiz\n{...}``` */
-const INTERACTIVE_BLOCK_REGEX = /```interactive:(quiz|code|misconception)\n([\s\S]*?)```/g
-/** Regex для YouTube-блоков: :::youtube{id="xxx" title="..." channel="..."} */
-const YOUTUBE_BLOCK_REGEX = /:::youtube\{id="([^"]+)"(?:\s+title="([^"]*?)")?(?:\s+channel="([^"]*?)")?\}/g
+/**
+ * Поддерживаемые спец-блоки:
+ *
+ * ```interactive:quiz|code|misconception
+ * { ...json... }
+ * ```
+ *
+ * ```callout
+ * { "type": "tip" | "warning" | "important" | "remember", "content": "..." }
+ * ```
+ *
+ * ```accordion
+ * { "title": "...", "content": "..." }
+ * ```
+ *
+ * ```timeline
+ * { "events": [{ "date": "...", "title": "...", "description": "..." }, ...] }
+ * ```
+ *
+ * ```chart
+ * { "title"?: "...", "type"?: "line" | "bar" | "area", "xKey"?: "name", "lines": [{ "key": "y1", "name"?: "...", "color"?: "#..." }], "data": [{ "name": "...", "y1": 10 }, ...] }
+ * ```
+ *
+ * ```mermaid
+ * graph TD;
+ *   A-->B;
+ * ```
+ *
+ * :::youtube{id="xxx" title="..." channel="..."}
+ */
+const SPECIAL_BLOCKS_REGEX =
+  /```interactive:(quiz|code|misconception)\n([\s\S]*?)```|```callout\n([\s\S]*?)```|```accordion\n([\s\S]*?)```|```timeline\n([\s\S]*?)```|```chart\n([\s\S]*?)```|```mermaid\n([\s\S]*?)```|:::youtube\{id="([^"]+)"(?:\s+title="([^"]*?)")?(?:\s+channel="([^"]*?)")?\}/g
 
-type InteractivePart = string | { type: string; data: any }
+type InteractivePart =
+  | string
+  | { type: 'quiz' | 'code' | 'misconception' | 'youtube' | 'callout' | 'accordion' | 'timeline' | 'chart' | 'mermaid'; data: any }
 
-function parseInteractiveBlocks(content: string): InteractivePart[] {
-  const parts: InteractivePart[] = []
+function safeJsonParse<T = any>(raw: string): T | null {
+  try {
+    return JSON.parse(raw.trim()) as T
+  } catch {
+    return null
+  }
+}
 
-  // Объединяем оба regex в один проход
-  const combinedRegex = new RegExp(
-    `${INTERACTIVE_BLOCK_REGEX.source}|${YOUTUBE_BLOCK_REGEX.source}`,
-    'g'
-  )
+// Удаляем "висящий" обрезанный JSON-блок в конце текста,
+// например: {"type": "important", "content": "Пространство $\mathbb{R"
+// чтобы он не отображался сырым текстом.
+function stripDanglingJson(content: string): string {
+  const danglingMatch = /\n(\{[^\}]*"(type|question)"[^\}]*)$/.exec(content)
+  if (!danglingMatch) return content
+  return content.slice(0, danglingMatch.index)
+}
+
+// Разбор "простого" формата:
+// callout\n{...json...}\n\n
+// interactive\n{...json...}\n\n
+function splitSimpleBlocks(segment: string): InteractivePart[] {
+  const result: InteractivePart[] = []
+  const SIMPLE_REGEX = /(callout|interactive)\n+(\{[\s\S]*?\})(?=\n{2,}|\n*$)/g
 
   let lastIndex = 0
-  let match
+  let m: RegExpExecArray | null
 
-  while ((match = combinedRegex.exec(content)) !== null) {
-    // Текст до блока
+  while ((m = SIMPLE_REGEX.exec(segment)) !== null) {
+    if (m.index > lastIndex) {
+      result.push(segment.slice(lastIndex, m.index))
+    }
+
+    const kind = m[1]
+    const json = m[2]
+    const data = safeJsonParse(json)
+
+    if (data) {
+      if (kind === 'callout') {
+        result.push({ type: 'callout', data })
+      } else if (kind === 'interactive') {
+        // По умолчанию считаем, что это quiz-блок
+        result.push({ type: 'quiz', data })
+      }
+    } else {
+      result.push(segment.slice(m.index, SIMPLE_REGEX.lastIndex))
+    }
+
+    lastIndex = SIMPLE_REGEX.lastIndex
+  }
+
+  if (lastIndex < segment.length) {
+    result.push(segment.slice(lastIndex))
+  }
+
+  return result
+}
+
+function parseInteractiveBlocks(content: string): InteractivePart[] {
+  // Сначала убираем обрезанный JSON-хвост, если он есть
+  content = stripDanglingJson(content)
+
+  const parts: InteractivePart[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = SPECIAL_BLOCKS_REGEX.exec(content)) !== null) {
     if (match.index > lastIndex) {
       parts.push(content.slice(lastIndex, match.index))
     }
 
-    if (match[1]) {
-      // Интерактивный блок (quiz/code/misconception)
-      try {
-        const data = JSON.parse(match[2].trim())
-        parts.push({ type: match[1], data })
-      } catch {
+    const [
+      full,
+      interactiveType,
+      interactiveData,
+      calloutData,
+      accordionData,
+      timelineData,
+      chartData,
+      mermaidChart,
+      ytId,
+      ytTitle,
+      ytChannel,
+    ] = match
+
+    if (interactiveType && interactiveData) {
+      const data = safeJsonParse(interactiveData)
+      if (data) {
+        parts.push({ type: interactiveType as 'quiz' | 'code' | 'misconception', data })
+      } else {
         parts.push(match[0])
       }
-    } else if (match[3]) {
-      // YouTube блок
+    } else if (calloutData) {
+      const data = safeJsonParse(calloutData)
+      if (data) {
+        parts.push({ type: 'callout', data })
+      } else {
+        parts.push(match[0])
+      }
+    } else if (accordionData) {
+      const data = safeJsonParse(accordionData)
+      if (data) {
+        parts.push({ type: 'accordion', data })
+      } else {
+        parts.push(match[0])
+      }
+    } else if (timelineData) {
+      const data = safeJsonParse(timelineData)
+      if (data) {
+        parts.push({ type: 'timeline', data })
+      } else {
+        parts.push(match[0])
+      }
+    } else if (chartData) {
+      const data = safeJsonParse(chartData)
+      if (data) {
+        parts.push({ type: 'chart', data })
+      } else {
+        parts.push(match[0])
+      }
+    } else if (mermaidChart) {
+      parts.push({ type: 'mermaid', data: { chart: mermaidChart } })
+    } else if (ytId) {
       parts.push({
         type: 'youtube',
         data: {
-          id: match[3],
-          title: match[4] ? match[4].replace(/\\"/g, '"') : undefined,
-          channel: match[5] ? match[5].replace(/\\"/g, '"') : undefined,
+          id: ytId,
+          title: ytTitle ? ytTitle.replace(/\\"/g, '"') : undefined,
+          channel: ytChannel ? ytChannel.replace(/\\"/g, '"') : undefined,
         },
       })
     }
@@ -552,7 +676,20 @@ function parseInteractiveBlocks(content: string): InteractivePart[] {
     parts.push(content.slice(lastIndex))
   }
 
-  return parts
+  // Дополнительно разбираем "простые" блоки вида:
+  // callout\n{...json...}\n\n
+  // interactive\n{...json...}\n\n
+  const normalized: InteractivePart[] = []
+
+  for (const part of parts) {
+    if (typeof part === 'string') {
+      normalized.push(...splitSimpleBlocks(part))
+    } else {
+      normalized.push(part)
+    }
+  }
+
+  return normalized
 }
 
 // ============================================================
@@ -661,15 +798,45 @@ export function TheoryContent({ content, topicName }: TheoryContentProps) {
       </div>
 
       {parts.map((part, index) => {
-        if (typeof part === 'object') {
-          if (part.type === 'quiz') return <InteractiveQuiz key={index} data={part.data} />
-          if (part.type === 'code') return <InteractiveCode key={index} data={part.data} />
-          if (part.type === 'misconception') return <MisconceptionBlock key={index} data={part.data} />
-          if (part.type === 'youtube') return <YouTubeEmbed key={index} data={part.data} />
+        if (typeof part === 'object' && part !== null) {
+          const anyPart: any = part
+          const data = anyPart.data
+
+          if (anyPart.type === 'quiz') return <InteractiveQuiz key={index} data={data} />
+          if (anyPart.type === 'code') return <InteractiveCode key={index} data={data} />
+          if (anyPart.type === 'misconception') return <MisconceptionBlock key={index} data={data} />
+          if (anyPart.type === 'youtube') return <YouTubeEmbed key={index} data={data} />
+
+          if (anyPart.type === 'callout' && data && typeof data.content === 'string') {
+            return <CalloutBlock key={index} type={data.type || 'tip'} content={data.content} />
+          }
+
+          if (anyPart.type === 'accordion' && data && typeof data.title === 'string' && typeof data.content === 'string') {
+            return <AccordionBlock key={index} title={data.title} content={data.content} />
+          }
+
+          if (anyPart.type === 'timeline' && data && Array.isArray(data.events)) {
+            return <TimelineBlock key={index} events={data.events} />
+          }
+
+          if (anyPart.type === 'chart' && data) {
+            return <InteractiveChart key={index} data={data} />
+          }
+
+          if (anyPart.type === 'mermaid' && data && typeof data.chart === 'string') {
+            return <MermaidDiagram key={index} chart={data.chart} />
+          }
         }
+
         return (
-          <ReactMarkdown key={index} urlTransform={allowDataUrlTransform} remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components}>
-            {part as string}
+          <ReactMarkdown
+            key={index}
+            urlTransform={allowDataUrlTransform}
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            components={components}
+          >
+            {typeof part === 'string' ? part : JSON.stringify(part)}
           </ReactMarkdown>
         )
       })}

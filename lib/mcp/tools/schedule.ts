@@ -283,8 +283,6 @@ export class ScheduleTool {
       })
     }
     
-    response += `\n_Источник: ${schedule.source === 'madi-parser' ? 'MADI сайт' : schedule.source === 'cache' ? 'кэш' : 'статические данные'}_`
-    
     return response
   }
 
@@ -309,8 +307,6 @@ export class ScheduleTool {
       }
       result += '\n'
     })
-    
-    result += `\n_Источник: ${exams.source === 'madi-parser' ? 'MADI сайт' : exams.source === 'cache' ? 'кэш' : 'статические данные'}_`
     
     return result
   }

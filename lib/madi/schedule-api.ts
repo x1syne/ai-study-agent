@@ -348,31 +348,35 @@ function getWeekNumber(date: Date): number {
  */
 export function formatScheduleForChat(schedule: DaySchedule): string {
   if (schedule.lessons.length === 0) {
-    return `📅 ${schedule.dayOfWeek}, ${schedule.date}\n\n🏖️ Выходной день, занятий нет.`;
+    return `📅 ${schedule.dayOfWeek}, ${schedule.date}\n\n🏖️ В этот день занятий нет.`;
   }
 
-  const lessonTypeEmoji = {
+  const lessonTypeEmoji: Record<string, string> = {
     lecture: '📚',
     practice: '💻',
     lab: '🔬'
   };
 
+  const lessonTypeLabel: Record<string, string> = {
+    lecture: 'лекция',
+    practice: 'практика',
+    lab: 'лаб. работа'
+  };
+
   let text = `📅 ${schedule.dayOfWeek}, ${schedule.date}\n\n`;
   
   schedule.lessons.forEach((lesson, index) => {
-    const emoji = lessonTypeEmoji[lesson.type];
-    text += `${emoji} **${lesson.time}** - ${lesson.subject}\n`;
+    const emoji = lessonTypeEmoji[lesson.type] || '📖';
+    const typeLabel = lessonTypeLabel[lesson.type] || lesson.type;
+    text += `${emoji} **${lesson.time}** — ${lesson.subject} _(${typeLabel})_\n`;
     text += `   📍 ${lesson.room}${lesson.building ? `, ${lesson.building}` : ''}\n`;
     if (lesson.group) {
-      text += `   👥 Группа: ${lesson.group}\n`;
+      text += `   👥 ${lesson.group}\n`;
     }
     if (index < schedule.lessons.length - 1) {
       text += '\n';
     }
   });
-  
-  // Добавляем предупреждение о статических данных
-  text += `\n\n⚠️ _Примечание: Это тестовые данные. Для актуального расписания включите парсер MADI (USE_MADI_PARSER=true)_`;
 
   return text;
 }
