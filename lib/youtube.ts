@@ -198,6 +198,7 @@ const YOUTUBE_EMBED_REGEX = /:::youtube\{id="([^"]+)"(?:\s+title="([^"]*)")?(?:\
  */
 export async function enrichContentWithVideos(content: string): Promise<string> {
   const matches = Array.from(content.matchAll(VIDEO_QUERY_REGEX))
+  console.log(`[YouTube] Found ${matches.length} video queries in content`)
   if (matches.length === 0) return content
 
   let result = content
