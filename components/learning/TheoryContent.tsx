@@ -891,12 +891,9 @@ export function StreamingTheoryContent({ content }: { content: string }) {
           return <TimelineBlock key={index} events={data} />
         }
         
-        if (anyPart.type === 'chart' && data) {
-          return <ChartBlock key={index} data={data} />
-        }
-        
-        if (anyPart.type === 'mermaid' && typeof data === 'string') {
-          return <MermaidDiagram key={index} chart={data} />
+        // chart и mermaid - пропускаем (не реализованы)
+        if (anyPart.type === 'chart' || anyPart.type === 'mermaid') {
+          return null
         }
 
         return null
