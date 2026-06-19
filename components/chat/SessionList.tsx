@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, MessageSquare, Trash2, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchWithTimeout, isAbortError } from '@/lib/fetch-with-timeout'
 
 interface Session {
   id: string
@@ -25,23 +26,34 @@ export function SessionList({
   onNewSession 
 }: SessionListProps) {
   const [sessions, setSessions] = useState<Session[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   useEffect(() => {
-    loadSessions()
+    setSessions([])
+    setHasLoaded(false)
   }, [characterId])
+
+  useEffect(() => {
+    if (isExpanded && !hasLoaded) loadSessions()
+  }, [isExpanded, hasLoaded])
 
   const loadSessions = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/sessions?characterId=${characterId}`)
+      const response = await fetchWithTimeout(`/api/sessions?characterId=${characterId}`, {
+        timeoutMs: 1800,
+      })
       if (response.ok) {
         const data = await response.json()
         setSessions(data.sessions || [])
       }
+      setHasLoaded(true)
     } catch (error) {
-      console.error('Error loading sessions:', error)
+      if (!isAbortError(error)) {
+        console.error('Error loading sessions:', error)
+      }
     } finally {
       setIsLoading(false)
     }

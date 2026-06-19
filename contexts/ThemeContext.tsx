@@ -12,44 +12,32 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
-// Определяет тему по времени суток (6:00-18:00 = светлая, остальное = темная)
-function getThemeByTime(): 'dark' | 'light' {
-  const hour = new Date().getHours()
-  return (hour >= 6 && hour < 18) ? 'light' : 'dark'
+function getSystemTheme(): 'dark' | 'light' {
+  if (typeof window === 'undefined') return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('auto')
-  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
+  const [theme, setThemeState] = useState<Theme>('light')
+  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('light')
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as Theme | null
-    if (savedTheme) {
+    if (savedTheme === 'dark' || savedTheme === 'light' || savedTheme === 'system') {
       setThemeState(savedTheme)
-    } else {
-      setThemeState('auto')
+      return
     }
+
+    setThemeState('light')
+    localStorage.setItem('theme', 'light')
   }, [])
 
   useEffect(() => {
     const updateResolvedTheme = () => {
-      if (theme === 'auto') {
-        setResolvedTheme(getThemeByTime())
-      } else if (theme === 'system') {
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        setResolvedTheme(systemDark ? 'dark' : 'light')
-      } else {
-        setResolvedTheme(theme)
-      }
+      setResolvedTheme(theme === 'system' ? getSystemTheme() : theme === 'dark' ? 'dark' : 'light')
     }
 
     updateResolvedTheme()
-
-    // Для auto режима проверяем каждую минуту
-    let interval: NodeJS.Timeout | null = null
-    if (theme === 'auto') {
-      interval = setInterval(updateResolvedTheme, 60000)
-    }
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handler = () => {
@@ -57,10 +45,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     mediaQuery.addEventListener('change', handler)
 
-    return () => {
-      mediaQuery.removeEventListener('change', handler)
-      if (interval) clearInterval(interval)
-    }
+    return () => mediaQuery.removeEventListener('change', handler)
   }, [theme])
 
   useEffect(() => {

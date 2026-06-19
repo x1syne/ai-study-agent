@@ -29,8 +29,8 @@ export const useAppStore = create<AppState>((set) => ({
   isLoading: true,
   currentGoalId: null,
   currentTopicId: null,
-  sidebarOpen: true,
-  theme: 'dark',
+  sidebarOpen: false,
+  theme: 'light',
   
   setUser: (user) => set({ user }),
   setLoading: (isLoading) => set({ isLoading }),

@@ -9,6 +9,7 @@ import { PomodoroTimer, AchievementBadge, ACHIEVEMENTS } from '@/components/gami
 import type { AchievementType } from '@/components/gamification'
 import type { UserStats, Achievement } from '@/types'
 import { formatMinutes } from '@/lib/utils'
+import { fetchWithTimeout, isAbortError } from '@/lib/fetch-with-timeout'
 
 export default function StatsPage() {
   const [stats, setStats] = useState<UserStats | null>(null)
@@ -21,7 +22,7 @@ export default function StatsPage() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/stats')
+      const res = await fetchWithTimeout('/api/stats')
       if (res.ok) {
         const data = await res.json()
         setStats(data.stats)
@@ -36,11 +37,9 @@ export default function StatsPage() {
         
         setProgress(data.progress || { completedTopics: 0, totalTopics: 0, averageMastery: 0 })
       }
-    } catch (e) { console.error(e) }
+    } catch (e) { if (!isAbortError(e)) console.error(e) }
     finally { setIsLoading(false) }
   }
-
-  if (isLoading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>
 
   const allAchievementTypes = Object.keys(ACHIEVEMENTS) as AchievementType[]
   const unlockedTypes = new Set(achievements.map(a => a.type))

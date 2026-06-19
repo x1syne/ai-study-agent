@@ -1,319 +1,326 @@
 import Link from 'next/link'
-import { Brain, Target, Zap, BarChart3, MessageSquare, Repeat, ChevronDown, Sparkles, Clock, Users, Calculator, Globe, Atom, Palette, TrendingUp, Languages, Music, Camera, Gamepad2, Dumbbell, Utensils, Bitcoin } from 'lucide-react'
-import { SiPython, SiJavascript, SiReact, SiMysql, SiGit, SiTypescript } from 'react-icons/si'
+import {
+  ArrowRight,
+  Books,
+  Brain,
+  CalendarCheck,
+  ChartLineUp,
+  ChatCircleText,
+  CheckCircle,
+  Graph,
+  NotePencil,
+  ShieldCheck,
+  Target,
+} from '@phosphor-icons/react/dist/ssr'
 
-const features = [
+const learningLoop = [
   {
-    icon: Brain,
-    title: 'Граф знаний',
-    description: 'Визуальная карта всех тем и их связей. Видишь свой прогресс в реальном времени.',
+    title: 'Цель',
+    text: 'Студент описывает результат: экзамен, новая профессия, тема для проекта.',
   },
   {
-    icon: Target,
-    title: 'Адаптивное обучение',
-    description: 'AI подстраивается под твой уровень и темп. Сложнее, когда готов. Проще, когда нужно.',
+    title: 'Маршрут',
+    text: 'Система собирает модули, зависимости и порядок изучения.',
   },
   {
-    icon: Zap,
-    title: 'Умная диагностика',
-    description: 'Определяем твой уровень за 10 минут. Не тратим время на то, что ты уже знаешь.',
+    title: 'Занятие',
+    text: 'Каждая тема превращается в теорию, практику и проверку понимания.',
   },
   {
-    icon: BarChart3,
-    title: 'Персональный план',
-    description: 'AI строит roadmap к твоей цели с учётом сроков и зависимостей между темами.',
-  },
-  {
-    icon: MessageSquare,
-    title: 'AI-чат',
-    description: 'Задавай вопросы в любой момент. AI объяснит, поможет, направит.',
-  },
-  {
-    icon: Repeat,
-    title: 'Интервальное повторение',
-    description: 'Алгоритм SM-2 напомнит повторить материал в идеальное время.',
+    title: 'Повторение',
+    text: 'Слабые места возвращаются в тренажёр, пока знание не закрепится.',
   },
 ]
 
-const popularSkills = [
-  { name: 'Python', Icon: SiPython, color: 'from-yellow-500 to-blue-500' },
-  { name: 'JavaScript', Icon: SiJavascript, color: 'from-yellow-400 to-yellow-600' },
-  { name: 'React', Icon: SiReact, color: 'from-cyan-400 to-blue-500' },
-  { name: 'SQL', Icon: SiMysql, color: 'from-orange-400 to-red-500' },
-  { name: 'Git', Icon: SiGit, color: 'from-orange-500 to-red-600' },
-  { name: 'TypeScript', Icon: SiTypescript, color: 'from-blue-400 to-blue-600' },
-  { name: 'Математика', Icon: Calculator, color: 'from-purple-400 to-pink-500' },
-  { name: 'Английский', Icon: Languages, color: 'from-green-400 to-emerald-500' },
-  { name: 'Физика', Icon: Atom, color: 'from-blue-400 to-cyan-500' },
-  { name: 'Дизайн', Icon: Palette, color: 'from-pink-400 to-rose-500' },
-  { name: 'Маркетинг', Icon: TrendingUp, color: 'from-orange-400 to-amber-500' },
-  { name: 'География', Icon: Globe, color: 'from-teal-400 to-green-500' },
-  { name: 'Музыка', Icon: Music, color: 'from-violet-400 to-purple-500' },
-  { name: 'Фотография', Icon: Camera, color: 'from-slate-400 to-gray-600' },
-  { name: 'Геймдев', Icon: Gamepad2, color: 'from-indigo-400 to-purple-600' },
-  { name: 'Фитнес', Icon: Dumbbell, color: 'from-red-400 to-orange-500' },
-  { name: 'Кулинария', Icon: Utensils, color: 'from-amber-400 to-yellow-500' },
-  { name: 'Криптовалюты', Icon: Bitcoin, color: 'from-yellow-500 to-orange-600' },
+const disciplines = [
+  'Программирование',
+  'Математика',
+  'Физика',
+  'Языки',
+  'Экономика',
+  'Инженерия',
+  'История',
+  'Дизайн',
+]
+
+const productPoints = [
+  {
+    icon: Graph,
+    title: 'Граф знаний',
+    text: 'Видно, какие темы уже открыты, какие зависят друг от друга и где студент застрял.',
+  },
+  {
+    icon: NotePencil,
+    title: 'Теория и практика',
+    text: 'Материалы генерируются под конкретную цель и сразу связываются с заданиями.',
+  },
+  {
+    icon: CalendarCheck,
+    title: 'Ритм повторения',
+    text: 'Карточки и задачи возвращаются по расписанию, а не когда студент случайно вспомнит.',
+  },
 ]
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4">
-          <div className="flex items-center justify-between h-14 sm:h-16">
-            <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-primary-500 to-accent-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                <Brain className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
-              </div>
-              <span className="text-sm sm:text-xl font-bold text-white truncate">AI Study</span>
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <Link href="/login" className="text-slate-300 hover:text-white transition-colors text-xs sm:text-sm px-2 py-1 hidden xs:inline">
-                Войти
-              </Link>
-              <Link href="/dashboard" className="bg-primary-500 hover:bg-primary-600 text-white text-xs sm:text-sm px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition-colors">
-                Начать
-              </Link>
-            </div>
-          </div>
+    <main className="min-h-screen bg-[#f4f7f5] text-[#111816] selection:bg-[#c6ff4d] selection:text-[#111816]">
+      <header className="sticky top-0 z-50 border-b border-[#dce4df] bg-[#f4f7f5]/92 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-3" aria-label="AI Study home">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#101816] text-[#c6ff4d]">
+              <Brain size={21} weight="duotone" />
+            </span>
+            <span className="text-[18px] font-semibold tracking-[-0.02em]">AI Study</span>
+          </Link>
+
+          <nav className="hidden items-center gap-7 text-sm font-medium text-[#53615b] md:flex">
+            <a href="#system" className="transition-colors hover:text-[#111816]">Система</a>
+            <a href="#workflow" className="transition-colors hover:text-[#111816]">Процесс</a>
+            <a href="#mentor" className="transition-colors hover:text-[#111816]">Наставник</a>
+          </nav>
+
+          <Link
+            href="/dashboard"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-[#111816] px-5 text-sm font-semibold text-white transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
+          >
+            Открыть кабинет
+          </Link>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="pt-32 pb-20 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-primary-500/10 border border-primary-500/20 rounded-full px-4 py-2 mb-6">
-            <span className="text-primary-400 text-sm font-medium">🚀 Gartner Trend 2025: Agentic AI</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
-            Персональный{' '}
-            <span className="bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent">
-              AI-репетитор
-            </span>
-          </h1>
-          
-          <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-10">
-            Автономный агент, который сам ведёт тебя к цели. Диагностирует уровень, 
-            строит граф знаний, генерирует материалы и адаптируется под твой темп.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/dashboard" className="btn-primary text-lg px-8 py-4 shadow-lg shadow-primary-500/50 hover:shadow-xl hover:shadow-primary-500/60 hover:scale-105 transition-all duration-300 flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              Попробовать бесплатно
-            </Link>
-            <Link href="#features" className="btn-secondary text-lg px-8 py-4 hover:scale-105 transition-all duration-300">
-              Как это работает
-            </Link>
-          </div>
+      <section className="relative overflow-hidden border-b border-[#dce4df]">
+        <div className="absolute inset-x-0 top-0 h-px bg-white" />
+        <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-[1180px] grid-cols-1 items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:py-16">
+          <div className="max-w-[650px]">
+            <p className="mb-8 inline-flex rounded-full border border-[#cad8d0] bg-white px-4 py-2 text-sm font-medium text-[#53615b]">
+              Учебная система, а не чат с советами
+            </p>
+            <h1 className="max-w-[11ch] text-balance text-[clamp(3.2rem,8.5vw,5.9rem)] font-black leading-[0.92] tracking-[-0.045em] text-[#101816]">
+              Учиться по маршруту.
+            </h1>
+            <p className="mt-7 max-w-[590px] text-pretty text-lg leading-8 text-[#42504a] sm:text-xl">
+              AI Study собирает цель в курс, ведёт по темам, проверяет понимание и возвращает к слабым местам.
+            </p>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto mt-16">
-            <div>
-              <div className="text-4xl font-bold text-white">100%</div>
-              <div className="text-slate-400">Бесплатно</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold text-white">AI</div>
-              <div className="text-slate-400">Llama 3.1 70B</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold text-white">∞</div>
-              <div className="text-slate-400">Тем для изучения</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Popular Skills */}
-      <section className="py-16 px-4 bg-slate-800/30">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-2xl font-bold text-white text-center mb-8">
-            Популярные направления
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {popularSkills.map((skill, index) => (
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <Link
-                key={skill.name}
-                href={`/dashboard?skill=${skill.name.toLowerCase()}`}
-                className="card card-hover p-6 text-center group relative overflow-hidden"
-                style={{ animationDelay: `${index * 50}ms` }}
+                href="/dashboard"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[#111816] px-6 text-[15px] font-semibold text-white transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                
-                <div className="relative z-10">
-                  <skill.Icon className="w-12 h-12 mx-auto mb-3 group-hover:scale-125 transition-transform duration-300 text-primary-400" />
-                  <div className="font-medium text-white group-hover:text-primary-400 transition-colors">
-                    {skill.name}
+                Начать обучение
+                <ArrowRight className="ml-2" size={18} weight="bold" />
+              </Link>
+              <a
+                href="#system"
+                className="inline-flex h-12 items-center justify-center rounded-full border border-[#bac8c1] bg-white px-6 text-[15px] font-semibold text-[#111816] transition-colors duration-200 hover:border-[#111816]"
+              >
+                Посмотреть систему
+              </a>
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="absolute -left-6 top-12 hidden h-28 w-28 rounded-full bg-[#c6ff4d] blur-3xl lg:block" />
+            <div className="relative rounded-[28px] border border-[#16211d] bg-[#0d1311] p-3 shadow-[0_28px_80px_rgba(17,24,22,0.22)]">
+              <div className="rounded-[22px] border border-white/10 bg-[#121a17] p-4 sm:p-5">
+                <div className="mb-5 flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#8fa098]">Курс</p>
+                    <p className="mt-1 text-lg font-semibold text-white">Python для анализа данных</p>
+                  </div>
+                  <span className="rounded-full bg-[#c6ff4d] px-3 py-1 text-xs font-bold text-[#111816]">42%</span>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-[1fr_0.78fr]">
+                  <div className="rounded-[18px] bg-[#f4f7f5] p-4 text-[#111816]">
+                    <div className="mb-4 flex items-center justify-between">
+                      <span className="text-sm font-semibold">Граф тем</span>
+                      <Graph size={19} weight="duotone" />
+                    </div>
+                    <div className="space-y-3">
+                      {['Основы Python', 'NumPy', 'Pandas', 'Визуализация', 'Проект'].map((item, index) => (
+                        <div key={item} className="grid grid-cols-[24px_1fr] items-center gap-3">
+                          <span className={`h-3 w-3 rounded-full ${index < 2 ? 'bg-[#111816]' : index === 2 ? 'bg-[#c6ff4d] ring-4 ring-[#dfff86]' : 'bg-[#cfd8d3]'}`} />
+                          <div className="h-9 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-[inset_0_0_0_1px_rgba(17,24,22,0.08)]">
+                            {item}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+                        <Target size={18} weight="duotone" />
+                        Сегодня
+                      </div>
+                      <p className="text-sm leading-6 text-[#b9c7c0]">Разобрать группировку данных и решить 4 задачи.</p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-[#c6ff4d] p-4 text-[#111816]">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-bold">
+                        <CheckCircle size={18} weight="fill" />
+                        Проверка
+                      </div>
+                      <p className="text-sm leading-6">Ответ принят. Следующее повторение через 3 дня.</p>
+                    </div>
                   </div>
                 </div>
-              </Link>
-            ))}
+
+                <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#111816]">
+                        <ChatCircleText size={20} weight="duotone" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-white">AI-наставник</p>
+                        <p className="text-sm text-[#b9c7c0]">Объясняет ошибку в контексте текущей темы</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-[#c6ff4d]">онлайн</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" className="py-20 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Всё для эффективного обучения
+      <section id="system" className="border-b border-[#dce4df] bg-white">
+        <div className="mx-auto max-w-[1180px] px-4 py-16 sm:px-6 lg:py-20">
+          <div className="max-w-[720px]">
+            <h2 className="text-balance text-4xl font-black leading-[1] tracking-[-0.035em] text-[#111816] sm:text-5xl">
+              Внутри не промпт, а учебный контур.
             </h2>
-            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-              Не просто чат-бот, а полноценный автономный агент, 
-              который сам принимает решения об обучении
+            <p className="mt-5 max-w-[62ch] text-lg leading-8 text-[#53615b]">
+              Главная задача системы — держать структуру обучения: от цели и диагностики до закрепления материала.
             </p>
           </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <div 
-                key={feature.title} 
-                className="card p-8 card-hover relative overflow-hidden group"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-accent-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="relative z-10">
-                  <div className="w-14 h-14 bg-gradient-to-br from-primary-500/20 to-accent-500/20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                    <feature.icon className="w-7 h-7 text-primary-400" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-primary-400 transition-colors">
-                    {feature.title}
-                  </h3>
-                  <p className="text-slate-400">
-                    {feature.description}
-                  </p>
+
+          <div className="mt-12 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[26px] bg-[#111816] p-5 text-white sm:p-7">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {productPoints.map((point) => {
+                  const Icon = point.icon
+                  return (
+                    <div key={point.title} className="rounded-[18px] border border-white/10 bg-white/[0.045] p-5">
+                      <Icon size={24} weight="duotone" className="text-[#c6ff4d]" />
+                      <h3 className="mt-5 text-xl font-bold tracking-[-0.02em]">{point.title}</h3>
+                      <p className="mt-3 text-sm leading-6 text-[#c5d2cc]">{point.text}</p>
+                    </div>
+                  )
+                })}
+                <div className="rounded-[18px] bg-[#c6ff4d] p-5 text-[#111816]">
+                  <Books size={24} weight="duotone" />
+                  <h3 className="mt-5 text-xl font-black tracking-[-0.02em]">Любая область</h3>
+                  <p className="mt-3 text-sm leading-6">От программирования до языков: маршрут собирается под цель, а не под шаблон курса.</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      {/* How it works */}
-      <section className="py-20 px-4 bg-slate-800/30 max-w-full overflow-x-hidden">
-        <div className="container mx-auto max-w-full">
-          <h2 className="text-4xl font-bold text-white text-center mb-16">
-            Как это работает
-          </h2>
-          
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              { step: '1', title: 'Укажи цель', desc: 'Что хочешь выучить и за какой срок' },
-              { step: '2', title: 'Пройди диагностику', desc: 'AI определит твой текущий уровень' },
-              { step: '3', title: 'Получи план', desc: 'Персональный roadmap с графом знаний' },
-              { step: '4', title: 'Учись и расти', desc: 'Теория, практика, повторение' },
-            ].map((item) => (
-              <div key={item.step} className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-accent-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold text-white">
-                  {item.step}
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
-                <p className="text-slate-400">{item.desc}</p>
+            <div className="rounded-[26px] border border-[#dce4df] bg-[#f4f7f5] p-5 sm:p-7">
+              <p className="text-sm font-semibold text-[#53615b]">Направления</p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {disciplines.map((item) => (
+                  <span key={item} className="rounded-full border border-[#c9d6d0] bg-white px-4 py-2 text-sm font-semibold text-[#111816]">
+                    {item}
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="py-20 px-4 bg-slate-800/30 max-w-full overflow-x-hidden">
-        <div className="container mx-auto max-w-4xl max-w-full">
-          <h2 className="text-4xl font-bold text-white text-center mb-4">
-            Частые вопросы
-          </h2>
-          <p className="text-xl text-slate-400 text-center mb-12">
-            Всё, что нужно знать перед началом
-          </p>
-          
-          <div className="space-y-4">
-            {[
-              {
-                q: 'Сколько времени займет обучение?',
-                a: 'Зависит от вашей цели и темпа. AI построит персональный план с учетом ваших сроков. В среднем базовый курс по Python занимает 2-3 месяца при занятиях 1 час в день.'
-              },
-              {
-                q: 'Нужны ли знания программирования?',
-                a: 'Нет! AI проведет диагностику и определит ваш уровень. Если вы новичок - начнете с основ. Если уже что-то знаете - пропустите известные темы и сразу перейдете к новому материалу.'
-              },
-              {
-                q: 'Как работает AI-агент?',
-                a: 'Это не просто чат-бот. Агент сам принимает решения: когда давать теорию, когда практику, когда повторение. Он анализирует ваши ответы, адаптирует сложность и строит оптимальный путь к цели.'
-              },
-              {
-                q: 'Действительно ли это бесплатно?',
-                a: 'Да, полностью бесплатно. Без скрытых платежей, без ограничений по времени или темам. Мы используем открытую модель Llama 3.1 70B от Groq.'
-              },
-              {
-                q: 'Можно ли учиться с телефона?',
-                a: 'Да! Интерфейс адаптивный и работает на всех устройствах. Учитесь где удобно - дома за компьютером или в дороге с телефона.'
-              },
-              {
-                q: 'Что если я застряну на сложной теме?',
-                a: 'AI-чат всегда готов помочь. Задавайте вопросы в любой момент - агент объяснит по-другому, приведет примеры или предложит дополнительные материалы.'
-              }
-            ].map((faq, index) => (
-              <details key={index} className="card p-6 group cursor-pointer hover:border-primary-500/30 transition-all duration-300">
-                <summary className="flex items-center justify-between font-semibold text-white text-lg list-none">
-                  <span>{faq.q}</span>
-                  <ChevronDown className="w-5 h-5 text-primary-400 group-open:rotate-180 transition-transform duration-300" />
-                </summary>
-                <p className="mt-4 text-slate-400 leading-relaxed">
-                  {faq.a}
+              <div className="mt-10 border-t border-[#dce4df] pt-6">
+                <p className="text-2xl font-black leading-tight tracking-[-0.03em]">
+                  Студент видит не список уроков, а карту движения.
                 </p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-20 px-4 relative overflow-hidden max-w-full">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 via-accent-500/10 to-primary-500/10 animate-pulse"></div>
-        
-        <div className="container mx-auto max-w-4xl text-center relative z-10 max-w-full">
-          <div className="inline-flex items-center gap-2 bg-primary-500/20 border border-primary-500/30 rounded-full px-4 py-2 mb-6 backdrop-blur-sm">
-            <Clock className="w-4 h-4 text-primary-400" />
-            <span className="text-primary-300 text-sm font-medium">Начни за 2 минуты</span>
-          </div>
-          
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Готов начать обучение?
-          </h2>
-          <p className="text-xl text-slate-400 mb-10">
-            Бесплатно. Без ограничений. С персональным AI-агентом.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/dashboard" className="btn-primary text-lg px-10 py-4 inline-flex items-center gap-2 shadow-2xl shadow-primary-500/50 hover:shadow-primary-500/70 hover:scale-105 transition-all duration-300">
-              <Sparkles className="w-5 h-5" />
-              Начать прямо сейчас
-            </Link>
-            <div className="flex items-center gap-2 text-slate-400 text-sm">
-              <Users className="w-4 h-4" />
-              <span>Присоединяйся к тысячам студентов</span>
+                <p className="mt-4 leading-7 text-[#53615b]">
+                  Поэтому легче понять, что учить сейчас, что можно пропустить и где нужно вернуться к базе.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 px-4 border-t border-slate-800">
-        <div className="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Brain className="w-6 h-6 text-primary-400" />
-            <span className="font-semibold text-white">AI Study Agent</span>
-          </div>
-          <div className="text-slate-400 text-sm">
-            Powered by Groq (Llama 3.1) • Supabase • Vercel
+      <section id="workflow" className="border-b border-[#dce4df] bg-[#f4f7f5]">
+        <div className="mx-auto max-w-[1180px] px-4 py-16 sm:px-6 lg:py-20">
+          <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+            <div className="lg:sticky lg:top-24">
+              <h2 className="text-balance text-4xl font-black leading-[1] tracking-[-0.035em] sm:text-5xl">
+                Один цикл вместо разрозненных инструментов.
+              </h2>
+              <p className="mt-5 text-lg leading-8 text-[#53615b]">
+                План, объяснение, практика и повторение живут в одном учебном состоянии.
+              </p>
+            </div>
+
+            <div className="divide-y divide-[#d3ded8] rounded-[26px] border border-[#d3ded8] bg-white">
+              {learningLoop.map((step, index) => (
+                <div key={step.title} className="grid gap-4 p-6 sm:grid-cols-[72px_1fr] sm:p-7">
+                  <div className="text-3xl font-black tracking-[-0.04em] text-[#8b9992]">
+                    {String(index + 1).padStart(2, '0')}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black tracking-[-0.03em]">{step.title}</h3>
+                    <p className="mt-2 max-w-[58ch] leading-7 text-[#53615b]">{step.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </footer>
-    </div>
+      </section>
+
+      <section id="mentor" className="bg-[#101816] text-white">
+        <div className="mx-auto grid max-w-[1180px] gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:py-20">
+          <div>
+            <h2 className="max-w-[680px] text-balance text-4xl font-black leading-[1] tracking-[-0.035em] sm:text-5xl">
+              Наставник объясняет, но система держит курс.
+            </h2>
+            <p className="mt-5 max-w-[64ch] text-lg leading-8 text-[#c5d2cc]">
+              Чат полезен только тогда, когда знает цель, текущую тему, прошлые ошибки и следующий шаг.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/register"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[#c6ff4d] px-6 text-[15px] font-black text-[#111816] transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
+              >
+                Создать аккаунт
+                <ArrowRight className="ml-2" size={18} weight="bold" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex h-12 items-center justify-center rounded-full border border-white/15 px-6 text-[15px] font-semibold text-white transition-colors duration-200 hover:border-white/40"
+              >
+                Войти
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-white/10 bg-white/[0.045] p-5 sm:p-6">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#c6ff4d] text-[#111816]">
+                <ShieldCheck size={21} weight="duotone" />
+              </span>
+              <div>
+                <p className="font-bold">Контекстный ответ</p>
+                <p className="text-sm text-[#9eada6]">основан на текущем маршруте</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-[18px] bg-white px-4 py-3 text-sm leading-6 text-[#111816]">
+                Почему мой код группирует данные неправильно?
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-[#16211d] px-4 py-3 text-sm leading-6 text-[#dce8e2]">
+                Ты применил среднее до фильтрации пропусков. Вернись к шагу "очистка данных", затем повтори задачу с новым условием.
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-white/[0.06] px-4 py-2 text-sm text-[#c6ff4d]">
+                <ChartLineUp size={17} weight="bold" />
+                Слабое место добавлено в повторение
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   )
 }

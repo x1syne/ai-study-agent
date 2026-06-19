@@ -1,212 +1,289 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { 
-  House,
-  Target,
-  Graph,
-  ArrowsClockwise,
-  ChatCircleDots,
-  ChartLineUp,
-  GearSix,
-  GraduationCap,
-  X,
-  CaretLeft,
+import {
+  Books,
+  Brain,
   CalendarBlank,
+  Cards,
+  CaretDown,
+  ChatCircleText,
+  CheckSquareOffset,
+  ClipboardText,
+  Exam,
+  Folder,
+  GameController,
+  House,
+  MagnifyingGlass,
+  Microphone,
+  NotePencil,
+  PlayCircle,
+  SidebarSimple,
+  SquaresFour,
+  UploadSimple,
+  Video,
+  X,
 } from '@phosphor-icons/react'
 import { useAppStore } from '@/lib/store'
-import { DailyTip } from './DailyTip'
 
-const navigation = [
-  { name: 'Главная',     href: '/dashboard', icon: House,          color: '#8b5cf6' },
-  { name: 'Мои курсы',  href: '/goals',     icon: Target,         color: '#06b6d4' },
-  { name: 'Расписание', href: '/schedule',  icon: CalendarBlank,  color: '#f59e0b' },
-  { name: 'Карта знаний',href: '/graph',    icon: Graph,          color: '#10b981' },
-  { name: 'Тренажёр',   href: '/review',    icon: ArrowsClockwise,color: '#f43f5e' },
-  { name: 'AI Наставник',href: '/chat',     icon: ChatCircleDots, color: '#7c3aed' },
-  { name: 'Прогресс',   href: '/stats',     icon: ChartLineUp,    color: '#22d3ee' },
+type NavItem = {
+  name: string
+  href: string
+  icon: any
+  tone?: string
+  activePath?: string
+  activeMode?: string
+}
+
+const primaryNav: NavItem[] = [
+  { name: 'Главная', href: '/dashboard', icon: House },
+  { name: 'Мои наборы', href: '/goals', icon: Folder },
+  { name: 'Календарь', href: '/schedule', icon: CalendarBlank },
+  { name: 'Мини-приложения', href: '/apps', icon: SquaresFour },
 ]
 
-export function Sidebar() {
-  const pathname = usePathname()
-  const { sidebarOpen, toggleSidebar, setSidebarOpen } = useAppStore()
+const studyNav: NavItem[] = [
+  { name: 'Учебный план', href: '/learn', icon: Books, tone: 'text-emerald-600' },
+  { name: 'Chat', href: '/chat', icon: ChatCircleText, tone: 'text-sky-600' },
+  { name: 'Помоги мне с учебой', href: '/chat?mode=tutor', icon: Brain, tone: 'text-violet-600', activePath: '/chat', activeMode: 'tutor' },
+  { name: 'Записать лекцию', href: '/lecture', icon: Microphone, tone: 'text-pink-500' },
+]
 
-  const handleNavClick = () => {
+const practiceNav: NavItem[] = [
+  { name: 'QuizFetch', href: '/review?mode=quiz', icon: CheckSquareOffset, activePath: '/review', activeMode: 'quiz' },
+  { name: 'Тест', href: '/review?mode=test', icon: Exam, activePath: '/review', activeMode: 'test' },
+  { name: 'Карточки', href: '/review?mode=cards', icon: Cards, activePath: '/review', activeMode: 'cards' },
+  { name: 'Аркада', href: '/arcade', icon: GameController },
+  { name: 'Оценщик эссе', href: '/essay', icon: NotePencil },
+]
+
+const mediaNav: NavItem[] = [
+  { name: 'Объяснения', href: '/media?mode=explain', icon: PlayCircle, activePath: '/media', activeMode: 'explain' },
+  { name: 'Аудиоконспект', href: '/media?mode=audio', icon: Video, activePath: '/media', activeMode: 'audio' },
+]
+
+const notes = ['Основы Python', 'Карточки повторения', 'План на неделю', 'Ошибки в практике']
+
+export function Sidebar() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { sidebarOpen, setSidebarOpen } = useAppStore()
+
+  useEffect(() => {
+    const routes = [
+      ...primaryNav,
+      ...studyNav,
+      ...practiceNav,
+      ...mediaNav,
+      { href: '/goals/new' },
+    ].map((item) => item.href)
+    const warmup = window.setTimeout(() => {
+      routes.forEach((href) => router.prefetch(href))
+    }, 400)
+
+    return () => window.clearTimeout(warmup)
+  }, [router])
+
+  const closeMobile = () => {
     if (window.innerWidth < 1024) setSidebarOpen(false)
+  }
+
+  const isActive = (item: NavItem) => {
+    const path = item.activePath || item.href.split('?')[0]
+    const pathMatches = pathname === path || pathname.startsWith(`${path}/`)
+    if (!pathMatches) return false
+    if (!item.activeMode) return true
+    return searchParams.get('mode') === item.activeMode
   }
 
   return (
     <>
-      {/* Mobile overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 lg:hidden"
+        <button
+          aria-label="Закрыть меню"
+          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-[2px] lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
         className={cn(
-          'fixed left-0 top-0 h-full z-40',
-          'transition-all duration-300 ease-smooth',
-          'flex flex-col',
-          'border-r border-[var(--color-border)]',
-          // background with subtle gradient
-          'bg-[var(--color-bg-secondary)]',
-          sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full',
-          'max-lg:w-72',
-          sidebarOpen ? 'lg:w-72' : 'lg:w-[72px]'
+          'sidebar-practicum fixed left-0 top-0 z-40 flex h-full w-[280px] flex-col transition-transform duration-200',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
-        style={{
-          background: 'linear-gradient(180deg, #0c0c14 0%, #080810 100%)',
-        }}
       >
-        {/* Top glow line */}
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent opacity-50" />
-
-        {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-[var(--color-border)] flex-shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-3 min-w-0" onClick={handleNavClick}>
-            {/* Logo icon */}
-            <div className="relative flex-shrink-0">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-primary shadow-glow-sm">
-                <GraduationCap className="w-5 h-5 text-white" weight="duotone" />
-              </div>
-              {/* Glow behind icon */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-primary opacity-30 blur-md -z-10" />
-            </div>
-
-            {sidebarOpen && (
-              <div className="overflow-hidden">
-                <span className="block text-[15px] font-bold text-white leading-tight">AI Study</span>
-                <span className="block text-[11px] font-medium text-[var(--color-text-muted)] tracking-wide uppercase">Практикум</span>
-              </div>
-            )}
+        <div className="flex h-[76px] items-center gap-3 px-5">
+          <Link href="/dashboard" onClick={closeMobile} className="flex min-w-0 flex-1 items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#101816] text-[#c6ff4d] shadow-sm">
+              <Brain size={23} weight="duotone" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[22px] font-black leading-none text-[var(--color-text)]">AI Study</span>
+              <span className="mt-1 block text-[12px] font-semibold text-[var(--color-text-muted)]">practice workspace</span>
+            </span>
           </Link>
-
           <button
-            onClick={() => window.innerWidth < 1024 ? setSidebarOpen(false) : toggleSidebar()}
-            className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-white/5 transition-all duration-200 flex-shrink-0"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-xl p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] lg:hidden"
+            aria-label="Закрыть меню"
           >
-            <span className="lg:hidden">
-              <X size={18} weight="bold" />
-            </span>
-            <span className="hidden lg:block">
-              <CaretLeft
-                size={16}
-                weight="bold"
-                className={cn('transition-transform duration-300', !sidebarOpen && 'rotate-180')}
-              />
-            </span>
+            <X size={18} weight="bold" />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-          {!sidebarOpen && (
-            <div className="h-px w-full my-2 bg-gradient-to-r from-transparent via-[var(--color-border-light)] to-transparent" />
-          )}
+        <div className="px-4 pb-3">
+          <Link href="/goals" onClick={closeMobile} className="flex items-center gap-2 rounded-[14px] border border-[var(--color-border)] bg-white px-3 py-2.5">
+            <MagnifyingGlass size={18} className="text-[var(--color-text-muted)]" />
+            <span className="min-w-0 flex-1 text-sm font-medium text-[#8b978f]">Поиск наборов...</span>
+            <SidebarSimple size={18} className="text-[var(--color-text-muted)]" />
+          </Link>
+        </div>
 
-          {navigation.map((item, index) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={handleNavClick}
-                data-tooltip={!sidebarOpen ? item.name : undefined}
-                className={cn(
-                  'sidebar-item group relative',
-                  isActive && 'active',
-                  !sidebarOpen && 'justify-center px-0'
-                )}
-                style={{
-                  animationDelay: `${index * 40}ms`,
-                }}
-              >
-                {/* Icon container */}
-                <div
-                  className={cn(
-                    'relative flex items-center justify-center flex-shrink-0 transition-all duration-200',
-                    sidebarOpen ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl',
-                    isActive && 'shadow-glow-sm'
-                  )}
-                  style={isActive ? {
-                    background: `${item.color}20`,
-                    boxShadow: `0 0 12px ${item.color}30`,
-                  } : {}}
-                >
-                  <item.icon
-                    size={sidebarOpen ? 18 : 20}
-                    weight={isActive ? 'duotone' : 'regular'}
-                    style={{ color: isActive ? item.color : undefined }}
-                    className={cn(
-                      'transition-all duration-200',
-                      !isActive && 'group-hover:scale-110'
-                    )}
-                  />
+        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+          <div className="space-y-1 border-b border-[var(--color-border)] pb-3">
+            {primaryNav.map((item) => (
+              <NavLink key={item.name} item={item} active={isActive(item)} onClick={closeMobile} />
+            ))}
+          </div>
 
-                  {/* Active indicator dot (collapsed mode) */}
-                  {!sidebarOpen && isActive && (
-                    <div
-                      className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full"
-                      style={{ background: `linear-gradient(180deg, ${item.color}, transparent)` }}
-                    />
-                  )}
-                </div>
+          <div className="py-3">
+            <Link
+              href="/goals"
+              onClick={closeMobile}
+              className="mb-3 flex items-center gap-3 rounded-[14px] bg-[#f0f5f1] p-2.5 transition hover:bg-[#e8f0ea]"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#ffe1bc] text-[var(--color-text)]">
+                <Books size={19} weight="duotone" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-[var(--color-text)]">Текущий набор</span>
+                <span className="block truncate text-[11px] font-semibold text-[var(--color-text-muted)]">выберите в “Мои наборы”</span>
+              </span>
+              <CaretDown size={16} className="text-[var(--color-text-muted)]" />
+            </Link>
 
-                {sidebarOpen && (
-                  <span className="font-medium text-[13.5px] leading-none">
-                    {item.name}
-                  </span>
-                )}
-
-                {/* Hover glow */}
-                {!isActive && (
-                  <div
-                    className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
-                    style={{ background: `radial-gradient(circle at center, ${item.color}08 0%, transparent 70%)` }}
-                  />
-                )}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* Bottom section */}
-        <div className="flex-shrink-0 p-3 border-t border-[var(--color-border)] space-y-1">
-          <Link
-            href="/settings"
-            onClick={handleNavClick}
-            className={cn(
-              'sidebar-item group',
-              !sidebarOpen && 'justify-center px-0'
-            )}
-          >
-            <div className={cn(
-              'flex items-center justify-center flex-shrink-0 transition-all duration-200',
-              sidebarOpen ? 'w-8 h-8' : 'w-10 h-10 rounded-xl'
-            )}>
-              <GearSix
-                size={sidebarOpen ? 18 : 20}
-                weight="regular"
-                className="transition-transform duration-500 group-hover:rotate-90"
-              />
+            <div className="space-y-1">
+              {studyNav.map((item) => (
+                <NavLink key={item.name} item={item} active={isActive(item)} onClick={closeMobile} />
+              ))}
             </div>
-            {sidebarOpen && (
-              <span className="font-medium text-[13.5px]">Настройки</span>
-            )}
+          </div>
+
+          <Disclosure title="Практика" icon={CheckSquareOffset} defaultOpen>
+            {practiceNav.map((item) => (
+              <SubNavLink key={item.name} item={item} active={isActive(item)} onClick={closeMobile} />
+            ))}
+          </Disclosure>
+
+          <Disclosure title="Аудио и видео" icon={Video} defaultOpen>
+            {mediaNav.map((item) => (
+              <SubNavLink key={item.name} item={item} active={isActive(item)} onClick={closeMobile} />
+            ))}
+          </Disclosure>
+
+          <Link
+            href="/goals/new"
+            onClick={closeMobile}
+            className="mt-3 flex items-center justify-center gap-2 rounded-full bg-[#edf1ee] px-4 py-2.5 text-sm font-bold text-[var(--color-text)] hover:bg-[#e4ece6]"
+          >
+            <UploadSimple size={18} />
+            Загрузить
           </Link>
 
-          {sidebarOpen && (
-            <div className="pt-1">
-              <DailyTip />
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <span className="sidebar-section-label">Ваши заметки</span>
+              <Link href="/learn" className="text-[11px] font-bold text-[var(--color-text-secondary)] hover:text-[var(--color-text)]">
+                Смотреть все
+              </Link>
             </div>
-          )}
-        </div>
+            <div className="space-y-1">
+              {notes.map((note) => (
+                <Link
+                  key={note}
+                  href={`/learn?note=${encodeURIComponent(note)}`}
+                  onClick={closeMobile}
+                  className="flex items-center gap-2 rounded-[12px] px-2 py-2 text-sm font-semibold text-[#46534d] hover:bg-[#f0f4f1]"
+                >
+                  <ClipboardText size={17} className="text-[#1f78ff]" />
+                  <span className="truncate">{note}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </nav>
       </aside>
     </>
+  )
+}
+
+function NavLink({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem
+  active: boolean
+  onClick: () => void
+}) {
+  const Icon = item.icon
+  return (
+    <Link prefetch href={item.href} onClick={onClick} className={cn('sidebar-item', active && 'active')}>
+      <Icon size={20} weight={active ? 'duotone' : 'regular'} className={item.tone || 'text-[#6b7871]'} />
+      <span className="truncate">{item.name}</span>
+    </Link>
+  )
+}
+
+function SubNavLink({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem
+  active: boolean
+  onClick: () => void
+}) {
+  const Icon = item.icon
+  return (
+    <Link
+      prefetch
+      href={item.href}
+      onClick={onClick}
+      className={cn(
+        'ml-6 flex items-center gap-2 rounded-[11px] px-2.5 py-2 text-[13px] font-semibold text-[#4f5d57] hover:bg-[#f0f4f1] hover:text-[var(--color-text)]',
+        active && 'bg-[#edf6e7] text-[var(--color-text)]'
+      )}
+    >
+      <Icon size={16} className="text-[#1f78ff]" />
+      <span>{item.name}</span>
+    </Link>
+  )
+}
+
+function Disclosure({
+  title,
+  icon: Icon,
+  defaultOpen,
+  children,
+}: {
+  title: string
+  icon: any
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <details className="group border-t border-[var(--color-border)] py-2" open={defaultOpen}>
+      <summary className="sidebar-item cursor-pointer list-none">
+        <Icon size={20} className="text-cyan-600" />
+        <span className="flex-1">{title}</span>
+        <CaretDown size={15} className="transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-1 space-y-1">{children}</div>
+    </details>
   )
 }

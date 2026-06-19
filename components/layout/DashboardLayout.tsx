@@ -1,66 +1,36 @@
 'use client'
 
-import { useAppStore } from '@/lib/store'
+import { Brain } from '@phosphor-icons/react'
 import { useAuth } from '@/hooks/useAuth'
-import { cn } from '@/lib/utils'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
-import { GraduationCap } from 'lucide-react'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { sidebarOpen } = useAppStore()
-  const { isLoading }   = useAuth()
+  const { isLoading } = useAuth()
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
+      <div className="study-app flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <div className="relative mx-auto mb-5 w-fit">
-            <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)] to-[#4f46e5] rounded-2xl flex items-center justify-center animate-pulse">
-              <GraduationCap className="w-8 h-8 text-white" />
-            </div>
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[#4f46e5] blur-xl opacity-30 animate-glow-pulse" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[16px] bg-[#101816] text-[#c6ff4d] shadow-lg">
+            <Brain size={27} weight="duotone" />
           </div>
-          <div className="flex items-center gap-2 justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
+          <p className="text-sm font-semibold text-[var(--color-text-secondary)]">Загружаем рабочее пространство</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      {/* Global ambient glow — subtle background effect */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0"
-        aria-hidden
-        style={{
-          background: [
-            'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(124,58,237,0.07) 0%, transparent 60%)',
-            'radial-gradient(ellipse 50% 30% at 85% 85%, rgba(6,182,212,0.04) 0%, transparent 50%)',
-          ].join(', '),
-        }}
-      />
-
+    <div className="study-app">
       <Sidebar />
-
-      <div
-        className={cn(
-          'relative z-10 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-          'ml-0',
-          sidebarOpen ? 'lg:ml-72' : 'lg:ml-[72px]'
-        )}
-      >
+      <div className="min-h-screen lg:ml-[280px]">
         <Header />
-
-        <main className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)]">
+        <main className="mx-auto min-h-[calc(100vh-76px)] max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
           {children}
         </main>
       </div>

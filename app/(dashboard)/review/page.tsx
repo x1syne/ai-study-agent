@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { 
   Brain, Layers, ListChecks, Sparkles, Loader2, Play, Clock, 
   Plus, Flame, Star, BookOpen, Trophy, ChevronRight, ArrowLeft, ChevronDown
@@ -8,6 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { ReviewCard as ReviewCardComponent } from '@/components/review/ReviewCard'
 import { QuizQuestion } from '@/components/learning/QuizQuestion'
+import { fetchWithTimeout, isAbortError } from '@/lib/fetch-with-timeout'
 import type { ReviewCard } from '@/types'
 
 type View = 'dashboard' | 'study-cards' | 'study-quiz' | 'generate'
@@ -37,6 +39,7 @@ interface QuizSet {
 const topicNameMap: Record<string, string> = {}
 
 export default function ReviewPage() {
+  const searchParams = useSearchParams()
   const [view, setView] = useState<View>('dashboard')
   const [cards, setCards] = useState<ReviewCard[]>([])
   const [dueCards, setDueCards] = useState<ReviewCard[]>([])
@@ -69,27 +72,43 @@ export default function ReviewPage() {
     if (today) setTodayReviewed(parseInt(today))
   }, [])
 
+  useEffect(() => {
+    const mode = searchParams.get('mode')
+    if (mode === 'quiz' || mode === 'test') {
+      setGenerateType('quiz')
+      setView('generate')
+    }
+    if (mode === 'generate-cards') {
+      setGenerateType('cards')
+      setView('generate')
+    }
+    if (mode === 'cards') {
+      setView('dashboard')
+      setGenerateType('cards')
+    }
+  }, [searchParams])
+
   const fetchCards = async () => {
     try {
-      const res = await fetch('/api/review')
+      const res = await fetchWithTimeout('/api/review')
       if (res.ok) {
         const data = await res.json()
         const allCards = data.cards || []
         setCards(allCards)
         setDueCards(allCards.filter((c: ReviewCard) => !c.nextReviewDate || new Date(c.nextReviewDate) <= new Date()))
       }
-    } catch (e) { console.error(e) }
+    } catch (e) { if (!isAbortError(e)) console.error(e) }
   }
 
   const fetchGoals = async () => {
     try {
-      const res = await fetch('/api/goals')
+      const res = await fetchWithTimeout('/api/goals')
       if (res.ok) {
         const data = await res.json()
         setGoals(data)
         data.forEach((g: Goal) => g.topics.forEach(t => { topicNameMap[t.slug] = t.name }))
       }
-    } catch (e) { console.error(e) }
+    } catch (e) { if (!isAbortError(e)) console.error(e) }
   }
 
   const loadQuizSets = () => {
@@ -173,8 +192,6 @@ export default function ReviewPage() {
     acc[name].cards.push(card)
     return acc
   }, {} as Record<string, { cards: ReviewCard[]; slug: string }>)
-
-  if (isLoading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>
 
   // Study Cards View
   if (view === 'study-cards') {

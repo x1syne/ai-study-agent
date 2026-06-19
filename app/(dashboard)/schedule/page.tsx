@@ -8,6 +8,7 @@ import {
   CalendarDays, Settings2, GraduationCap
 } from 'lucide-react'
 import { generateStudySchedule, downloadICS, generateGoogleCalendarUrl, StudyEvent } from '@/lib/calendar'
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 
 interface Goal {
   id: string
@@ -53,7 +54,7 @@ export default function SchedulePage() {
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/goals').then(r => r.json()).then(data => {
+    fetchWithTimeout('/api/goals').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
         setGoals(data)
         if (data.length > 0) setSelectedGoal(data[0].id)

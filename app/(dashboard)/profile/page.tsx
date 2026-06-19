@@ -9,6 +9,7 @@ import type { AchievementType } from '@/components/gamification'
 import { useAuth } from '@/hooks/useAuth'
 import { useAppStore } from '@/lib/store'
 import { formatMinutes } from '@/lib/utils'
+import { fetchWithTimeout, isAbortError } from '@/lib/fetch-with-timeout'
 
 interface Stats {
   currentStreak: number
@@ -66,10 +67,23 @@ export default function ProfilePage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, goalsRes] = await Promise.all([fetch('/api/stats'), fetch('/api/goals')])
-      if (statsRes.ok) { const data = await statsRes.json(); setStats(data.stats); setAchievements(data.achievements || []) }
-      if (goalsRes.ok) { const goals = await goalsRes.json(); setGoalsCount(goals.length); setTopicsCount(goals.reduce((acc: number, g: any) => acc + (g.topics?.length || 0), 0)) }
-    } catch (e) { console.error(e) }
+      const [statsResult, goalsResult] = await Promise.allSettled([
+        fetchWithTimeout('/api/stats'),
+        fetchWithTimeout('/api/goals'),
+      ])
+      if (statsResult.status === 'fulfilled' && statsResult.value.ok) {
+        const data = await statsResult.value.json()
+        setStats(data.stats)
+        setAchievements(data.achievements || [])
+      }
+      if (goalsResult.status === 'fulfilled' && goalsResult.value.ok) {
+        const goals = await goalsResult.value.json()
+        setGoalsCount(goals.length)
+        setTopicsCount(goals.reduce((acc: number, g: any) => acc + (g.topics?.length || 0), 0))
+      }
+      if (statsResult.status === 'rejected' && !isAbortError(statsResult.reason)) console.error(statsResult.reason)
+      if (goalsResult.status === 'rejected' && !isAbortError(goalsResult.reason)) console.error(goalsResult.reason)
+    } catch (e) { if (!isAbortError(e)) console.error(e) }
     finally { setIsLoading(false) }
   }
 
