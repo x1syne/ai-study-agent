@@ -381,10 +381,11 @@ export async function POST(request: NextRequest) {
       response = `К сожалению, AI временно недоступен. Ошибка: ${errorStatus}. 
 
 Возможные причины:
-- API ключ Groq истёк или неверный
-- Превышен лимит запросов
+- ключи AI-провайдеров истекли или не настроены
+- превышен лимит запросов у всех fallback-провайдеров
+- локальный FreeLLMAPI не запущен или недоступен
 
-Пожалуйста, проверьте GROQ_API_KEY в файле .env и получите новый ключ на https://console.groq.com/keys`
+Проверьте переменные GROQ_API_KEY, NVIDIA_API_KEY или FREELLMAPI_API_KEY в .env.`
     }
 
     // Requirement 4.2: Add AI response to memory context

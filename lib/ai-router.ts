@@ -100,6 +100,8 @@ export interface GenerateResult {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const USE_PROXY = process.env.VERCEL !== '1' && process.env.USE_DIRECT_GROQ !== 'true'
+const FREELLMAPI_BASE_URL = (process.env.FREELLMAPI_BASE_URL || 'http://127.0.0.1:3001/v1').replace(/\/$/, '')
+const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'auto'
 
 // Groq клиент
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
@@ -559,6 +561,58 @@ async function generateNvidiaFallback(
   }
 }
 
+async function generateFreeLLMAPI(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): Promise<{ content: string; tool_calls?: any[] }> {
+  const apiKey = process.env.FREELLMAPI_API_KEY
+  if (!apiKey) throw new Error('FreeLLMAPI key not configured')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), options._taskType === 'heavy' ? 90000 : 60000)
+
+  try {
+    const res = await fetch(`${FREELLMAPI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: FREELLMAPI_MODEL,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        ...(options.json ? { response_format: { type: 'json_object' } } : {}),
+        ...(options.tools ? { tools: options.tools, tool_choice: options.tool_choice ?? 'auto' } : {}),
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!res.ok) {
+      throw new Error(`FreeLLMAPI: ${res.status} ${await res.text()}`)
+    }
+
+    const data = await res.json()
+    const message = data.choices?.[0]?.message
+    const content = stripThinkingTags(message?.content || '')
+    const tool_calls = message?.tool_calls
+
+    if (content || tool_calls) return { content, tool_calls }
+    throw new Error('FreeLLMAPI: empty response')
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('FreeLLMAPI: timeout')
+    throw e
+  }
+}
+
 /** FLUX.1-schnell API endpoint */
 const FLUX_API_URL = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell'
 /** Допустимые размеры: 768x768, 1024x768, 768x1024, 1024x1024 */
@@ -627,13 +681,14 @@ const PROVIDERS: Record<string, { fn: ProviderFn; rateLimit: number }> = {
   nvidia: { fn: generateNvidia, rateLimit: 40 },
   deepseek: { fn: generateDeepSeek, rateLimit: 60 },
   gemini: { fn: generateGemini, rateLimit: 50 },
+  freellmapi: { fn: generateFreeLLMAPI, rateLimit: 120 },
 }
 
 const ROUTING: Record<TaskType, string[]> = {
-  fast:    ['groq', 'nvidia'],              // ⚡ Groq LPU ~0.3с → NVIDIA Llama 3.3
-  heavy:   ['nvidia', 'groq'],              // 🧠 Mistral-Nemotron ~1.4с → Groq fallback
-  chat:    ['nvidia', 'groq'],              // 💬 Nemotron Super 49B ~3с → Groq fallback
-  agentic: ['nvidia', 'groq'],              // 🤖 Llama 3.3 70B ~1.2с → Groq fallback
+  fast:    ['groq', 'nvidia', 'freellmapi'],              // ⚡ Groq → NVIDIA → FreeLLMAPI
+  heavy:   ['nvidia', 'groq', 'freellmapi'],              // 🧠 NVIDIA → Groq → FreeLLMAPI
+  chat:    ['nvidia', 'groq', 'freellmapi'],              // 💬 NVIDIA → Groq → FreeLLMAPI
+  agentic: ['nvidia', 'groq', 'freellmapi'],              // 🤖 NVIDIA → Groq → FreeLLMAPI
 }
 
 /**
@@ -667,6 +722,7 @@ export async function generateWithRouter(
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
     if (name === 'nvidia' && !process.env.NVIDIA_API_KEY) continue
+    if (name === 'freellmapi' && !process.env.FREELLMAPI_API_KEY) continue
 
     try {
       console.log(`[AI Router] Trying ${name}...`)
@@ -756,6 +812,7 @@ export async function* streamWithRouter(
     if (name === 'deepseek' && !process.env.DEEPSEEK_API_KEY) continue
     if (name === 'gemini' && !process.env.GEMINI_API_KEY) continue
     if (name === 'nvidia' && !process.env.NVIDIA_API_KEY) continue
+    if (name === 'freellmapi' && !process.env.FREELLMAPI_API_KEY) continue
 
     try {
       console.log(`[AI Router Stream] Trying ${name}...`)
@@ -773,6 +830,9 @@ export async function* streamWithRouter(
         // Gemini не поддерживает стриминг в простом API, делаем fallback на обычную генерацию
         const content = await generateGemini(systemPrompt, userPrompt, optionsWithTask)
         yield content
+        return
+      } else if (name === 'freellmapi') {
+        yield* streamFreeLLMAPI(systemPrompt, userPrompt, optionsWithTask)
         return
       }
     } catch (e: any) {
@@ -867,6 +927,46 @@ async function* streamGroq(
     }
   }
   throw new Error('Groq stream: all models failed')
+}
+
+async function* streamFreeLLMAPI(
+  system: string,
+  user: string,
+  options: GenerateOptions
+): AsyncGenerator<string, void, unknown> {
+  const apiKey = process.env.FREELLMAPI_API_KEY
+  if (!apiKey) throw new Error('FreeLLMAPI key not configured')
+
+  const res = await fetch(`${FREELLMAPI_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: FREELLMAPI_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: true,
+      ...(options.tools ? { tools: options.tools, tool_choice: options.tool_choice ?? 'auto' } : {}),
+    }),
+  })
+
+  if (!res.ok) throw new Error(`FreeLLMAPI stream: ${res.status} ${await res.text()}`)
+  if (!res.body) throw new Error('FreeLLMAPI stream: no body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    yield* parseSSEChunks(decoder.decode(value, { stream: true }))
+  }
 }
 
 /** Парсинг SSE чанков из стрима */

@@ -56,7 +56,6 @@ export class ConfigValidator {
   validateEnvVars(): string[] {
     const errors: string[] = []
     const required = [
-      'GROQ_API_KEY',
       'DATABASE_URL',
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_ANON_KEY',
@@ -66,6 +65,18 @@ export class ConfigValidator {
       if (!process.env[key]) {
         errors.push(`Missing required environment variable: ${key}`)
       }
+    }
+
+    const aiProviders = [
+      'GROQ_API_KEY',
+      'NVIDIA_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'GEMINI_API_KEY',
+      'FREELLMAPI_API_KEY',
+    ]
+
+    if (!aiProviders.some((key) => !!process.env[key])) {
+      errors.push(`Missing AI provider: set at least one of ${aiProviders.join(', ')}`)
     }
 
     return errors
